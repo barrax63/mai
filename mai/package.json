@@ -1,0 +1,22 @@
+{
+  "name": "mai",
+  "version": "1.0.0",
+  "description": "Mai - Discord cat-persona bot with HTTP interactions endpoint and gateway message listener",
+  "type": "module",
+  "private": true,
+  "engines": {
+    "node": ">=22"
+  },
+  "main": "src/index.js",
+  "scripts": {
+    "start": "node src/index.js",
+    "dev": "node --watch src/index.js",
+    "register": "node scripts/register-commands.js"
+  },
+  "dependencies": {
+    "discord-interactions": "^4.1.0",
+    "discord.js": "^14.16.3",
+    "express": "^4.21.2",
+    "pino": "^9.6.0"
+  }
+}

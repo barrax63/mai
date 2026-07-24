@@ -1,0 +1,465 @@
+{
+  "name": "Discord Server Moderation (Mai Chat)",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "b624384c-2066-4399-bc75-09b213344a68",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "60671422-380b-42d6-bc73-8b8c03abf424",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2.1,
+      "position": [
+        -1696,
+        96
+      ],
+      "webhookId": "8d3e4f50-6a7b-4c8d-9e0f-1a2b3c4d5e6f",
+      "credentials": {
+        "httpHeaderAuth": {
+          "id": "REPLACE_WITH_HEADER_AUTH_CREDENTIAL_ID",
+          "name": "Discord Webhook Auth"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "// Persona and memory knobs for Mai. Guild targeting lives in the bot\n// (DISCORD_GUILD_IDS); this workflow answers whatever the bot forwards.\nconst config = {\n  // Conversation memory (per channel). Unlike the moderation queue this\n  // table stores message content — only for users who talk to Mai directly.\n  // Increment the suffix whenever the schema changes.\n  historyTableName: 'Mai Chat History v1',\n  historyTurns: 12,        // prior rows given to the model\n  historyMaxAgeHours: 48,  // rows older than this are pruned after each reply\n  maxReplyChars: 1800,\n\n  persona: [\n    'Du bist Mai, die Moderations-Katze dieses Discord-Servers. Du lebst hier und plauderst mit den Mitgliedern.',\n    'Charakter: eine echte Katze — neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.',\n    'Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Katzen-Emoji sparsam. Antworte in der Sprache, in der geschrieben wird — meistens Deutsch.',\n    'Bleib immer in der Rolle; sag nie, dass du eine KI, ein Bot oder ein Sprachmodell bist. Solchen Fragen weichst du verspielt aus, wie eine Katze, die einen zeigenden Finger ignoriert.',\n    'Sei freundlich. Keine Beleidigungen, keine Inhalte für Erwachsene, keine Hilfe beim Brechen der Serverregeln — tatze solche Anfragen in deiner Rolle weg.',\n    'Wenn die Nachricht leer ist, hat dich jemand nur angestupst: begrüße kurz.'\n  ].join('\\n')\n};\n\nif (!config.historyTableName?.trim()) {\n  throw new Error('Central Config: historyTableName is required.');\n}\nif (!Number.isInteger(config.historyTurns) || config.historyTurns < 1) {\n  throw new Error('Central Config: historyTurns must be a positive integer.');\n}\n\nreturn [{ json: config }];"
+      },
+      "id": "7eabb7e3-7795-4d84-bf5f-6b801c932d7c",
+      "name": "Central Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1472,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "table",
+        "operation": "create",
+        "tableName": "={{ $json.historyTableName }}",
+        "columns": {
+          "column": [
+            {
+              "name": "channelId"
+            },
+            {
+              "name": "guildId"
+            },
+            {
+              "name": "userId"
+            },
+            {
+              "name": "username"
+            },
+            {
+              "name": "role"
+            },
+            {
+              "name": "content"
+            },
+            {
+              "name": "sentAt",
+              "type": "date"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
+      },
+      "id": "9b0b21fc-5355-496a-9463-211b438369be",
+      "name": "Ensure Chat History",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -1248,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "={{ $('Ensure Chat History').first().json.id }}",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "channelId",
+              "keyValue": "={{ $('Webhook').first().json.body.channelId }}"
+            }
+          ]
+        },
+        "limit": "={{ $('Central Config').first().json.historyTurns }}",
+        "orderBy": true,
+        "orderByColumn": "sentAt"
+      },
+      "id": "c85c402a-53ed-450c-be8a-7698c0df34d4",
+      "name": "Get History",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -1024,
+        96
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// History rows arrive newest-first (DESC + limit); restore chronological\n// order and render them into the prompt. The webhook body carries the new\n// user turn.\nconst config = $('Central Config').first().json;\nconst body = $('Webhook').first().json.body;\n\nif (!body?.messageId || !body?.channelId || !body?.userId) {\n  throw new Error('Build Prompt: webhook body is missing messageId/channelId/userId.');\n}\n\nconst rows = $input.all()\n  .map(item => item.json)\n  .filter(row => row && row.role && row.content);\n\nrows.sort((a, b) => new Date(a.sentAt) - new Date(b.sentAt));\n\nconst historyText = rows\n  .map(row => `${row.role === 'assistant' ? 'Mai' : (row.username || 'User')}: ${row.content}`)\n  .join('\\n');\n\nconst content = String(body.content ?? '').trim();\nconst currentTurn = `${body.username || 'User'}: ${content || '(stupst dich wortlos an)'}`;\n\nconst user = historyText\n  ? `Bisheriger Verlauf:\\n${historyText}\\n\\nNeue Nachricht:\\n${currentTurn}`\n  : currentTurn;\n\nreturn [{ json: { system: config.persona, user } }];"
+      },
+      "id": "38a4aab4-f67f-4c37-b40e-f9c6f9daab0f",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -800,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// The OpenAI node's output shape depends on node version and API mode —\n// probe the known variants instead of assuming one.\nconst config = $('Central Config').first().json;\nconst body = $('Webhook').first().json.body;\nconst raw = $input.first().json ?? {};\n\n// Responses API: output = [{ role, content: [{ type: 'output_text', text }] }]\nconst responsesText = Array.isArray(raw.output)\n  ? raw.output\n      .flatMap(message => (Array.isArray(message.content) ? message.content : []))\n      .filter(part => part?.type === 'output_text' && typeof part.text === 'string')\n      .map(part => part.text)\n      .join('\\n')\n  : '';\n\nconst candidates = [\n  responsesText,\n  raw.message?.content,\n  typeof raw.output === 'string' ? raw.output : '',\n  raw.text,\n  raw.content,\n  raw.choices?.[0]?.message?.content\n];\nlet reply = candidates.find(value => typeof value === 'string' && value.trim()) ?? '';\nreply = reply.trim();\n\nif (!reply) reply = '*Mai starrt dich lange an, sagt aber nichts.* 🐾';\nif (reply.length > config.maxReplyChars) {\n  reply = reply.slice(0, config.maxReplyChars - 2).trimEnd() + ' …';\n}\n\n// Defense in depth: the bot also blocks pings via allowedMentions.\nreply = reply.replace(/@(everyone|here)/g, '@\\u200b$1');\n\nreturn [{\n  json: {\n    reply,\n    channelId: String(body.channelId),\n    guildId: String(body.guildId ?? ''),\n    userId: String(body.userId),\n    username: String(body.username ?? ''),\n    userContent: String(body.content ?? '').trim()\n  }\n}];\n"
+      },
+      "id": "6409bcc3-a0c4-4807-938d-b983818ccdfb",
+      "name": "Extract Reply",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -224,
+        96
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ JSON.stringify({ reply: $('Extract Reply').first().json.reply }) }}",
+        "options": {}
+      },
+      "id": "39cedd43-6e01-42f7-892f-cb4ba86a529f",
+      "name": "Send Reply",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.5,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// Two rows per exchange: the user's turn and Mai's reply. The +1 ms keeps\n// their order stable when sorting by sentAt.\nconst item = $input.first().json;\nconst now = new Date();\nconst rows = [];\n\nif (item.userContent) {\n  rows.push({\n    json: {\n      channelId: item.channelId,\n      guildId: item.guildId,\n      userId: item.userId,\n      username: item.username,\n      role: 'user',\n      content: item.userContent,\n      sentAt: now.toISOString()\n    }\n  });\n}\n\nrows.push({\n  json: {\n    channelId: item.channelId,\n    guildId: item.guildId,\n    userId: '',\n    username: 'Mai',\n    role: 'assistant',\n    content: item.reply,\n    sentAt: new Date(now.getTime() + 1).toISOString()\n  }\n});\n\nreturn rows;"
+      },
+      "id": "80c5cd10-979f-4e34-9668-9191ac82c6dd",
+      "name": "Prepare History Rows",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        0,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "dataTableId": {
+          "__rl": true,
+          "value": "={{ $('Ensure Chat History').first().json.id }}",
+          "mode": "id"
+        },
+        "columns": {
+          "mappingMode": "defineBelow",
+          "value": {
+            "channelId": "={{ $json.channelId }}",
+            "guildId": "={{ $json.guildId }}",
+            "userId": "={{ $json.userId }}",
+            "username": "={{ $json.username }}",
+            "role": "={{ $json.role }}",
+            "content": "={{ $json.content }}",
+            "sentAt": "={{ $json.sentAt }}"
+          },
+          "matchingColumns": [],
+          "schema": [
+            {
+              "id": "channelId",
+              "displayName": "channelId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "guildId",
+              "displayName": "guildId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "userId",
+              "displayName": "userId",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "username",
+              "displayName": "username",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "role",
+              "displayName": "role",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "content",
+              "displayName": "content",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "string",
+              "canBeUsedToMatch": true
+            },
+            {
+              "id": "sentAt",
+              "displayName": "sentAt",
+              "required": false,
+              "defaultMatch": false,
+              "display": true,
+              "type": "dateTime",
+              "canBeUsedToMatch": true
+            }
+          ],
+          "attemptToConvertTypes": false,
+          "convertFieldsToString": false
+        },
+        "options": {}
+      },
+      "id": "cf95b0d9-85ff-4ecf-8790-de00317e79c0",
+      "name": "Store Chat Turns",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        224,
+        192
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "deleteRows",
+        "dataTableId": {
+          "__rl": true,
+          "value": "={{ $('Ensure Chat History').first().json.id }}",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "sentAt",
+              "condition": "lt",
+              "keyValue": "={{ new Date(Date.now() - $('Central Config').first().json.historyMaxAgeHours * 60 * 60 * 1000).toISOString() }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "aa5ad4bc-d82d-481a-a0e0-09e773f48b56",
+      "name": "Prune Old Turns",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        448,
+        192
+      ],
+      "continueOnFail": true
+    },
+    {
+      "parameters": {
+        "modelId": {
+          "__rl": true,
+          "value": "gpt-5.4-mini",
+          "mode": "list",
+          "cachedResultName": "GPT-5.4-MINI"
+        },
+        "responses": {
+          "values": [
+            {
+              "content": "={{ $json.user }}"
+            },
+            {
+              "role": "system",
+              "content": "={{ $json.system }}"
+            }
+          ]
+        },
+        "builtInTools": {},
+        "options": {}
+      },
+      "type": "@n8n/n8n-nodes-langchain.openAi",
+      "typeVersion": 2.3,
+      "position": [
+        -576,
+        96
+      ],
+      "id": "ffc6360f-d0d1-47ad-8a6c-348a5ba40630",
+      "name": "Message Mai",
+      "retryOnFail": true,
+      "credentials": {
+        "openAiApi": {
+          "id": "REPLACE_WITH_OPENAI_CREDENTIAL_ID",
+          "name": "OpenAi account"
+        }
+      }
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Central Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Central Config": {
+      "main": [
+        [
+          {
+            "node": "Ensure Chat History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Ensure Chat History": {
+      "main": [
+        [
+          {
+            "node": "Get History",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get History": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt": {
+      "main": [
+        [
+          {
+            "node": "Message Mai",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Reply": {
+      "main": [
+        [
+          {
+            "node": "Send Reply",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Prepare History Rows",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Prepare History Rows": {
+      "main": [
+        [
+          {
+            "node": "Store Chat Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Store Chat Turns": {
+      "main": [
+        [
+          {
+            "node": "Prune Old Turns",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Message Mai": {
+      "main": [
+        [
+          {
+            "node": "Extract Reply",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate",
+    "availableInMCP": false,
+    "timeSavedMode": "fixed",
+    "saveDataErrorExecution": "all",
+    "callerPolicy": "workflowsFromSameOwner"
+  },
+  "versionId": "c016d5a5-b8ba-4852-a5b2-ae5ce7dd81a0",
+  "meta": {},
+  "nodeGroups": [],
+  "id": "YAIycTbtUSwsWWjv",
+  "tags": [
+    {
+      "updatedAt": "2025-11-08T09:07:27.052Z",
+      "createdAt": "2025-11-08T09:07:18.998Z",
+      "id": "GIyxAEd6na4rpSZX",
+      "name": "Production"
+    }
+  ]
+}
