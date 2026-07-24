@@ -16,6 +16,11 @@ const RETRY_DELAY_MS = 2_000;
 
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Field names of a workflow response, for info-level logging without exposing
+// values (the chat { reply } and any text in a verdict are user content).
+const responseFields = (body) =>
+  body && typeof body === 'object' ? Object.keys(body) : [];
+
 export const isForwardingEnabled = () => Boolean(config.n8n.webhookUrl);
 export const isChatEnabled = () => Boolean(config.n8n.chatWebhookUrl);
 
@@ -104,7 +109,14 @@ async function postToN8n(url, payload, logContext) {
 
       if (response.ok) {
         const result = await parseResponseBody(response);
-        logger.info({ ...logContext, result }, 'n8n workflow responded');
+        // Metadata only at info: the response body carries content (the chat
+        // { reply }, plus any text echoed in a moderation verdict). Log the
+        // decision and the field names; the full body stays at debug.
+        logger.info(
+          { ...logContext, action: result?.action, fields: responseFields(result) },
+          'n8n workflow responded',
+        );
+        logger.debug({ ...logContext, result }, 'n8n workflow response body');
         return result;
       }
 
