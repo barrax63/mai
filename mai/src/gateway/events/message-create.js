@@ -4,8 +4,9 @@
  * Logs message metadata (no content at info level, to keep container logs
  * free of user text), forwards the message to the n8n moderation webhook
  * when N8N_WEBHOOK_URL is configured, and routes messages addressed to Mai
- * (mention / reply) to the chat workflow. Everything else may get an ambient
- * cat reaction. Moderation always runs, including for chat messages.
+ * (mention / reply / direct message) to the chat workflow. Everything else may
+ * get an ambient cat reaction. Moderation always runs for guild messages,
+ * including chat ones; direct messages skip it (a bot cannot delete a DM).
  *
  * @param {import('discord.js').Message} message
  */
@@ -42,17 +43,22 @@ export async function onMessageCreate(message) {
     return;
   }
 
-  // Addressed to Mai: await the moderation verdict first. A flagged message
-  // gets the workflow's scold reply instead of a chat answer — the chat
+  // Addressed to Mai in a guild: await the moderation verdict first. A flagged
+  // message gets the workflow's scold reply instead of a chat answer — the chat
   // workflow (and its history table) never sees it. Fails open: no verdict
   // (moderation disabled, timeout, error) or not flagged -> normal chat.
-  const verdict = await forwardMessageToN8n(message);
-  if (verdict?.action === 'flagged') {
-    logger.info(
-      { messageId: message.id },
-      'Message flagged, skipping chat reply (workflow scolds instead)',
-    );
-    return;
+  //
+  // Direct messages skip this: a bot cannot delete a user's DM, so the
+  // moderation pipeline (grace-period delete + scold) has nothing to enforce.
+  if (message.guildId) {
+    const verdict = await forwardMessageToN8n(message);
+    if (verdict?.action === 'flagged') {
+      logger.info(
+        { messageId: message.id },
+        'Message flagged, skipping chat reply (workflow scolds instead)',
+      );
+      return;
+    }
   }
 
   await handleMaiChat(message).catch((error) => {

@@ -7,6 +7,10 @@
  * messages additionally require the "Server Members Intent"; the GuildMembers
  * intent is only requested when DISCORD_WELCOME_ENABLED=true, because logging
  * in with a privileged intent that is not enabled in the portal fails.
+ *
+ * Direct messages arrive via the (non-privileged) DirectMessages intent plus
+ * the Partials.Channel below — without the partial, discord.js drops events
+ * for the uncached DM channel.
  */
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { config } from '../config.js';
@@ -19,6 +23,7 @@ export function createGatewayClient() {
   const intents = [
     GatewayIntentBits.Guilds,
     GatewayIntentBits.GuildMessages,
+    GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
   ];
   if (config.discord.welcomeEnabled) {

@@ -1,6 +1,7 @@
 /**
- * Mai chat: users talk to the bot by mentioning it or replying to one of its
- * messages. The message is forwarded to the n8n "Mai Chat" workflow, which
+ * Mai chat: users talk to the bot by mentioning it, replying to one of its
+ * messages, or sending it a direct message. The message is forwarded to the
+ * n8n "Mai Chat" workflow, which
  * answers in character (cat persona, conversation memory per channel); the
  * workflow response body ({ reply }) is posted back into the channel as a
  * reply to the triggering message.
@@ -22,6 +23,10 @@ export async function isMaiChatTrigger(message) {
 
   const botId = message.client.user?.id;
   if (!botId) return false;
+
+  // A direct message is always addressed to Mai — no mention needed, and the
+  // guild allowlist does not apply (a DM has no guild).
+  if (!message.guildId) return true;
 
   // Same guild allowlist as moderation forwarding.
   const { guildIds } = config.discord;

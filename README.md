@@ -4,7 +4,7 @@
   <img src="docs/mai.png" alt="Mai, die Katze" width="380">
 </p>
 
-Docker Compose stack running **Mai**, a Discord bot with a cat persona, behind a Cloudflare tunnel. New messages are forwarded to n8n workflows via public webhook URLs: moderation for every message, plus Mai's chat, reactions, and welcome messages.
+Docker Compose stack running **Mai**, a Discord bot with a cat persona, behind a Cloudflare tunnel. New messages are forwarded to n8n workflows via public webhook URLs: moderation for every guild message, plus Mai's chat, reactions, and welcome messages.
 
 ## Architecture
 
@@ -26,7 +26,7 @@ The bot forwards every new message (from allowlisted guilds, `DISCORD_GUILD_IDS`
 
 ## Mai — the bot persona
 
-The bot is **Mai**, the server's cat-moderator. Mentioning her or replying to her messages triggers the **Mai Chat** n8n workflow (OpenAI, cat persona, short per-channel memory) and she answers in character. She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
+The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message triggers the **Mai Chat** n8n workflow (OpenAI, cat persona, short per-channel memory) and she answers in character. Direct messages skip moderation (a bot cannot delete a DM). She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
 
 Workflow JSON files and full documentation: [n8n/README.md](n8n/README.md).
 

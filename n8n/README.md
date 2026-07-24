@@ -45,7 +45,7 @@ Expected request body (sent by the bot):
 
 ## Mai Chat (webhook workflow)
 
-Answers messages that mention the bot or reply to one of its messages. The bot strips its own mention and posts to this workflow's webhook (`N8N_CHAT_WEBHOOK_URL`, same header-auth credential as moderation).
+Answers messages that mention the bot, reply to one of its messages, or are sent to it as a direct message. Deciding what counts as "addressed to Mai" lives in the bot; this workflow is trigger-agnostic. The bot strips its own mention and posts to this workflow's webhook (`N8N_CHAT_WEBHOOK_URL`, same header-auth credential as moderation).
 
 1. **Webhook** — POST endpoint with header auth, responds via "Respond to Webhook" (the bot shows a typing indicator until then).
 2. **Ensure Chat History / Get History** — data table `Mai Chat History v1` (columns `channelId, guildId, userId, username, role, content, sentAt` — `createdAt` is reserved by n8n as a system column), created on demand. The latest `historyTurns` rows of the channel provide conversation context.
@@ -53,7 +53,7 @@ Answers messages that mention the bot or reply to one of its messages. The bot s
 4. **Extract Reply / Send Reply** — sanitizes the model output (length cap, `@everyone`/`@here` neutralized) and responds `{ "reply": "…" }`.
 5. **Store Chat Turns / Prune Old Turns** — appends both turns to the history table, then deletes rows older than `historyMaxAgeHours`.
 
-Request body (sent by the bot): `{ messageId, guildId, channelId, userId, username, content, createdAt }` — `content` is the message with the bot mention removed; empty content = a bare poke, answered with a greeting.
+Request body (sent by the bot): `{ messageId, guildId, channelId, userId, username, content, createdAt }` — `content` is the message with the bot mention removed; empty content = a bare poke, answered with a greeting. `guildId` is `null` for direct messages, so keep history keyed by `channelId` (a DM channel is stable per user).
 
 **Privacy note:** this table stores message content — a deliberate exception to the moderation privacy rule. Only messages deliberately addressed to Mai land here, and rows are pruned after `historyMaxAgeHours` (default 48 h).
 
