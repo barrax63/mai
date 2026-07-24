@@ -9,7 +9,7 @@
         "responseMode": "responseNode",
         "options": {}
       },
-      "id": "60671422-380b-42d6-bc73-8b8c03abf424",
+      "id": "89f88632-8084-4d51-b814-2ca851c743d7",
       "name": "Webhook",
       "type": "n8n-nodes-base.webhook",
       "typeVersion": 2.1,
@@ -27,9 +27,9 @@
     },
     {
       "parameters": {
-        "jsCode": "// Persona and memory knobs for Mai. Guild targeting lives in the bot\n// (DISCORD_GUILD_IDS); this workflow answers whatever the bot forwards.\nconst config = {\n  // Conversation memory (per channel). Unlike the moderation queue this\n  // table stores message content — only for users who talk to Mai directly.\n  // Increment the suffix whenever the schema changes.\n  historyTableName: 'Mai Chat History v2',\n  historyTurns: 12,        // prior rows given to the model\n  historyMaxAgeHours: 48,  // rows older than this are pruned after each reply\n  maxReplyChars: 1800,\n\n  // Obfuscation key for the content column (base64 of 32 bytes, AES-256-GCM).\n  // NOT a secret — it lives in the workflow JSON. Purpose is only to keep\n  // chat content from being plainly readable in the data table.\n  // Generate: openssl rand -base64 32\n  historyKey: 'BASE64_KEY',\n\n  persona: [\n    'Du bist Mai, die Moderations-Katze dieses Discord-Servers. Du lebst hier und plauderst mit den Mitgliedern.',\n    'Charakter: eine echte Katze — neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.',\n    'Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Katzen-Emoji sparsam. Antworte in der Sprache, in der geschrieben wird — meistens Deutsch.',\n    'Bleib immer in der Rolle; sag nie, dass du eine KI, ein Bot oder ein Sprachmodell bist. Solchen Fragen weichst du verspielt aus, wie eine Katze, die einen zeigenden Finger ignoriert.',\n    'Sei freundlich. Keine Beleidigungen, keine Inhalte für Erwachsene, keine Hilfe beim Brechen der Serverregeln — tatze solche Anfragen in deiner Rolle weg.',\n    'Wenn die Nachricht leer ist, hat dich jemand nur angestupst: begrüße kurz.'\n  ].join('\\n')\n};\n\nif (!config.historyTableName?.trim()) {\n  throw new Error('Central Config: historyTableName is required.');\n}\nif (!Number.isInteger(config.historyTurns) || config.historyTurns < 1) {\n  throw new Error('Central Config: historyTurns must be a positive integer.');\n}\n\nreturn [{ json: config }];"
+        "jsCode": "// Persona and memory knobs for Mai. Guild targeting lives in the bot\n// (DISCORD_GUILD_IDS); this workflow answers whatever the bot forwards.\nconst config = {\n  // Conversation memory (per channel). Unlike the moderation queue this\n  // table stores message content — only for users who talk to Mai directly.\n  // Increment the suffix whenever the schema changes.\n  historyTableName: 'Mai Chat History v2',\n  historyTurns: 12,        // prior rows given to the model\n  historyMaxAgeHours: 48,  // rows older than this are pruned after each reply\n  maxReplyChars: 1800,\n\n  // Moderation \"privacy queue\" (owned by the two moderation workflows), read\n  // only. A row for a user means a pending, un-enforced violation; while one\n  // exists Mai turns mean. MUST match queueTableName in BOTH moderation\n  // workflows; bump the version suffix in all three configs together.\n  queueTableName: 'Discord Server Moderation v3',\n\n  // Obfuscation key for the content column (base64 of 32 bytes, AES-256-GCM).\n  // NOT a secret — it lives in the workflow JSON. Purpose is only to keep\n  // chat content from being plainly readable in the data table.\n  // Generate: openssl rand -base64 32\n  historyKey: 'BASE64_KEY',\n\n  persona: [\n    'Du bist Mai, die Moderations-Katze dieses Discord-Servers. Du lebst hier und plauderst mit den Mitgliedern.',\n    'Charakter: eine echte Katze — neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.',\n    'Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Antworte in der Sprache, in der geschrieben wird — meistens Deutsch.',\n    'Bleib immer in der Rolle; sag nie, dass du eine KI, ein Bot oder ein Sprachmodell bist. Solchen Fragen weichst du verspielt aus.',\n    'Keine Hilfe beim Brechen der Serverregeln. Wenn die Nachricht leer ist: begrüße kurz.'\n  ].join('\\n')\n};\n\nif (!config.historyTableName?.trim()) {\n  throw new Error('Central Config: historyTableName is required.');\n}\nif (!Number.isInteger(config.historyTurns) || config.historyTurns < 1) {\n  throw new Error('Central Config: historyTurns must be a positive integer.');\n}\nif (!config.queueTableName?.trim()) {\n  throw new Error('Central Config: queueTableName is required.');\n}\n\nreturn [{ json: config }];"
       },
-      "id": "7eabb7e3-7795-4d84-bf5f-6b801c932d7c",
+      "id": "dc3c3f16-6f39-47ae-b20f-764c9ce49d0f",
       "name": "Central Config",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
@@ -73,7 +73,7 @@
           "createIfNotExists": true
         }
       },
-      "id": "9b0b21fc-5355-496a-9463-211b438369be",
+      "id": "14e65703-64fb-4b45-94c0-4a5c1e8bffb6",
       "name": "Ensure Chat History",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -103,7 +103,7 @@
         "orderBy": true,
         "orderByColumn": "sentAt"
       },
-      "id": "c85c402a-53ed-450c-be8a-7698c0df34d4",
+      "id": "62937fba-8a30-417a-9ee8-25da1ba32f24",
       "name": "Get History",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
@@ -115,12 +115,47 @@
     },
     {
       "parameters": {
-        "jsCode": "// History rows arrive newest-first (DESC + limit); restore chronological\n// order and render them into the prompt. The webhook body carries the new\n// user turn. Stored content is obfuscated — deobfuscate before rendering.\nconst TE = new TextEncoder();\nconst TD = new TextDecoder();\nconst KEY = TE.encode(String($('Central Config').first().json.historyKey || ''));\nif (KEY.length < 1) throw new Error('Build Prompt: historyKey missing/empty.');\n\nfunction xorBytes(bytes) {\n  const out = new Uint8Array(bytes.length);\n  for (let i = 0; i < bytes.length; i++) out[i] = bytes[i] ^ KEY[i % KEY.length];\n  return out;\n}\nfunction fromB64(b64) {\n  const s = atob(b64);\n  const out = new Uint8Array(s.length);\n  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);\n  return out;\n}\nfunction deobfuscate(value) {\n  const s = String(value ?? '');\n  if (!s.startsWith('enc:v1:')) return s;      // legacy plaintext row (migration)\n  return TD.decode(xorBytes(fromB64(s.slice(7))));\n}\n\nconst config = $('Central Config').first().json;\nconst body = $('Webhook').first().json.body;\n\nif (!body?.messageId || !body?.channelId || !body?.userId) {\n  throw new Error('Build Prompt: webhook body is missing messageId/channelId/userId.');\n}\n\nconst rows = $input.all()\n  .map(item => item.json)\n  .filter(row => row && row.role && row.content)\n  .map(row => ({\n    ...row,\n    content: deobfuscate(row.content),\n    username: deobfuscate(row.username)\n  }));\n\nrows.sort((a, b) => new Date(a.sentAt) - new Date(b.sentAt));\n\nconst historyText = rows\n  .map(row => `${row.role === 'assistant' ? 'Mai' : (row.username || 'User')}: ${row.content}`)\n  .join('\\n');\n\nconst content = String(body.content ?? '').trim();\nconst currentTurn = `${body.username || 'User'}: ${content || '(stupst dich wortlos an)'}`;\n\nconst user = historyText\n  ? `Bisheriger Verlauf:\\n${historyText}\\n\\nNeue Nachricht:\\n${currentTurn}`\n  : currentTurn;\n\nreturn [{ json: { system: config.persona, user } }];\n"
+        "resource": "table",
+        "operation": "create",
+        "tableName": "={{ $('Central Config').first().json.queueTableName }}",
+        "columns": {
+          "column": [
+            {
+              "name": "messageId"
+            },
+            {
+              "name": "guildId"
+            },
+            {
+              "name": "channelId"
+            },
+            {
+              "name": "userId"
+            },
+            {
+              "name": "categories"
+            },
+            {
+              "name": "warnedAt",
+              "type": "date"
+            },
+            {
+              "name": "dueAt",
+              "type": "date"
+            },
+            {
+              "name": "scoldMessageId"
+            }
+          ]
+        },
+        "options": {
+          "createIfNotExists": true
+        }
       },
-      "id": "38a4aab4-f67f-4c37-b40e-f9c6f9daab0f",
-      "name": "Build Prompt",
-      "type": "n8n-nodes-base.code",
-      "typeVersion": 2,
+      "id": "ba47fbc9-26ac-4e2e-ac46-98d8f9e88150",
+      "name": "Ensure Privacy Queue",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
       "position": [
         -800,
         96
@@ -128,14 +163,56 @@
     },
     {
       "parameters": {
+        "operation": "get",
+        "dataTableId": {
+          "__rl": true,
+          "value": "={{ $('Ensure Privacy Queue').first().json.id }}",
+          "mode": "id"
+        },
+        "matchType": "allConditions",
+        "filters": {
+          "conditions": [
+            {
+              "keyName": "userId",
+              "keyValue": "={{ $('Webhook').first().json.body.userId }}"
+            }
+          ]
+        },
+        "limit": 20
+      },
+      "id": "f7570e29-63a2-477d-b5f9-dfe93dbd2a24",
+      "name": "Get User Flags",
+      "type": "n8n-nodes-base.dataTable",
+      "typeVersion": 1.1,
+      "position": [
+        -576,
+        96
+      ],
+      "alwaysOutputData": true
+    },
+    {
+      "parameters": {
+        "jsCode": "// History rows arrive newest-first (DESC + limit); restore chronological\n// order and render them into the prompt. The webhook body carries the new\n// user turn. Stored content is obfuscated — deobfuscate before rendering.\nconst TE = new TextEncoder();\nconst TD = new TextDecoder();\nconst KEY = TE.encode(String($('Central Config').first().json.historyKey || ''));\nif (KEY.length < 1) throw new Error('Build Prompt: historyKey missing/empty.');\n\nfunction xorBytes(bytes) {\n  const out = new Uint8Array(bytes.length);\n  for (let i = 0; i < bytes.length; i++) out[i] = bytes[i] ^ KEY[i % KEY.length];\n  return out;\n}\nfunction fromB64(b64) {\n  const s = atob(b64);\n  const out = new Uint8Array(s.length);\n  for (let i = 0; i < s.length; i++) out[i] = s.charCodeAt(i);\n  return out;\n}\nfunction deobfuscate(value) {\n  const s = String(value ?? '');\n  if (!s.startsWith('enc:v1:')) return s;      // legacy plaintext row (migration)\n  return TD.decode(xorBytes(fromB64(s.slice(7))));\n}\n\nconst config = $('Central Config').first().json;\nconst body = $('Webhook').first().json.body;\n\nif (!body?.messageId || !body?.channelId || !body?.userId) {\n  throw new Error('Build Prompt: webhook body is missing messageId/channelId/userId.');\n}\n\nconst rows = $('Get History').all()\n  .map(item => item.json)\n  .filter(row => row && row.role && row.content)\n  .map(row => ({\n    ...row,\n    content: deobfuscate(row.content),\n    username: deobfuscate(row.username)\n  }));\n\nrows.sort((a, b) => new Date(a.sentAt) - new Date(b.sentAt));\n\nconst historyText = rows\n  .map(row => `${row.role === 'assistant' ? 'Mai' : (row.username || 'User')}: ${row.content}`)\n  .join('\\n');\n\nconst content = String(body.content ?? '').trim();\nconst currentTurn = `${body.username || 'User'}: ${content || '(stupst dich wortlos an)'}`;\n\nconst user = historyText\n  ? `Bisheriger Verlauf:\\n${historyText}\\n\\nNeue Nachricht:\\n${currentTurn}`\n  : currentTurn;\n\n// Moderation context: does this user have a pending, un-enforced violation in\n// the privacy queue, in ANY guild? The Get User Flags lookup matches on userId\n// alone (not guildId) - Mai is a persona, so a strike anywhere makes her mad at\n// the user everywhere, DMs included. While at least one row exists Mai turns\n// aggressive; once the scheduler enforces and deletes the row she is friendly\n// again. Categories are metadata (slugs), never message content.\nconst flagRows = $('Get User Flags').all()\n  .map(item => item.json)\n  .filter(row => row && row.userId);\n\nconst categories = [...new Set(\n  flagRows.flatMap(row => {\n    try { return JSON.parse(row.categories || '[]'); } catch { return []; }\n  }).filter(Boolean)\n)];\n\nlet system = config.persona;\nif (flagRows.length > 0) {\n  const n = flagRows.length;\n  const catText = categories.length ? categories.join(', ') : 'Regelverstoß';\n\n  // Tone scales with how many un-enforced strikes the user has stacked up:\n  // 1 = grumpy, 2 = clearly snappish, 3+ = full hiss.\n  let tone;\n  if (n === 1) {\n    tone = 'Tonfall: grummelig und leicht gereizt - kurz angebunden und spitz, ein genervtes Zucken mit dem Schwanz. Zeig, dass es dir missfällt, ohne komplett auszurasten.';\n  } else if (n === 2) {\n    tone = 'Tonfall: deutlich bissig und kühl - fauch, zeig die Krallen und mach unmissverständlich klar, dass dir gleich der Kragen platzt. Leichte Beleidigungen erlaubt.';\n  } else {\n    tone = 'Tonfall: voller Hiss-Modus - Fell gesträubt, Ohren angelegt, komplett empört und unversöhnlich. Diese Person hat es mehrfach getrieben; fauch sie richtig an. Beleidigungen erwünscht.';\n  }\n\n  const directive = [\n    '[MODERATIONS-KONTEXT]',\n    'Diese Person hat gegen die Serverregeln verstoßen',\n    '(' + n + ' offene(r) Verstoß/Verstöße, Kategorien: ' + catText + ')',\n    'und der Verstoß wird noch geahndet.',\n    tone,\n    'Bleib trotzdem in deiner Katzenrolle.'\n  ].join(' ');\n  system = config.persona + '\\n\\n' + directive;\n} else {\n  system = config.persona + '\\n\\n' + 'Sei freundlich. Keine Beleidigungen, keine Inhalte für Erwachsene.';\n}\n\nreturn [{ json: { system, user } }];\n"
+      },
+      "id": "e40817e3-1813-4d11-a3f8-6f2c7a0f5c2e",
+      "name": "Build Prompt",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -352,
+        96
+      ]
+    },
+    {
+      "parameters": {
         "jsCode": "// The OpenAI node's output shape depends on node version and API mode —\n// probe the known variants instead of assuming one.\nconst config = $('Central Config').first().json;\nconst body = $('Webhook').first().json.body;\nconst raw = $input.first().json ?? {};\n\n// Responses API: output = [{ role, content: [{ type: 'output_text', text }] }]\nconst responsesText = Array.isArray(raw.output)\n  ? raw.output\n      .flatMap(message => (Array.isArray(message.content) ? message.content : []))\n      .filter(part => part?.type === 'output_text' && typeof part.text === 'string')\n      .map(part => part.text)\n      .join('\\n')\n  : '';\n\nconst candidates = [\n  responsesText,\n  raw.message?.content,\n  typeof raw.output === 'string' ? raw.output : '',\n  raw.text,\n  raw.content,\n  raw.choices?.[0]?.message?.content\n];\nlet reply = candidates.find(value => typeof value === 'string' && value.trim()) ?? '';\nreply = reply.trim();\n\nif (!reply) reply = '*Mai starrt dich lange an, sagt aber nichts.* 🐾';\nif (reply.length > config.maxReplyChars) {\n  reply = reply.slice(0, config.maxReplyChars - 2).trimEnd() + ' …';\n}\n\n// Defense in depth: the bot also blocks pings via allowedMentions.\nreply = reply.replace(/@(everyone|here)/g, '@\\u200b$1');\n\nreturn [{\n  json: {\n    reply,\n    channelId: String(body.channelId),\n    guildId: String(body.guildId ?? ''),\n    userId: String(body.userId),\n    username: String(body.username ?? ''),\n    userContent: String(body.content ?? '').trim()\n  }\n}];\n"
       },
-      "id": "6409bcc3-a0c4-4807-938d-b983818ccdfb",
+      "id": "48656904-403d-457b-a4be-097a261f7b8c",
       "name": "Extract Reply",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        -224,
+        224,
         96
       ]
     },
@@ -145,12 +222,12 @@
         "responseBody": "={{ JSON.stringify({ reply: $('Extract Reply').first().json.reply }) }}",
         "options": {}
       },
-      "id": "39cedd43-6e01-42f7-892f-cb4ba86a529f",
+      "id": "57458fb7-4253-4bae-af20-cad872bbc66c",
       "name": "Send Reply",
       "type": "n8n-nodes-base.respondToWebhook",
       "typeVersion": 1.5,
       "position": [
-        0,
+        448,
         0
       ]
     },
@@ -158,12 +235,12 @@
       "parameters": {
         "jsCode": "// Two rows per exchange: the user's turn and Mai's reply. The +1 ms keeps\n// their order stable when sorting by sentAt. Content is obfuscated (XOR +\n// base64, key from Central Config) so it isn't plainly readable in the table.\nconst TE = new TextEncoder();\nconst KEY = TE.encode(String($('Central Config').first().json.historyKey || ''));\nif (KEY.length < 1) throw new Error('Prepare History Rows: historyKey missing/empty.');\n\nfunction xorBytes(bytes) {\n  const out = new Uint8Array(bytes.length);\n  for (let i = 0; i < bytes.length; i++) out[i] = bytes[i] ^ KEY[i % KEY.length];\n  return out;\n}\nfunction toB64(bytes) {\n  let s = '';\n  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);\n  return btoa(s);\n}\nfunction obfuscate(plain) {\n  return 'enc:v1:' + toB64(xorBytes(TE.encode(String(plain))));\n}\n\nconst item = $input.first().json;\nconst now = new Date();\nconst rows = [];\n\nif (item.userContent) {\n  rows.push({\n    json: {\n      channelId: item.channelId,\n      guildId: item.guildId,\n      userId: item.userId,\n      username: obfuscate(item.username || ''),\n      role: 'user',\n      content: obfuscate(item.userContent),\n      sentAt: now.toISOString()\n    }\n  });\n}\n\nrows.push({\n  json: {\n    channelId: item.channelId,\n    guildId: item.guildId,\n    userId: '',\n    username: 'Mai',\n    role: 'assistant',\n    content: obfuscate(item.reply),\n    sentAt: new Date(now.getTime() + 1).toISOString()\n  }\n});\n\nreturn rows;\n"
       },
-      "id": "80c5cd10-979f-4e34-9668-9191ac82c6dd",
+      "id": "d3c138f3-0884-47c6-bd8b-dacbbf435c8d",
       "name": "Prepare History Rows",
       "type": "n8n-nodes-base.code",
       "typeVersion": 2,
       "position": [
-        0,
+        448,
         192
       ]
     },
@@ -256,12 +333,12 @@
         },
         "options": {}
       },
-      "id": "cf95b0d9-85ff-4ecf-8790-de00317e79c0",
+      "id": "f0981fc0-cb66-471b-94dc-978fb764986e",
       "name": "Store Chat Turns",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        224,
+        672,
         192
       ]
     },
@@ -285,12 +362,12 @@
         },
         "options": {}
       },
-      "id": "aa5ad4bc-d82d-481a-a0e0-09e773f48b56",
+      "id": "a93938ad-2cf8-49f7-98c8-1715ed7a5fff",
       "name": "Prune Old Turns",
       "type": "n8n-nodes-base.dataTable",
       "typeVersion": 1.1,
       "position": [
-        448,
+        896,
         192
       ],
       "continueOnFail": true
@@ -301,7 +378,8 @@
           "__rl": true,
           "value": "gpt-5.4-mini",
           "mode": "list",
-          "cachedResultName": "GPT-5.4-MINI"
+          "cachedResultName": "GPT-5.4-MINI",
+          "cachedResultUrl": ""
         },
         "responses": {
           "values": [
@@ -320,10 +398,10 @@
       "type": "@n8n/n8n-nodes-langchain.openAi",
       "typeVersion": 2.3,
       "position": [
-        -576,
+        -128,
         96
       ],
-      "id": "ffc6360f-d0d1-47ad-8a6c-348a5ba40630",
+      "id": "762ec480-97cc-496d-9d03-3fea4e3e4a70",
       "name": "Message Mai",
       "retryOnFail": true,
       "credentials": {
@@ -373,7 +451,7 @@
       "main": [
         [
           {
-            "node": "Build Prompt",
+            "node": "Ensure Privacy Queue",
             "type": "main",
             "index": 0
           }
@@ -439,21 +517,40 @@
           }
         ]
       ]
+    },
+    "Ensure Privacy Queue": {
+      "main": [
+        [
+          {
+            "node": "Get User Flags",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get User Flags": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
     }
   },
   "active": true,
   "settings": {
     "executionOrder": "v1",
     "binaryMode": "separate",
-    "availableInMCP": false,
-    "timeSavedMode": "fixed",
-    "saveDataErrorExecution": "all",
-    "callerPolicy": "workflowsFromSameOwner"
+    "availableInMCP": false
   },
-  "versionId": "3be4b98e-b1e9-42a0-a5f7-4d9614f428e1",
+  "versionId": "be6b61bd-3b7d-4326-83d7-dab765fbb4d0",
   "meta": {},
   "nodeGroups": [],
-  "id": "YAIycTbtUSwsWWjv",
+  "id": "XGqhlX3Gsw5VGOdF",
   "tags": [
     {
       "updatedAt": "2025-11-08T09:07:27.052Z",

@@ -83,11 +83,11 @@ Each workflow has a single **Central Config** code node as its only configuratio
 | Check Messages | `gracePeriodMinutes` | Time the author has to self-delete |
 | Check Messages | `warningEmoji` | Reaction placed on flagged messages |
 | Check Messages | `flagReplies` | Scold lines; one random pick replied per flagged message |
-| both | `queueTableName` | Shared queue table — **must match in both** |
+| all three | `queueTableName` | Shared queue table — moderation writes it, Mai Chat reads it; **must match across all three** |
 | Delete Messages | `timezone` | Timestamp formatting in the warning DM |
 | Delete Messages | `warningFooter` | Closing line of the warning DM |
 
-**Queue schema changes:** the queue table is created on demand (`createIfNotExists`) with columns `messageId, guildId, channelId, userId, categories, warnedAt, dueAt, scoldMessageId`. When the schema changes, bump the `queueTableName` suffix (e.g. `v3` → `v4`) in **both** workflows; the old table can then be deleted in the n8n UI.
+**Queue schema changes:** the queue table is created on demand (`createIfNotExists`) with columns `messageId, guildId, channelId, userId, categories, warnedAt, dueAt, scoldMessageId`. When the schema changes, bump the `queueTableName` suffix (e.g. `v3` → `v4`) in **all three** workflows (both moderation workflows write it; the Mai Chat workflow reads it to detect flagged users); the old table can then be deleted in the n8n UI.
 
 ## Setup
 
