@@ -16,7 +16,7 @@ import {
   InteractionType,
   verifyKeyMiddleware,
 } from 'discord-interactions';
-import { config } from '../config.js';
+import { config, isGuildAllowed } from '../config.js';
 import { logger } from '../logger.js';
 import { commandHandlers } from '../commands/index.js';
 
@@ -48,6 +48,24 @@ export function createServer() {
 
       if (interaction.type === InteractionType.APPLICATION_COMMAND) {
         const name = interaction.data?.name;
+
+        // Guild allowlist (DISCORD_GUILD_IDS). Raw interactions use snake_case;
+        // guild_id is absent for DM commands, which bypass the allowlist like
+        // DM chat does. An un-whitelisted guild gets an ephemeral refusal.
+        if (!isGuildAllowed(interaction.guild_id)) {
+          logger.debug(
+            { command: name, guildId: interaction.guild_id },
+            'Refusing command: guild not in allowlist',
+          );
+          return res.send({
+            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
+            data: {
+              content: 'Mai is not active in this server.',
+              flags: 64, // EPHEMERAL
+            },
+          });
+        }
+
         const handler = commandHandlers.get(name);
 
         if (!handler) {

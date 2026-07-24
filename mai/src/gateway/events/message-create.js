@@ -10,14 +10,35 @@
  *
  * @param {import('discord.js').Message} message
  */
+import { isGuildAllowed } from '../../config.js';
 import { logger } from '../../logger.js';
 import { forwardMessageToN8n } from '../../n8n/webhook.js';
-import { handleMaiChat, isMaiChatTrigger } from './mai-chat.js';
+import { handleMaiChat, isDmAuthorInAllowedGuild, isMaiChatTrigger } from './mai-chat.js';
 import { maybeReactAsCat } from './reactions.js';
 
 export async function onMessageCreate(message) {
   // Ignore bots (including ourselves) and system messages.
   if (message.author?.bot || message.system) return;
+
+  // Allowlist gate. An un-whitelisted server gets NO behavior — no moderation
+  // forward, no cat reactions, no chat. A DM has no guildId: it is allowed only
+  // when its author shares a whitelisted guild with the bot, so members of
+  // non-whitelisted guilds (or strangers) cannot DM Mai.
+  if (message.guildId) {
+    if (!isGuildAllowed(message.guildId)) {
+      logger.debug(
+        { messageId: message.id, guildId: message.guildId },
+        'Ignoring message: guild not in allowlist',
+      );
+      return;
+    }
+  } else if (!(await isDmAuthorInAllowedGuild(message))) {
+    logger.debug(
+      { messageId: message.id, authorId: message.author?.id },
+      'Ignoring DM: author not in a whitelisted guild',
+    );
+    return;
+  }
 
   logger.info(
     {

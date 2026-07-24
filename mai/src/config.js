@@ -57,3 +57,25 @@ export const config = Object.freeze({
   },
   logLevel: optional('LOG_LEVEL', 'info'),
 });
+
+/**
+ * Whether Mai should act in a given guild. This is the single authority for the
+ * DISCORD_GUILD_IDS allowlist — every entry point (message handler, chat,
+ * moderation forward, welcome, slash commands) must go through here so an
+ * un-whitelisted server gets no behavior at all, not merely no n8n forwarding.
+ *
+ * Empty allowlist = every guild is allowed (opt-out). A null/undefined guildId
+ * is a direct message: this returns true (a DM has no guild to match), but DMs
+ * carry their own membership gate — see `isDmAuthorInAllowedGuild` in
+ * gateway/events/mai-chat.js, which requires the DM author to share a
+ * whitelisted guild before Mai answers.
+ *
+ * @param {string|null|undefined} guildId
+ * @returns {boolean}
+ */
+export function isGuildAllowed(guildId) {
+  const { guildIds } = config.discord;
+  if (guildIds.size === 0) return true;
+  if (!guildId) return true;
+  return guildIds.has(guildId);
+}

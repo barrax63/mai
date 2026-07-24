@@ -6,13 +6,46 @@
  * workflow response body ({ reply }) is posted back into the channel as a
  * reply to the triggering message.
  */
-import { config } from '../../config.js';
+import { config, isGuildAllowed } from '../../config.js';
 import { logger } from '../../logger.js';
 import { isChatEnabled, sendChatMessageToN8n } from '../../n8n/webhook.js';
 
 // Discord's typing indicator expires after ~10 s; refresh while the workflow
 // (LLM call) is still running.
 const TYPING_REFRESH_MS = 8_000;
+
+/**
+ * Whether a direct-message author is allowed to talk to Mai: they must share at
+ * least one whitelisted guild with the bot. A DM has no guildId, so the plain
+ * allowlist cannot apply — this walks the whitelisted guilds and checks
+ * membership. Empty allowlist = every guild allowed, so DMs are open too.
+ *
+ * A single-member fetch by ID uses the REST API and does NOT need the
+ * privileged GuildMembers intent (bulk fetches would).
+ *
+ * @param {import('discord.js').Message} message
+ * @returns {Promise<boolean>}
+ */
+export async function isDmAuthorInAllowedGuild(message) {
+  const { guildIds } = config.discord;
+  if (guildIds.size === 0) return true;
+
+  const userId = message.author?.id;
+  if (!userId) return false;
+
+  for (const guildId of guildIds) {
+    const guild = message.client.guilds.cache.get(guildId);
+    if (!guild) continue; // bot is not in this whitelisted guild
+    try {
+      await guild.members.fetch(userId);
+      return true;
+    } catch {
+      // Unknown Member (not in this guild) or a transient fetch error — try
+      // the next whitelisted guild.
+    }
+  }
+  return false;
+}
 
 /**
  * @param {import('discord.js').Message} message
@@ -24,13 +57,13 @@ export async function isMaiChatTrigger(message) {
   const botId = message.client.user?.id;
   if (!botId) return false;
 
-  // A direct message is always addressed to Mai — no mention needed, and the
-  // guild allowlist does not apply (a DM has no guild).
+  // A direct message is always addressed to Mai — no mention needed. Whether
+  // the author may DM at all (shared whitelisted guild) is enforced by the
+  // caller (onMessageCreate) before this runs.
   if (!message.guildId) return true;
 
   // Same guild allowlist as moderation forwarding.
-  const { guildIds } = config.discord;
-  if (guildIds.size > 0 && !guildIds.has(message.guildId)) return false;
+  if (!isGuildAllowed(message.guildId)) return false;
 
   // Direct @mention (also covers replies with the mention toggle on).
   if (message.mentions.users?.has(botId)) return true;

@@ -6,7 +6,7 @@
  * requested when the flag is set (see gateway/client.js).
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { config } from '../../config.js';
+import { isGuildAllowed } from '../../config.js';
 import { logger } from '../../logger.js';
 
 const WELCOME_LINES = [
@@ -27,8 +27,7 @@ export async function onGuildMemberAdd(member) {
   if (member.user?.bot) return;
 
   // Same guild allowlist as the rest of the bot.
-  const { guildIds } = config.discord;
-  if (guildIds.size > 0 && !guildIds.has(member.guild.id)) return;
+  if (!isGuildAllowed(member.guild.id)) return;
 
   const channel = member.guild.systemChannel;
   if (!channel) {

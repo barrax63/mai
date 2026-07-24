@@ -8,7 +8,7 @@
  * crash the gateway handler. If the corresponding URL env var is unset, that
  * forwarding target is disabled entirely.
  */
-import { config } from '../config.js';
+import { config, isGuildAllowed } from '../config.js';
 import { logger } from '../logger.js';
 
 const MAX_ATTEMPTS = 3;
@@ -38,10 +38,9 @@ export async function forwardMessageToN8n(message) {
     return null;
   }
 
-  // Guild allowlist (DISCORD_GUILD_IDS). Empty set = all guilds. DMs have no
-  // guildId and are only forwarded when no allowlist is configured.
-  const { guildIds } = config.discord;
-  if (guildIds.size > 0 && !guildIds.has(message.guildId)) {
+  // Guild allowlist (DISCORD_GUILD_IDS) — defense in depth; onMessageCreate
+  // already gates un-whitelisted guilds before this is reached.
+  if (!isGuildAllowed(message.guildId)) {
     logger.debug(
       { messageId: message.id, guildId: message.guildId },
       'Skipping forward: guild not in allowlist',
