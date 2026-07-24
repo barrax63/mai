@@ -1,6 +1,6 @@
 # n8n workflows
 
-Two workflows implement AI-based message moderation for all guilds the bot forwards messages from. They communicate exclusively through a shared n8n data table (the "privacy queue") — no message content is ever persisted, only IDs and timestamps. A third workflow ("Mai Chat") answers messages addressed to the bot in its cat persona; unlike moderation it keeps a short conversation memory **including content** (see below).
+Two workflows implement AI-based message moderation for all guilds the bot forwards messages from. They communicate exclusively through a shared n8n data table (the "privacy queue") — no message content is ever persisted, only IDs and timestamps. A third workflow ("Mai Chat") answers messages addressed to the bot in its cat persona; unlike moderation it keeps a short conversation memory **including content** — obfuscated and pruned after a few hours (see below).
 
 ```text
 mai (bot) ──POST──▶ Check Messages (webhook)
@@ -48,16 +48,18 @@ Expected request body (sent by the bot):
 Answers messages that mention the bot, reply to one of its messages, or are sent to it as a direct message. Deciding what counts as "addressed to Mai" lives in the bot; this workflow is trigger-agnostic. The bot strips its own mention and posts to this workflow's webhook (`N8N_CHAT_WEBHOOK_URL`, same header-auth credential as moderation).
 
 1. **Webhook** — POST endpoint with header auth, responds via "Respond to Webhook" (the bot shows a typing indicator until then).
-2. **Ensure Chat History / Get History** — data table `Mai Chat History v1` (columns `channelId, guildId, userId, username, role, content, sentAt` — `createdAt` is reserved by n8n as a system column), created on demand. The latest `historyTurns` rows of the channel provide conversation context.
+2. **Ensure Chat History / Get History** — data table `Mai Chat History v2` (columns `channelId, guildId, userId, username, role, content, sentAt` — `createdAt` is reserved by n8n as a system column), created on demand. The `content` and `username` columns are obfuscated at rest (see Privacy note); `channelId` stays plaintext so `Get History` can filter on it, ordered by `sentAt`. The latest `historyTurns` rows of the channel provide conversation context.
 3. **Mai Thinks** — OpenAI chat completion with the persona system prompt from Central Config.
 4. **Extract Reply / Send Reply** — sanitizes the model output (length cap, `@everyone`/`@here` neutralized) and responds `{ "reply": "…" }`.
-5. **Store Chat Turns / Prune Old Turns** — appends both turns to the history table, then deletes rows older than `historyMaxAgeHours`.
+5. **Store Chat Turns / Prune Old Turns** — appends both turns to the history table (content and username obfuscated by `Prepare History Rows`), then deletes rows older than `historyMaxAgeHours`.
 
 Request body (sent by the bot): `{ messageId, guildId, channelId, userId, username, content, createdAt }` — `content` is the message with the bot mention removed; empty content = a bare poke, answered with a greeting. `guildId` is `null` for direct messages, so keep history keyed by `channelId` (a DM channel is stable per user).
 
-**Privacy note:** this table stores message content — a deliberate exception to the moderation privacy rule. Only messages deliberately addressed to Mai land here, and rows are pruned after `historyMaxAgeHours` (default 48 h).
+**Privacy note:** this table is the one place chat content is retained — a deliberate exception to the moderation no-content rule. Only messages deliberately addressed to Mai land here: mentions, replies, and **direct messages** (a DM is always treated as addressed to Mai). It acts as Mai's short-term memory so she can follow a conversation; rows are pruned after `historyMaxAgeHours` (default 48 h), so anything stored — including DMs — is deleted within a few hours.
 
-Central Config knobs: `historyTableName`, `historyTurns`, `historyMaxAgeHours`, `maxReplyChars`, `persona`. Schema changes: bump the `historyTableName` suffix (`v1` → `v2`).
+The `content` and `username` columns are **obfuscated, not encrypted**: reversibly scrambled (XOR + base64 with the `historyKey` from Central Config) so they are not plainly readable when browsing the data table.
+
+Central Config knobs: `historyTableName`, `historyTurns`, `historyMaxAgeHours`, `maxReplyChars`, `historyKey`, `persona`. Schema changes (including the content/username obfuscation format): bump the `historyTableName` suffix (`v2` → `v3`).
 
 ## Delete Messages (scheduler workflow)
 

@@ -26,7 +26,7 @@ The bot forwards every new message (from allowlisted guilds, `DISCORD_GUILD_IDS`
 
 ## Mai — the bot persona
 
-The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message triggers the **Mai Chat** n8n workflow (OpenAI, cat persona, short per-channel memory) and she answers in character. Direct messages skip moderation (a bot cannot delete a DM). She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
+The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message triggers the **Mai Chat** n8n workflow (OpenAI, cat persona, short per-channel memory) and she answers in character. Direct messages skip moderation (a bot cannot delete a DM). Her short conversation memory (including DMs) is kept only a few hours to give her context, then deleted; it is stored obfuscated ([n8n/README.md](n8n/README.md)). She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
 
 Workflow JSON files and full documentation: [n8n/README.md](n8n/README.md).
 
