@@ -1,0 +1,193 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mai - Terms of Service</title>
+  <meta name="description" content="Terms of service for Mai, a Discord cat &amp; moderation bot." />
+  <link rel="icon" href="/mai.png" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #faf7f2;
+      --fg: #2b2620;
+      --muted: #7a6f61;
+      --accent: #b3611f;
+      --card: #ffffff;
+      --border: #e6ddd0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1714;
+        --fg: #ede7de;
+        --muted: #a3988a;
+        --accent: #e69a50;
+        --card: #23201c;
+        --border: #37322b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.65;
+      padding: 2rem 1.5rem 4rem;
+    }
+    main {
+      max-width: 44rem;
+      margin: 0 auto;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    .cat {
+      width: 3rem;
+      height: 3rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      display: block;
+    }
+    .top h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      letter-spacing: -0.02em;
+    }
+    .updated {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0 0 2rem;
+    }
+    h2 {
+      font-size: 1.2rem;
+      margin: 2.25rem 0 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    p, li { margin: 0.5rem 0; }
+    ul { padding-left: 1.25rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="top">
+      <img class="cat" src="/mai.png" alt="Mai, a tabby cat" width="320" height="320" />
+      <h1>Mai - Terms of Service</h1>
+    </div>
+    <p class="updated">Last updated: 24 July 2026</p>
+
+    <p>These Terms of Service ("Terms") govern your use of <strong>Mai</strong>, an
+    open-source Discord bot with a cat persona that provides chat, keyword reactions,
+    optional welcome messages, and AI-assisted moderation. By adding Mai to a server, or
+    by interacting with Mai in a server or direct message, you agree to these Terms. If
+    you do not agree, do not use the bot.</p>
+
+    <h2>1. The service</h2>
+    <p>Mai is a bot that:</p>
+    <ul>
+      <li>Replies in character when mentioned, replied to, or sent a direct message;</li>
+      <li>Reacts to certain keywords with emoji and can welcome new members;</li>
+      <li>Classifies messages in enabled servers for policy violations and can react to, reply to, and delete flagged messages, and send the author a warning direct message.</li>
+    </ul>
+    <p>Mai is provided free of charge and is <a href="https://github.com/barrax63/mai" rel="noopener">open source</a>.</p>
+
+    <h2>2. Eligibility</h2>
+    <p>You must meet Discord's minimum age requirement (13, or older where local law
+    requires) and comply with the <a href="https://discord.com/terms" rel="noopener">Discord Terms of Service</a>
+    and <a href="https://discord.com/guidelines" rel="noopener">Community Guidelines</a>.
+    Server administrators are responsible for adding Mai only to servers where they are
+    authorized to do so and for informing their members that an automated moderation bot
+    is in use.</p>
+
+    <h2>3. Acceptable use</h2>
+    <p>You agree not to:</p>
+    <ul>
+      <li>Use Mai to break Discord's terms or any applicable law;</li>
+      <li>Attempt to abuse, overload, reverse-engineer for exploitation, or interfere with the bot or its infrastructure;</li>
+      <li>Deliberately attempt to manipulate the moderation classifier or the chat model into producing harmful, illegal, or abusive output.</li>
+    </ul>
+
+    <h2>4. Moderation and enforcement</h2>
+    <p>Where enabled by a server's administrators, Mai may automatically flag and
+    <strong>delete messages</strong> it classifies as violating policy and notify the
+    author. Classification is automated and <strong>may produce false positives or false
+    negatives</strong>. Moderation decisions are made by the server's administrators
+    through their configuration of Mai; the operator of the bot is not responsible for a
+    given server's moderation choices. If you believe a message was removed in error,
+    contact that server's administrators.</p>
+
+    <h2>5. AI-generated content</h2>
+    <p>Mai's chat replies are generated by an AI language model and are delivered
+    in a fictional cat persona. They may be <strong>inaccurate, incomplete, or
+    unintended</strong>, and do not constitute professional advice of any kind. Do not
+    rely on Mai's output for any important decision. Mai's replies are posted without
+    pinging users or roles, and <code>@everyone</code>/<code>@here</code> are neutralized.</p>
+
+    <h2>6. Availability</h2>
+    <p>Mai is provided on an "as is" and "as available" basis, with no guarantee of
+    uptime, and may be changed, suspended, or discontinued at any time without notice.</p>
+
+    <h2>7. Disclaimer of warranties</h2>
+    <p>To the maximum extent permitted by law, Mai is provided <strong>without warranties
+    of any kind</strong>, express or implied, including fitness for a particular purpose,
+    reliability, or non-infringement. You use the bot at your own risk.</p>
+
+    <h2>8. Limitation of liability</h2>
+    <p>To the maximum extent permitted by law, the operator and contributors shall not be
+    liable for any indirect, incidental, special, or consequential damages, or for any
+    loss arising from the use of, or inability to use, Mai - including moderation actions,
+    deleted messages, or AI-generated content.</p>
+
+    <h2>9. Open-source license</h2>
+    <p>Mai's source code is published on
+    <a href="https://github.com/barrax63/mai" rel="noopener">GitHub</a> and is governed by
+    the license included in that repository. These Terms cover your use of the hosted bot,
+    not your use of the source code, which is governed by that license.</p>
+
+    <h2>10. Privacy</h2>
+    <p>Your use of Mai is also subject to the <a href="/privacy-policy">Privacy Policy</a>,
+    which describes what limited data Mai processes.</p>
+
+    <h2>11. Changes to these Terms</h2>
+    <p>These Terms may be updated over time. Material changes are indicated by the "Last
+    updated" date above. Continued use after a change means you accept the revised Terms.</p>
+
+    <h2>12. Governing law</h2>
+    <p>These Terms are governed by the laws of Germany, without regard to its
+    conflict-of-law rules.</p>
+
+    <h2 id="contact">13. Contact</h2>
+    <p>Questions about these Terms: <a href="mailto:nnowak@cryshell.com">nnowak@cryshell.com</a>.</p>
+
+    <footer>
+      <a href="/">&larr; Home</a>
+      <a href="/privacy-policy">Privacy Policy</a>
+      <a href="https://github.com/barrax63/mai" rel="noopener">Source on GitHub</a>
+    </footer>
+  </main>
+</body>
+</html>

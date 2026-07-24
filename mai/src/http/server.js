@@ -26,8 +26,14 @@ export function createServer() {
 
   // Landing page + assets. Static middleware only answers GET/HEAD and never
   // touches the request body, so the raw-body requirement of /interactions
-  // below is unaffected.
-  app.use(express.static(fileURLToPath(new URL('./public', import.meta.url))));
+  // below is unaffected. `extensions: ['html']` serves extension-less clean
+  // URLs (/privacy-policy -> privacy-policy.html) with the correct MIME type;
+  // Discord's app settings link to those.
+  app.use(
+    express.static(fileURLToPath(new URL('./public', import.meta.url)), {
+      extensions: ['html'],
+    }),
+  );
 
   app.get('/healthz', (req, res) => {
     res.status(200).json({ status: 'ok' });

@@ -1,0 +1,232 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Mai - Privacy Policy</title>
+  <meta name="description" content="Privacy policy for Mai, a privacy-first Discord cat &amp; moderation bot." />
+  <link rel="icon" href="/mai.png" />
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #faf7f2;
+      --fg: #2b2620;
+      --muted: #7a6f61;
+      --accent: #b3611f;
+      --card: #ffffff;
+      --border: #e6ddd0;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root {
+        --bg: #1a1714;
+        --fg: #ede7de;
+        --muted: #a3988a;
+        --accent: #e69a50;
+        --card: #23201c;
+        --border: #37322b;
+      }
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100dvh;
+      background: var(--bg);
+      color: var(--fg);
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.65;
+      padding: 2rem 1.5rem 4rem;
+    }
+    main {
+      max-width: 44rem;
+      margin: 0 auto;
+    }
+    .top {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 2rem;
+    }
+    .cat {
+      width: 3rem;
+      height: 3rem;
+      border-radius: 0.75rem;
+      border: 1px solid var(--border);
+      object-fit: cover;
+      display: block;
+    }
+    .top h1 {
+      margin: 0;
+      font-size: 1.6rem;
+      letter-spacing: -0.02em;
+    }
+    .updated {
+      color: var(--muted);
+      font-size: 0.9rem;
+      margin: 0 0 2rem;
+    }
+    h2 {
+      font-size: 1.2rem;
+      margin: 2.25rem 0 0.5rem;
+      letter-spacing: -0.01em;
+    }
+    h3 {
+      font-size: 1rem;
+      margin: 1.5rem 0 0.35rem;
+    }
+    p, li { margin: 0.5rem 0; }
+    ul { padding-left: 1.25rem; }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.75rem;
+      padding: 1rem 1.5rem;
+      margin: 1.5rem 0;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    code {
+      font-family: ui-monospace, "Cascadia Code", "Segoe UI Mono", monospace;
+      font-size: 0.9em;
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 0.3rem;
+      padding: 0.05rem 0.35rem;
+    }
+    footer {
+      margin-top: 3rem;
+      padding-top: 1.5rem;
+      border-top: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 0.85rem;
+      display: flex;
+      gap: 1rem;
+      flex-wrap: wrap;
+    }
+  </style>
+</head>
+<body>
+  <main>
+    <div class="top">
+      <img class="cat" src="/mai.png" alt="Mai, a tabby cat" width="320" height="320" />
+      <h1>Mai - Privacy Policy</h1>
+    </div>
+    <p class="updated">Last updated: 24 July 2026</p>
+
+    <p>Mai is an open-source, self-hosted Discord bot with a cat persona: she chats
+    when spoken to, reacts to keywords, can welcome new members, and quietly moderates
+    servers with AI-assisted content classification. This policy explains what data
+    Mai processes and why. It covers the instance operated by the project maintainer;
+    anyone self-hosting Mai from the <a href="https://github.com/barrax63/mai" rel="noopener">source code</a>
+    is a separate, independent operator of their own instance.</p>
+
+    <div class="card">
+      <strong>In short:</strong>
+      <ul>
+        <li>Mai does <strong>not</strong> store the content of your messages for moderation - only IDs, timestamps, and flagged category labels.</li>
+        <li>The <strong>only</strong> content Mai retains is short chat memory, and only for messages you deliberately address to her (mention, reply, or DM). It is obfuscated at rest and auto-deleted within a couple of days.</li>
+        <li>Mai does not sell your data, show ads, build advertising profiles, or track you across servers.</li>
+      </ul>
+    </div>
+
+    <h2>1. Who processes your data</h2>
+    <p>The Mai bot instance you interact with is operated by the maintainer of this
+    project ("the operator", "we"). For privacy questions, see
+    <a href="#contact">Contact</a> below. Your use of Discord itself is governed by
+    <a href="https://discord.com/privacy" rel="noopener">Discord's Privacy Policy</a>,
+    which is separate from this one.</p>
+
+    <h2>2. What data Mai processes</h2>
+
+    <h3>Moderation (every message in an enabled server)</h3>
+    <p>When moderation is enabled for a server, Mai forwards each new message to a
+    private automation workflow to classify it for policy violations (using OpenAI's
+    moderation classification). During this check the message text is processed
+    <strong>transiently</strong> - it is sent to the classifier and used to produce a
+    verdict, but it is <strong>not written to any Mai database</strong>.</p>
+    <p>If a message is flagged, Mai stores only <strong>metadata</strong> in a short-lived
+    queue so a scheduled task can enforce a grace period:</p>
+    <ul>
+      <li>Discord message, server, channel, and user IDs</li>
+      <li>The flagged category labels (e.g. "harassment")</li>
+      <li>Timestamps (when it was warned, when the grace period ends)</li>
+      <li>The ID of Mai's warning reply</li>
+    </ul>
+    <p>No message content and no usernames are stored in this queue. Rows are removed
+    once the message is deleted or the author removes it themselves.</p>
+
+    <h3>Chat with Mai (mention, reply, or direct message)</h3>
+    <p>When you deliberately address Mai - by @-mentioning her, replying to one of her
+    messages, or sending her a direct message - your message is sent to a chat workflow
+    that generates an in-character reply (using OpenAI's text generation model). To give 
+    Mai short-term memory so she can follow a conversation, these chat turns are stored 
+    in a history table. This is the <strong>one deliberate exception</strong> to the 
+    no-content rule.</p>
+    <ul>
+      <li>Only messages <strong>addressed to Mai</strong> are stored here - ordinary server chatter is not.</li>
+      <li>The message <strong>content and username</strong> are <strong>obfuscated at rest</strong> (reversibly scrambled with XOR + base64) so they are not plainly readable when browsing the table.</li>
+      <li>Rows are automatically <strong>pruned after a few hours</strong> (default: 48 hours), so nothing lingers long-term.</li>
+      <li>Direct messages to Mai are treated the same way and are subject to the same obfuscation and auto-deletion.</li>
+    </ul>
+
+    <h3>Reactions and welcome messages</h3>
+    <p>Keyword emoji reactions and optional welcome messages are generated in real time
+    and store <strong>no</strong> data about you.</p>
+
+    <h2>3. What Mai does not do</h2>
+    <ul>
+      <li>No selling or renting of personal data.</li>
+      <li>No advertising, ad profiles, or cross-server tracking.</li>
+      <li>Message content is never written to operational logs - only metadata is. (Content may appear transiently in debug-level logs when debugging is explicitly enabled by the operator.)</li>
+      <li>No storage of moderation message content anywhere.</li>
+    </ul>
+
+    <h2>4. Third-party services</h2>
+    <p>To function, Mai relies on the following processors:</p>
+    <ul>
+      <li><strong>Discord</strong> - the platform Mai runs on; messages and IDs originate there (<a href="https://discord.com/privacy" rel="noopener">privacy policy</a>).</li>
+      <li><strong>OpenAI</strong> - classifies messages for moderation and generates Mai's chat replies (<a href="https://openai.com/policies/privacy-policy" rel="noopener">privacy policy</a>). Message text is sent to OpenAI to produce a result.</li>
+      <li><strong>Cloudflare</strong> - provides the secure tunnel that connects Discord to the bot (<a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">privacy policy</a>).</li>
+      <li><strong>n8n</strong> - the automation engine running the moderation and chat workflows, self-hosted by the operator.</li>
+    </ul>
+
+    <h2>5. Data retention</h2>
+    <ul>
+      <li><strong>Moderation queue metadata:</strong> deleted as soon as the flagged message is removed or the grace period is enforced (typically minutes).</li>
+      <li><strong>Chat history:</strong> automatically deleted after the configured window (default 48 hours).</li>
+      <li><strong>Message content for moderation:</strong> not retained at all.</li>
+    </ul>
+
+    <h2>6. Your rights</h2>
+    <p>Depending on where you live (e.g. under the EU/UK GDPR), you may have the right to
+    access, correct, or delete personal data, and to object to processing. Because Mai
+    stores almost nothing and auto-deletes chat memory within a couple of days, most data
+    is short-lived by design. To make a request - for example, to have chat memory purged
+    immediately - contact the operator (below). Requests about data held by Discord,
+    OpenAI, or Cloudflare should be directed to those providers.</p>
+
+    <h2>7. Children</h2>
+    <p>Mai is used through Discord, which requires users to be at least 13 years old (or
+    older where local law requires). Mai is not directed at children under 13.</p>
+
+    <h2>8. Security</h2>
+    <p>Mai runs in a hardened container (read-only filesystem, dropped privileges,
+    non-root user, secrets kept out of source control). Chat memory is obfuscated at
+    rest. No method of transmission or storage is completely secure, but data is
+    minimized and short-lived by design.</p>
+
+    <h2>9. Changes to this policy</h2>
+    <p>This policy may be updated as Mai evolves. Material changes will be reflected by
+    updating the "Last updated" date above. Continued use after a change constitutes
+    acceptance of the revised policy.</p>
+
+    <h2 id="contact">10. Contact</h2>
+    <p>Questions or requests: <a href="mailto:nnowak@cryshell.com">nnowak@cryshell.com</a>.</p>
+
+    <footer>
+      <a href="/">&larr; Home</a>
+      <a href="/terms-of-service">Terms of Service</a>
+      <a href="https://github.com/barrax63/mai" rel="noopener">Source on GitHub</a>
+    </footer>
+  </main>
+</body>
+</html>
