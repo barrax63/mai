@@ -64,6 +64,31 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
 | `/mod config set [log-channel] [welcome-channel] [grace]` | Manage Messages | Sets any subset for this server |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
+| `Mai: melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
+
+## Reports and appeals
+
+Both need a configured `log-channel` — without one there is nowhere for either
+to land, and Mai says so instead of swallowing them.
+
+**Reporting** ([src/commands/report.js](src/commands/report.js)): right-click a
+message → *Apps* → *Mai: melden* opens a modal asking why (optional). The report
+appears in the log channel with **Löschen** / **Verwerfen** buttons; both are
+Manage Messages-only and checked server-side, not just hidden. Approving deletes
+the reported message immediately — a human already judged it, so there is no
+grace period — and closes the entry with who decided what; a message that is
+already gone is recorded as such rather than failing the click. Dismissing keeps
+the message and closes the entry. Rate limit: 5 reports per member per 10
+minutes.
+
+**Appealing** ([src/moderation/appeal.js](src/moderation/appeal.js)): the warning
+DM carries an *Einspruch einlegen* button. It opens a modal, and the member's
+statement is posted into that guild's log channel. Rate limit: 3 per member per
+hour.
+
+Reports and appeals are the only paths where member-written text reaches the log
+channel, and only because that member typed it and pressed submit. The reported
+message itself is still just linked, never copied.
 
 ## Per-guild settings
 

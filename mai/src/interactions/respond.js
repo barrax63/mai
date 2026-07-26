@@ -38,14 +38,21 @@ export const ephemeralResponse = (content, options = {}) =>
   messageResponse(content, { ...options, ephemeral: true });
 
 /**
- * Replaces the message a component belongs to (button click).
+ * Replaces the message a component belongs to (button click). Passing an empty
+ * `components` array — the default — removes the buttons, which is how a
+ * one-shot action marks itself as done.
  *
- * @param {string} content
- * @param {{ components?: object[] }} [options]
+ * @param {string | null} content
+ * @param {{ components?: object[], embeds?: object[] }} [options]
  */
-export const updateResponse = (content, { components = [] } = {}) => ({
+export const updateResponse = (content, { components = [], embeds } = {}) => ({
   type: InteractionResponseType.UPDATE_MESSAGE,
-  data: { content, components, allowed_mentions: NO_PINGS },
+  data: {
+    ...(content === null ? {} : { content }),
+    components,
+    ...(embeds ? { embeds } : {}),
+    allowed_mentions: NO_PINGS,
+  },
 });
 
 /**
@@ -73,11 +80,49 @@ export const autocompleteResponse = (choices) => ({
 });
 
 /**
+ * A modal is the one response that cannot be deferred — Discord opens it
+ * immediately, so its handler must stay synchronous work only.
+ *
  * @param {{ customId: string, title: string, components: object[] }} modal
  */
 export const modalResponse = ({ customId, title, components }) => ({
   type: InteractionResponseType.MODAL,
   data: { custom_id: customId, title, components },
+});
+
+const ACTION_ROW = 1;
+const TEXT_INPUT = 4;
+
+/** Text input styles. */
+export const SHORT_INPUT = 1;
+export const PARAGRAPH_INPUT = 2;
+
+/**
+ * A single text input wrapped in the action row Discord requires.
+ *
+ * @param {{ customId: string, label: string, style?: number, required?: boolean,
+ *   maxLength?: number, placeholder?: string }} input
+ */
+export const textInput = ({
+  customId,
+  label,
+  style = SHORT_INPUT,
+  required = true,
+  maxLength,
+  placeholder,
+}) => ({
+  type: ACTION_ROW,
+  components: [
+    {
+      type: TEXT_INPUT,
+      custom_id: customId,
+      label,
+      style,
+      required,
+      ...(maxLength ? { max_length: maxLength } : {}),
+      ...(placeholder ? { placeholder } : {}),
+    },
+  ],
 });
 
 /**

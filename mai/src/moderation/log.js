@@ -20,12 +20,16 @@ export const LOG_FLAGGED = 'flagged';
 export const LOG_DELETED = 'deleted';
 export const LOG_SELF_DELETED = 'selfDeleted';
 export const LOG_FORGIVEN = 'forgiven';
+export const LOG_REPORTED = 'reported';
+export const LOG_APPEALED = 'appealed';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
   [LOG_DELETED]: 0xe74c3c,
   [LOG_SELF_DELETED]: 0x2ecc71,
   [LOG_FORGIVEN]: 0x3498db,
+  [LOG_REPORTED]: 0x5865f2,
+  [LOG_APPEALED]: 0x9b59b6,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -77,6 +81,24 @@ function fieldsFor(event) {
         { name: labels.count, value: String(event.count ?? 0), inline: true },
       ];
 
+    case LOG_REPORTED:
+      return [
+        user,
+        channel,
+        { name: labels.reporter, value: `<@${event.reporterId}>`, inline: true },
+        { name: labels.message, value: jumpLink(event), inline: true },
+        // The reporter's own words, deliberately handed to staff. Optional.
+        ...(event.reason
+          ? [{ name: labels.reason, value: event.reason, inline: false }]
+          : []),
+        ...(event.resolution
+          ? [{ name: labels.resolution, value: event.resolution, inline: false }]
+          : []),
+      ];
+
+    case LOG_APPEALED:
+      return [user, { name: labels.appeal, value: event.reason ?? none, inline: false }];
+
     default:
       return [user];
   }
@@ -104,9 +126,10 @@ export function buildLogEmbed(event) {
  *
  * @param {import('discord.js').Client} client
  * @param {object} event
+ * @param {{ components?: object[] }} [options] Buttons on the entry (reports).
  * @returns {Promise<boolean>} Whether the entry was posted.
  */
-export async function postModerationLog(client, event) {
+export async function postModerationLog(client, event, { components } = {}) {
   // Everything is inside the try: callers fire this detached (`void`), so a
   // throw here would surface as an unhandled rejection instead of a log line.
   let logChannelId;
@@ -123,7 +146,11 @@ export async function postModerationLog(client, event) {
       return false;
     }
 
-    await channel.send({ embeds: [buildLogEmbed(event)], allowedMentions: { parse: [] } });
+    await channel.send({
+      embeds: [buildLogEmbed(event)],
+      ...(components ? { components } : {}),
+      allowedMentions: { parse: [] },
+    });
     return true;
   } catch (error) {
     logger.warn(

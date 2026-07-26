@@ -12,10 +12,13 @@
  */
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { createRateLimiter } from '../rate-limit.js';
 
-/** userId -> timestamps of recent replies (ms). */
-const buckets = new Map();
-const SWEEP_AT_SIZE = 1000;
+const chatLimiter = createRateLimiter({
+  max: config.chat.rateLimitMax,
+  windowMs: config.chat.rateLimitWindowMs,
+  name: 'chat',
+});
 
 let inFlight = 0;
 
@@ -26,27 +29,7 @@ const chains = new Map();
  * @param {string} userId
  * @returns {boolean} Whether this user may get a reply right now.
  */
-export function consumeRateLimit(userId) {
-  const now = Date.now();
-  const cutoff = now - config.chat.rateLimitWindowMs;
-
-  if (buckets.size > SWEEP_AT_SIZE) {
-    for (const [key, stamps] of buckets) {
-      if (stamps.every((stamp) => stamp <= cutoff)) buckets.delete(key);
-    }
-  }
-
-  const stamps = (buckets.get(userId) ?? []).filter((stamp) => stamp > cutoff);
-  if (stamps.length >= config.chat.rateLimitMax) {
-    buckets.set(userId, stamps);
-    logger.info({ userId, window: config.chat.rateLimitWindowMs }, 'Chat rate limit hit');
-    return false;
-  }
-
-  stamps.push(now);
-  buckets.set(userId, stamps);
-  return true;
-}
+export const consumeRateLimit = (userId) => chatLimiter.consume(userId);
 
 /**
  * @returns {boolean} Whether a model-call slot was free (release it with

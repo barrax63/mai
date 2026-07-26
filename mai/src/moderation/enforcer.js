@@ -16,6 +16,7 @@ import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
 import { dueRows, remove } from '../db/queue.js';
 import { logger } from '../logger.js';
+import { appealComponents } from './appeal.js';
 import { LOG_DELETED, LOG_SELF_DELETED, postModerationLog } from './log.js';
 import { buildWarning, groupByUser } from './warning.js';
 
@@ -146,7 +147,12 @@ async function warnAuthor(client, group) {
   const body = buildWarning(group);
   try {
     const user = await client.users.fetch(group.userId);
-    await user.send({ content: body, allowedMentions: { parse: [] } });
+    await user.send({
+      content: body,
+      // Only present when the guild can actually receive appeals.
+      components: appealComponents(group.guildId),
+      allowedMentions: { parse: [] },
+    });
     logger.info(
       { userId: group.userId, violations: group.violations.length, categories: group.categories },
       'Sent warning DM',

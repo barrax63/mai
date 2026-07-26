@@ -39,3 +39,32 @@ export function resolveSubcommand(interaction) {
  */
 export const optionValue = (options, name) =>
   options?.find((option) => option.name === name)?.value;
+
+/**
+ * Reads a text input out of a modal submit. Discord nests every input in its
+ * own action row.
+ *
+ * @param {object} interaction
+ * @param {string} customId Of the text input, not of the modal.
+ * @returns {string} Trimmed value, empty when the field was left blank.
+ */
+export function modalValue(interaction, customId) {
+  const rows = interaction.data?.components ?? [];
+  for (const row of rows) {
+    for (const component of row.components ?? []) {
+      if (component.custom_id === customId) return String(component.value ?? '').trim();
+    }
+  }
+  return '';
+}
+
+/**
+ * The message a context-menu command was used on.
+ *
+ * @param {object} interaction
+ * @returns {object | undefined}
+ */
+export function targetMessage(interaction) {
+  const id = interaction.data?.target_id;
+  return id ? interaction.data?.resolved?.messages?.[id] : undefined;
+}

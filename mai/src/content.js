@@ -78,12 +78,14 @@ function loadContent() {
   const log = section(moderation, 'log');
   const logTitles = section(log, 'titles');
   const logFields = section(log, 'fields');
+  const appeal = section(moderation, 'appeal');
   const commands = section(parsed, 'commands');
   const ask = section(commands, 'ask');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
   const forgive = section(commands, 'forgive');
   const configSection = section(commands, 'config');
+  const reportSection = section(commands, 'report');
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
@@ -124,6 +126,8 @@ function loadContent() {
           deleted: str(logTitles, ['moderation', 'log', 'titles', 'deleted']),
           selfDeleted: str(logTitles, ['moderation', 'log', 'titles', 'selfDeleted']),
           forgiven: str(logTitles, ['moderation', 'log', 'titles', 'forgiven']),
+          reported: str(logTitles, ['moderation', 'log', 'titles', 'reported']),
+          appealed: str(logTitles, ['moderation', 'log', 'titles', 'appealed']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -133,10 +137,24 @@ function loadContent() {
           message: str(logFields, ['moderation', 'log', 'fields', 'message']),
           actor: str(logFields, ['moderation', 'log', 'fields', 'actor']),
           count: str(logFields, ['moderation', 'log', 'fields', 'count']),
+          reporter: str(logFields, ['moderation', 'log', 'fields', 'reporter']),
+          reason: str(logFields, ['moderation', 'log', 'fields', 'reason']),
+          resolution: str(logFields, ['moderation', 'log', 'fields', 'resolution']),
+          appeal: str(logFields, ['moderation', 'log', 'fields', 'appeal']),
         }),
         jump: str(log, ['moderation', 'log', 'jump']),
         none: str(log, ['moderation', 'log', 'none']),
         footer: str(log, ['moderation', 'log', 'footer']),
+      }),
+      appeal: Object.freeze({
+        button: str(appeal, ['moderation', 'appeal', 'button']),
+        modalTitle: str(appeal, ['moderation', 'appeal', 'modalTitle']),
+        inputLabel: str(appeal, ['moderation', 'appeal', 'inputLabel']),
+        inputPlaceholder: str(appeal, ['moderation', 'appeal', 'inputPlaceholder']),
+        submitted: str(appeal, ['moderation', 'appeal', 'submitted']),
+        empty: str(appeal, ['moderation', 'appeal', 'empty']),
+        busy: str(appeal, ['moderation', 'appeal', 'busy']),
+        failed: str(appeal, ['moderation', 'appeal', 'failed']),
       }),
       warningDm: Object.freeze({
         maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
@@ -178,6 +196,21 @@ function loadContent() {
       forgive: Object.freeze({
         done: str(forgive, ['commands', 'forgive', 'done']),
         nothing: str(forgive, ['commands', 'forgive', 'nothing']),
+      }),
+      report: Object.freeze({
+        modalTitle: str(reportSection, ['commands', 'report', 'modalTitle']),
+        reasonLabel: str(reportSection, ['commands', 'report', 'reasonLabel']),
+        reasonPlaceholder: str(reportSection, ['commands', 'report', 'reasonPlaceholder']),
+        thanks: str(reportSection, ['commands', 'report', 'thanks']),
+        approveButton: str(reportSection, ['commands', 'report', 'approveButton']),
+        dismissButton: str(reportSection, ['commands', 'report', 'dismissButton']),
+        approved: str(reportSection, ['commands', 'report', 'approved']),
+        approvedFailed: str(reportSection, ['commands', 'report', 'approvedFailed']),
+        dismissed: str(reportSection, ['commands', 'report', 'dismissed']),
+        guildOnly: str(reportSection, ['commands', 'report', 'guildOnly']),
+        unavailable: str(reportSection, ['commands', 'report', 'unavailable']),
+        busy: str(reportSection, ['commands', 'report', 'busy']),
+        failed: str(reportSection, ['commands', 'report', 'failed']),
       }),
       config: Object.freeze({
         body: str(configSection, ['commands', 'config', 'body']),

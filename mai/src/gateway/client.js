@@ -36,6 +36,16 @@ export function getGatewayClient() {
   return readyClient;
 }
 
+/**
+ * Set on ClientReady. Also the injection point for tests, which drive the
+ * component and modal handlers without a gateway connection.
+ *
+ * @param {import('discord.js').Client | null} client
+ */
+export function setGatewayClient(client) {
+  readyClient = client;
+}
+
 /** Stops the moderation tick loop (shutdown path). */
 export function stopEnforcer() {
   enforcer?.stop();
@@ -61,7 +71,7 @@ export function createGatewayClient() {
   });
 
   client.once(Events.ClientReady, (ready) => {
-    readyClient = ready;
+    setGatewayClient(ready);
     logger.info(
       { user: ready.user.tag, guilds: ready.guilds.cache.size },
       'Gateway connected',

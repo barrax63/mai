@@ -74,6 +74,8 @@ moderation:
       deleted: '🔴 Nachricht gelöscht'
       selfDeleted: '🟢 Vom Autor selbst gelöscht'
       forgiven: '🔵 Verstöße erlassen'
+      reported: '🟣 Nachricht gemeldet'
+      appealed: '🟪 Einspruch eingelegt'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -82,9 +84,24 @@ moderation:
       message: 'Nachricht'
       actor: 'Ausgeführt von'
       count: 'Anzahl'
+      reporter: 'Gemeldet von'
+      reason: 'Begründung'
+      resolution: 'Bearbeitet'
+      appeal: 'Einspruch'
     jump: 'Zur Nachricht'
     none: '—'
     footer: 'Nur Metadaten — Mai speichert keine Nachrichteninhalte.'
+
+  # Einspruch: Button unter der Verwarnungs-DM (nur wenn ein Log-Kanal gesetzt ist).
+  appeal:
+    button: 'Einspruch einlegen'
+    modalTitle: 'Einspruch'
+    inputLabel: 'Warum war das aus deiner Sicht falsch?'
+    inputPlaceholder: 'Erklär kurz, was passiert ist.'
+    submitted: '*legt die Ohren an* Ist notiert. Ein Mensch schaut sich das an.'
+    empty: 'Ohne Text kann ich nichts weitergeben.'
+    busy: '*gähnt* Immer mit der Ruhe. Später nochmal.'
+    failed: 'Das hat nicht geklappt — melde dich direkt bei einem Admin.'
 
   # DM sent after the grace period expired and messages were deleted.
   # One DM per user per tick, listing every message removed in that tick.
@@ -147,6 +164,22 @@ commands:
   forgive:
     done: '*schnurrt widerwillig* Na gut. {count} offene(r) Verstoß/Verstöße von <@{userId}> vergessen.'
     nothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
+
+  # "Mai: melden" — Kontextmenü-Meldung (Rechtsklick auf eine Nachricht).
+  report:
+    modalTitle: 'Nachricht melden'
+    reasonLabel: 'Was stimmt damit nicht? (optional)'
+    reasonPlaceholder: 'Kurz erklären hilft dem Team.'
+    thanks: '*spitzt die Ohren* Danke, ich hab es weitergegeben.'
+    approveButton: 'Löschen'
+    dismissButton: 'Verwerfen'
+    approved: 'Gelöscht von <@{userId}>'
+    approvedFailed: 'Von <@{userId}> bestätigt — Nachricht war nicht mehr löschbar'
+    dismissed: 'Verworfen von <@{userId}>'
+    guildOnly: 'Melden geht nur auf einem Server.'
+    unavailable: 'Auf diesem Server ist kein Moderations-Log eingerichtet — sag einem Admin Bescheid.'
+    busy: '*gähnt* Du hast gerade schon genug gemeldet. Später nochmal.'
+    failed: 'Das hat nicht geklappt — sag einem Admin Bescheid.'
 
   # /mod config — per-server settings. {…Source} marks inherited defaults.
   config:
