@@ -106,6 +106,8 @@ async function processRow(client, row) {
     userId: row.userId,
     guildId: row.guildId,
     content: message.cleanContent ?? message.content ?? '',
+    // Count only — the attachments themselves are never fetched or stored.
+    attachments: message.attachments?.size ?? 0,
     timestamp: message.createdAt,
     categories: row.categories,
   };

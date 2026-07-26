@@ -167,6 +167,7 @@ function loadContent() {
         unknownCategory: str(warningDm, ['moderation', 'warningDm', 'unknownCategory']),
         messagesLabel: str(warningDm, ['moderation', 'warningDm', 'messagesLabel']),
         emptyMessage: str(warningDm, ['moderation', 'warningDm', 'emptyMessage']),
+        attachmentMessage: str(warningDm, ['moderation', 'warningDm', 'attachmentMessage']),
         unknownTimestamp: str(warningDm, ['moderation', 'warningDm', 'unknownTimestamp']),
         omittedLine: str(warningDm, ['moderation', 'warningDm', 'omittedLine']),
         footer: str(warningDm, ['moderation', 'warningDm', 'footer']),

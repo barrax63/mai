@@ -80,16 +80,17 @@ async function postJson(path, body) {
         { path, status: response.status, attempt, retryable },
         'OpenAI call failed',
       );
+      // Before the throw: a 4xx is exactly the case where the body says why.
+      // Error bodies carry provider diagnostics, not user content, but they
+      // stay at debug level anyway.
+      logger.debug({ path, status: response.status, body: text }, 'OpenAI error body');
 
       if (!retryable || attempt === attempts - 1) {
         throw new OpenAiError(`OpenAI ${path} failed: ${response.status}`, {
           status: response.status,
-          // Error bodies carry provider diagnostics, not user content, but keep
-          // them out of the message and at debug level anyway.
           code: 'http_error',
         });
       }
-      logger.debug({ path, body: text }, 'OpenAI error body');
       await sleep(backoffMs(response, attempt));
     } catch (error) {
       if (error instanceof OpenAiError) throw error;

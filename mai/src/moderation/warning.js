@@ -103,7 +103,10 @@ export function buildWarning(group) {
 
   for (const [index, violation] of group.violations.entries()) {
     const text = sanitize(violation.content).slice(0, dm.maxContentChars);
-    const line = `> [${formatTimestamp(violation.timestamp)}] ${text || dm.emptyMessage}`;
+    // An image-only message has no text to quote back, but "empty" would be a
+    // lie about what was removed.
+    const empty = violation.attachments > 0 ? dm.attachmentMessage : dm.emptyMessage;
+    const line = `> [${formatTimestamp(violation.timestamp)}] ${text || empty}`;
 
     if (`${header}\n${[...lines, line].join('\n')}${footer}`.length > dm.maxLength) {
       omitted = group.violations.length - index;

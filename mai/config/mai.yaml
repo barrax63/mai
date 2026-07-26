@@ -120,6 +120,8 @@ moderation:
     unknownCategory: 'Nicht näher spezifiziert'
     messagesLabel: '**Entfernte Nachrichten:**'
     emptyMessage: '(Leere Nachricht)'
+    # Shown instead when the removed message carried only attachments.
+    attachmentMessage: '(Bild oder Datei)'
     unknownTimestamp: 'Unbekannter Zeitpunkt'
     # {count} messages did not fit; {plural} is '' or 'en'.
     omittedLine: '> … und {count} weitere Nachricht{plural}.'

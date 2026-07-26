@@ -56,6 +56,14 @@ test('falls back when a message has no content or no category', () => {
   assert.ok(dm.includes(content.moderation.warningDm.unknownCategory));
 });
 
+test('an image-only message is named as such, not called empty', () => {
+  const [group] = groupByUser([record({ content: '', attachments: 1 })]);
+  const dm = buildWarning(group);
+
+  assert.ok(dm.includes(content.moderation.warningDm.attachmentMessage), dm);
+  assert.equal(dm.includes(content.moderation.warningDm.emptyMessage), false);
+});
+
 test('marks an unparseable timestamp instead of printing Invalid Date', () => {
   const [group] = groupByUser([record({ timestamp: null })]);
   assert.ok(buildWarning(group).includes(content.moderation.warningDm.unknownTimestamp));
