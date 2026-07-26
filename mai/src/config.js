@@ -110,6 +110,13 @@ export const config = Object.freeze({
     historyMaxAgeHours: int('CHAT_HISTORY_MAX_AGE_HOURS', '48', { min: 1 }),
     maxReplyChars: int('CHAT_MAX_REPLY_CHARS', '1800', { min: 1 }),
     historyKey: readHistoryKey(),
+    // Let Mai look at image attachments in messages addressed to her.
+    visionEnabled: bool('CHAT_VISION_ENABLED', 'true'),
+    // Images cost tokens per call, so only the first few are sent.
+    visionMaxImages: int('CHAT_VISION_MAX_IMAGES', '2', { min: 1 }),
+    // Function calling: lets her look up her own moderation queue and server
+    // facts instead of inventing them.
+    toolsEnabled: bool('CHAT_TOOLS_ENABLED', 'true'),
     // Per-user token bucket: at most `rateLimitMax` replies per window.
     rateLimitMax: int('CHAT_RATE_LIMIT_MAX', '5', { min: 1 }),
     rateLimitWindowMs: int('CHAT_RATE_LIMIT_WINDOW_MS', '60000', { min: 1000 }),

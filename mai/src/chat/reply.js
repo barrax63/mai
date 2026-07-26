@@ -2,10 +2,11 @@
  * Mai's chat turn.
  *
  * Reads her short-term memory for the channel, checks whether the author has an
- * open violation (which flips her tone), asks the model, and remembers the
- * exchange. Discord I/O stays in the gateway handler.
+ * open violation (which flips her tone), asks the model — which may call tools
+ * along the way — and remembers the exchange. Discord I/O stays in the gateway
+ * handler, which also resolves the reply and thread context.
  */
-import { buildPrompt, generateReply } from '../ai/chat.js';
+import { buildMessages, generateReply } from '../ai/chat.js';
 import { config } from '../config.js';
 import { content } from '../content.js';
 import { appendTurns, recentTurns } from '../db/history.js';
@@ -14,7 +15,8 @@ import { logger } from '../logger.js';
 
 /**
  * @param {{ messageId: string, channelId: string, guildId: string | null, userId: string,
- *   username: string, content: string }} input
+ *   username: string, content: string, replyTo?: object | null, threadTitle?: string | null,
+ *   images?: string[], client?: object }} input
  * @returns {Promise<string | null>} Reply to post, or null when generation failed.
  */
 export async function generateChatReply(input) {
@@ -23,22 +25,33 @@ export async function generateChatReply(input) {
   // user everywhere, DMs included. Categories are slugs, never content.
   const violations = openViolations(input.userId);
 
-  const prompt = buildPrompt({
+  const messages = buildMessages({
     history,
     username: input.username,
     content: input.content,
     violations,
+    replyTo: input.replyTo,
+    threadTitle: input.threadTitle,
+    images: input.images ?? [],
   });
 
-  logger.debug({ messageId: input.messageId, prompt }, 'Chat prompt');
+  logger.debug({ messageId: input.messageId, messages }, 'Chat prompt');
 
   try {
-    const reply = await generateReply(prompt);
+    const reply = await generateReply(messages, {
+      userId: input.userId,
+      guildId: input.guildId,
+      client: input.client,
+    });
+
     logger.info(
       {
         messageId: input.messageId,
         historyTurns: history.length,
         openViolations: violations.count,
+        images: input.images?.length ?? 0,
+        repliedTo: Boolean(input.replyTo),
+        inThread: Boolean(input.threadTitle),
         model: config.openai.chatModel,
         replyLength: reply.length,
       },
@@ -52,15 +65,17 @@ export async function generateChatReply(input) {
 }
 
 /**
- * Stores the exchange as Mai's memory. The user turn is skipped when it was a
- * bare mention with no text.
+ * Stores the exchange as Mai's memory. Only what the member actually wrote is
+ * kept: the quoted reply context and the images are prompt-time context, not
+ * theirs to persist.
  *
  * @param {{ channelId: string, guildId: string | null, userId: string, username: string,
- *   content: string }} input
+ *   content: string, images?: string[] }} input
  * @param {string} reply
  */
 export function rememberExchange(input, reply) {
-  const userContent = String(input.content ?? '').trim();
+  const userContent = String(input.content ?? '').trim()
+    || (input.images?.length ? content.chat.prompt.imagePlaceholder : '');
   const turns = [];
 
   if (userContent) {

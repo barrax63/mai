@@ -163,6 +163,7 @@
     exception</strong> to the no-content rule.</p>
     <ul>
       <li>Only messages <strong>addressed to Mai</strong> are stored here - ordinary server chatter is not.</li>
+      <li>If your message replies to another message, or carries an image, that context is sent to OpenAI along with it so Mai can follow the conversation - but it is <strong>not stored</strong>: her memory keeps only what you wrote yourself.</li>
       <li>The message <strong>content and username</strong> are <strong>encrypted at rest</strong> (AES-256-GCM, with a key held only by the operator).</li>
       <li>Rows are automatically <strong>pruned after a few hours</strong> (default: 48 hours), so nothing lingers long-term.</li>
       <li>Direct messages to Mai are treated the same way and are subject to the same encryption and auto-deletion.</li>

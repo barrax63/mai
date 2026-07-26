@@ -6,12 +6,13 @@
  * self-service side of the privacy policy: it wipes what Mai remembers about the
  * caller, behind a confirmation button.
  */
-import { buildPrompt, generateReply } from '../ai/chat.js';
+import { buildMessages, generateReply } from '../ai/chat.js';
 import { acquireSlot, consumeRateLimit, releaseSlot } from '../chat/limits.js';
 import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
+import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { ephemeralResponse, messageResponse, updateResponse } from '../interactions/respond.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
@@ -50,7 +51,7 @@ async function ask(interaction) {
   if (!acquireSlot()) return messageResponse(content.commands.ask.busy);
 
   try {
-    const prompt = buildPrompt({
+    const messages = buildMessages({
       history: [],
       username: user.username ?? '',
       content: question,
@@ -58,7 +59,11 @@ async function ask(interaction) {
       violations: openViolations(user.id),
     });
 
-    const reply = await generateReply(prompt);
+    const reply = await generateReply(messages, {
+      userId: user.id,
+      guildId: interaction.guild_id ?? null,
+      client: getGatewayClient(),
+    });
     logger.info(
       { userId: user.id, replyLength: reply.length, model: config.openai.chatModel },
       'Answered /mai ask',

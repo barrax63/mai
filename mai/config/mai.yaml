@@ -35,13 +35,17 @@ chat:
       - 'Tonfall: deutlich bissig und kühl - fauch, zeig die Krallen und mach unmissverständlich klar, dass dir gleich der Kragen platzt. Leichte Beleidigungen erlaubt.'
       - 'Tonfall: voller Hiss-Modus - Fell gesträubt, Ohren angelegt, komplett empört und unversöhnlich. Diese Person hat es mehrfach getrieben; fauch sie richtig an. Beleidigungen erwünscht.'
 
-  # Scaffolding of the `user` message: prior turns, then the new message.
+  # Scaffolding of the conversation. Prior turns are sent as real chat roles;
+  # these strings only decorate the turn Mai is answering right now.
   prompt:
-    historyHeader: 'Bisheriger Verlauf:'
-    newMessageHeader: 'Neue Nachricht:'
     # Used when someone mentions Mai without any text.
     emptyMessagePlaceholder: '(stupst dich wortlos an)'
-    # Speaker labels inside the rendered history.
+    # Used when a message carries only an image, and for stored image turns.
+    imagePlaceholder: '(schickt ein Bild)'
+    # Context Discord shows a human but does not put in the message text.
+    replyContext: '[Antwort auf {username}: "{content}"]'
+    threadContext: '[Im Thread: {title}]'
+    # Speaker labels.
     assistantLabel: 'Mai'
     unknownUserLabel: 'User'
 

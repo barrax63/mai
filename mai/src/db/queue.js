@@ -82,15 +82,19 @@ export function remove(messageId) {
  *
  * @param {string} userId
  * @param {number} [limit]
- * @returns {{ count: number, categories: string[] }}
+ * @returns {{ count: number, categories: string[], nextDueAt: string | null }}
+ *   `nextDueAt` is when the earliest of them gets enforced (the `get_my_violations`
+ *   tool answers "wann ist das vorbei?" with it).
  */
 export function openViolations(userId, limit = 20) {
   const rows = getDb()
-    .prepare('SELECT categories FROM moderation_queue WHERE user_id = ? ORDER BY warned_at DESC LIMIT ?')
+    .prepare('SELECT categories, due_at FROM moderation_queue WHERE user_id = ? ORDER BY warned_at DESC LIMIT ?')
     .all(userId, limit);
 
   const categories = [...new Set(rows.flatMap((row) => parseCategories(row.categories)))];
-  return { count: rows.length, categories };
+  const dueDates = rows.map((row) => row.due_at).filter(Boolean).sort();
+
+  return { count: rows.length, categories, nextDueAt: dueDates[0] ?? null };
 }
 
 /**

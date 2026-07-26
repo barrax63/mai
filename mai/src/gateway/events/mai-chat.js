@@ -16,6 +16,59 @@ import { logger } from '../../logger.js';
 // is still running.
 const TYPING_REFRESH_MS = 8_000;
 
+const IMAGE_TYPES = /^image\/(png|jpeg|jpg|gif|webp)$/i;
+
+/**
+ * Image attachments Mai may look at. Discord CDN links are what the API fetches,
+ * so nothing is downloaded here — and nothing is stored either.
+ *
+ * @param {import('discord.js').Message} message
+ * @returns {string[]}
+ */
+export function visibleImages(message) {
+  if (!config.chat.visionEnabled) return [];
+
+  return [...message.attachments.values()]
+    .filter((attachment) => IMAGE_TYPES.test(attachment.contentType ?? ''))
+    .slice(0, config.chat.visionMaxImages)
+    .map((attachment) => attachment.url);
+}
+
+/**
+ * What the message replies to. Discord shows this above the message, but it is
+ * not part of `content`, so without it Mai answers "was meinst du?" to every
+ * reply.
+ *
+ * @param {import('discord.js').Message} message
+ * @returns {Promise<{ username: string, content: string } | null>}
+ */
+async function replyContext(message) {
+  if (!message.reference?.messageId) return null;
+
+  try {
+    const referenced = await message.fetchReference();
+    // Her own messages are already in the history she gets.
+    if (referenced.author?.id === message.client.user?.id) return null;
+
+    return {
+      username: referenced.author?.username ?? '',
+      content: referenced.cleanContent ?? referenced.content ?? '',
+    };
+  } catch (error) {
+    logger.debug({ messageId: message.id, err: error }, 'Could not read the replied-to message');
+    return null;
+  }
+}
+
+/**
+ * The thread's title, which is usually the topic being discussed.
+ *
+ * @param {import('discord.js').Message} message
+ * @returns {string | null}
+ */
+const threadTitle = (message) =>
+  (message.channel?.isThread?.() ? message.channel.name : null) ?? null;
+
 /**
  * Whether a direct-message author is allowed to talk to Mai: they must share at
  * least one whitelisted guild with the bot. A DM has no guildId, so the plain
@@ -117,6 +170,10 @@ export async function handleMaiChat(message) {
     userId: message.author.id,
     username: message.author.username,
     content: text,
+    images: visibleImages(message),
+    threadTitle: threadTitle(message),
+    // Tools read guild facts through the client; the model never gets it.
+    client: message.client,
   };
 
   if (!consumeRateLimit(input.userId)) {
@@ -140,6 +197,8 @@ export async function handleMaiChat(message) {
 
       let reply;
       try {
+        // Resolved inside the typing indicator: it costs a REST call.
+        input.replyTo = await replyContext(message);
         reply = await generateChatReply(input);
       } finally {
         clearInterval(typing);

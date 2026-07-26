@@ -105,9 +105,10 @@ function loadContent() {
         tones: Object.freeze(strings(flagged, ['chat', 'flagged', 'tones'])),
       }),
       prompt: Object.freeze({
-        historyHeader: str(prompt, ['chat', 'prompt', 'historyHeader']),
-        newMessageHeader: str(prompt, ['chat', 'prompt', 'newMessageHeader']),
         emptyMessagePlaceholder: str(prompt, ['chat', 'prompt', 'emptyMessagePlaceholder']),
+        imagePlaceholder: str(prompt, ['chat', 'prompt', 'imagePlaceholder']),
+        replyContext: str(prompt, ['chat', 'prompt', 'replyContext']),
+        threadContext: str(prompt, ['chat', 'prompt', 'threadContext']),
         assistantLabel: str(prompt, ['chat', 'prompt', 'assistantLabel']),
         unknownUserLabel: str(prompt, ['chat', 'prompt', 'unknownUserLabel']),
       }),

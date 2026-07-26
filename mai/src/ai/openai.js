@@ -115,23 +115,21 @@ async function postJson(path, body) {
 }
 
 /**
- * Single-shot completion with a system and a user message.
- *
- * @param {{ system: string, user: string }} prompt
- * @returns {Promise<{ text: string, usage?: object }>}
+ * @param {{ messages: object[], tools?: object[] }} request Full message array,
+ *   including the system message; `tools` enables function calling for this call.
+ * @returns {Promise<{ message: object, usage?: object }>} The assistant message
+ *   verbatim — it may carry `tool_calls` instead of `content`, and it has to go
+ *   back into the next request unchanged.
  */
-export async function createChatCompletion({ system, user }) {
+export async function createChatCompletion({ messages, tools }) {
   const result = await postJson('/chat/completions', {
     model: config.openai.chatModel,
-    messages: [
-      { role: 'system', content: system },
-      { role: 'user', content: user },
-    ],
+    messages,
+    ...(tools?.length ? { tools } : {}),
   });
 
-  const text = result?.choices?.[0]?.message?.content;
   return {
-    text: typeof text === 'string' ? text : '',
+    message: result?.choices?.[0]?.message ?? {},
     usage: result?.usage,
   };
 }
