@@ -82,6 +82,8 @@ moderation:
       appealed: '🟪 Einspruch eingelegt'
       stuck: '🟠 Löschung schlägt fehl'
       abandoned: '⚫ Löschung aufgegeben'
+      timeout: '🔇 Timeout verhängt'
+      timeoutFailed: '🟠 Timeout fehlgeschlagen'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -93,6 +95,9 @@ moderation:
       reporter: 'Gemeldet von'
       reason: 'Begründung'
       attempts: 'Versuche'
+      strikes: 'Verstöße'
+      duration: 'Dauer'
+      until: 'Bis'
       resolution: 'Bearbeitet'
       appeal: 'Einspruch'
     jump: 'Zur Nachricht'
@@ -128,6 +133,9 @@ moderation:
     unknownTimestamp: 'Unbekannter Zeitpunkt'
     # {count} messages did not fit; {plural} is '' or 'en'.
     omittedLine: '> … und {count} weitere Nachricht{plural}.'
+    # Added when this sweep also timed the member out. {until} and {relative}
+    # are Discord timestamps — every reader sees their own timezone.
+    timeoutNote: '**Das war Verstoß Nummer {strikes}.** Du bist bis {until} ({relative}) stummgeschaltet.'
     footer: '*Habe ich einen Fehler gemacht? Dann bitte Info an einen Admin.*'
 
 # Replies to slash commands and buttons. {…} placeholders per entry.
@@ -188,6 +196,24 @@ commands:
   forgive:
     done: '*schnurrt widerwillig* Na gut. {count} offene(r) Verstoß/Verstöße von <@{userId}> vergessen.'
     nothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
+    strikesCleared: 'Außerdem {count} Eintrag/Einträge aus der Akte gelöscht.'
+
+  # /mod history — Verstoß-Akte eines Mitglieds auf diesem Server.
+  history:
+    body: |
+      # 📓 Akte von <@{userId}>
+      **Verstöße im Fenster:** {strikes} (letzte {window} Tage)
+      **Gesamt:** {total} — {deleted} gelöscht, {selfDeleted} selbst entfernt
+      **Nächster Verstoß:** {next}
+
+      {entries}
+    line: '• {when} — {action} ({categories})'
+    actions:
+      deleted: 'gelöscht'
+      self_deleted: 'selbst entfernt'
+    nextTimeout: '{minutes} Minuten Timeout'
+    nextNothing: 'kein Timeout'
+    empty: '_keine Einträge_'
 
   # "Mai: melden" — Kontextmenü-Meldung (Rechtsklick auf eine Nachricht).
   report:
@@ -212,6 +238,8 @@ commands:
       **Moderations-Log:** {logChannel}{logChannelSource}
       **Willkommens-Kanal:** {welcomeChannel}{welcomeChannelSource}
       **Schonfrist:** {grace} Minuten{graceSource}
+      **Timeout-Leiter:** {ladder} Minuten pro Verstoß{ladderSource}
+      **Verstoß-Fenster:** {strikeWindow} Tage{strikeWindowSource}
     inherited: '_(Standard)_'
     # No log channel means no moderation log at all …
     unset: '_aus_'

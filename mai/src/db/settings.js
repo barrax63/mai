@@ -8,7 +8,7 @@
  * Reads are single-row primary-key lookups on SQLite, so they happen inline
  * (per flagged message, per queue row) without a cache.
  */
-import { config } from '../config.js';
+import { config, parseTimeoutLadder } from '../config.js';
 import { getDb } from './index.js';
 
 /**
@@ -34,6 +34,26 @@ export const SETTINGS = Object.freeze({
         throw new RangeError('grace must be between 1 and 1440 minutes');
       }
       return minutes;
+    },
+  },
+  'timeout-ladder': {
+    column: 'timeout_ladder',
+    parse: (value) => {
+      if (value === null) return null;
+      // Validated here so a bad ladder is refused at the command, not at the
+      // moment someone earns a timeout.
+      return parseTimeoutLadder(value, 'timeout-ladder').join(',');
+    },
+  },
+  'strike-window': {
+    column: 'strike_window_days',
+    parse: (value) => {
+      if (value === null) return null;
+      const days = Number.parseInt(value, 10);
+      if (!Number.isInteger(days) || days < 1 || days > 365) {
+        throw new RangeError('strike-window must be between 1 and 365 days');
+      }
+      return days;
     },
   },
 });
@@ -64,10 +84,16 @@ export function effectiveSettings(guildId) {
     // Falls back to the guild's system channel in the welcome handler.
     welcomeChannelId: row?.welcome_channel_id ?? null,
     gracePeriodMinutes: row?.grace_period_minutes ?? config.moderation.gracePeriodMinutes,
+    timeoutLadder: row?.timeout_ladder
+      ? row.timeout_ladder.split(',').map(Number)
+      : config.moderation.timeoutLadder,
+    strikeWindowDays: row?.strike_window_days ?? config.moderation.strikeWindowDays,
     inherited: {
       'log-channel': !row?.log_channel_id,
       'welcome-channel': !row?.welcome_channel_id,
       grace: row?.grace_period_minutes === null || row?.grace_period_minutes === undefined,
+      'timeout-ladder': !row?.timeout_ladder,
+      'strike-window': row?.strike_window_days === null || row?.strike_window_days === undefined,
     },
   };
 }

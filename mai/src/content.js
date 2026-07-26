@@ -87,6 +87,8 @@ function loadContent() {
   const configSection = section(commands, 'config');
   const reportSection = section(commands, 'report');
   const spend = section(commands, 'spend');
+  const history = section(commands, 'history');
+  const historyActions = section(history, 'actions');
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
@@ -132,6 +134,8 @@ function loadContent() {
           appealed: str(logTitles, ['moderation', 'log', 'titles', 'appealed']),
           stuck: str(logTitles, ['moderation', 'log', 'titles', 'stuck']),
           abandoned: str(logTitles, ['moderation', 'log', 'titles', 'abandoned']),
+          timeout: str(logTitles, ['moderation', 'log', 'titles', 'timeout']),
+          timeoutFailed: str(logTitles, ['moderation', 'log', 'titles', 'timeoutFailed']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -144,6 +148,9 @@ function loadContent() {
           reporter: str(logFields, ['moderation', 'log', 'fields', 'reporter']),
           reason: str(logFields, ['moderation', 'log', 'fields', 'reason']),
           attempts: str(logFields, ['moderation', 'log', 'fields', 'attempts']),
+          strikes: str(logFields, ['moderation', 'log', 'fields', 'strikes']),
+          duration: str(logFields, ['moderation', 'log', 'fields', 'duration']),
+          until: str(logFields, ['moderation', 'log', 'fields', 'until']),
           resolution: str(logFields, ['moderation', 'log', 'fields', 'resolution']),
           appeal: str(logFields, ['moderation', 'log', 'fields', 'appeal']),
         }),
@@ -174,6 +181,7 @@ function loadContent() {
         attachmentMessage: str(warningDm, ['moderation', 'warningDm', 'attachmentMessage']),
         unknownTimestamp: str(warningDm, ['moderation', 'warningDm', 'unknownTimestamp']),
         omittedLine: str(warningDm, ['moderation', 'warningDm', 'omittedLine']),
+        timeoutNote: str(warningDm, ['moderation', 'warningDm', 'timeoutNote']),
         footer: str(warningDm, ['moderation', 'warningDm', 'footer']),
       }),
     }),
@@ -202,6 +210,18 @@ function loadContent() {
       forgive: Object.freeze({
         done: str(forgive, ['commands', 'forgive', 'done']),
         nothing: str(forgive, ['commands', 'forgive', 'nothing']),
+        strikesCleared: str(forgive, ['commands', 'forgive', 'strikesCleared']),
+      }),
+      history: Object.freeze({
+        body: str(history, ['commands', 'history', 'body']),
+        line: str(history, ['commands', 'history', 'line']),
+        actions: Object.freeze({
+          deleted: str(historyActions, ['commands', 'history', 'actions', 'deleted']),
+          self_deleted: str(historyActions, ['commands', 'history', 'actions', 'self_deleted']),
+        }),
+        nextTimeout: str(history, ['commands', 'history', 'nextTimeout']),
+        nextNothing: str(history, ['commands', 'history', 'nextNothing']),
+        empty: str(history, ['commands', 'history', 'empty']),
       }),
       spend: Object.freeze({
         body: str(spend, ['commands', 'spend', 'body']),

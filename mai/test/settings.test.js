@@ -21,11 +21,36 @@ test('a guild without a row inherits every default', () => {
   assert.equal(settings.logChannelId, null, 'no mod log without an explicit channel');
   assert.equal(settings.welcomeChannelId, null);
   assert.equal(settings.gracePeriodMinutes, config.moderation.gracePeriodMinutes);
+  assert.deepEqual(settings.timeoutLadder, config.moderation.timeoutLadder);
+  assert.equal(settings.strikeWindowDays, config.moderation.strikeWindowDays);
   assert.deepEqual(settings.inherited, {
     'log-channel': true,
     'welcome-channel': true,
     grace: true,
+    'timeout-ladder': true,
+    'strike-window': true,
   });
+});
+
+test('the escalation ladder is validated and stored per guild', () => {
+  const id = guild();
+
+  assert.deepEqual(updateSettings(id, { 'timeout-ladder': '0, 5, 30' }).timeoutLadder, [0, 5, 30]);
+  assert.equal(effectiveSettings(id).inherited['timeout-ladder'], false);
+
+  for (const bad of ['', 'zehn', '5,-1', `5,${29 * 24 * 60}`]) {
+    assert.throws(() => updateSettings(id, { 'timeout-ladder': bad }), RangeError, `accepted ${bad}`);
+  }
+  assert.deepEqual(effectiveSettings(id).timeoutLadder, [0, 5, 30], 'a bad ladder changed nothing');
+});
+
+test('the strike window is validated', () => {
+  const id = guild();
+  assert.equal(updateSettings(id, { 'strike-window': 7 }).strikeWindowDays, 7);
+
+  for (const bad of [0, 366, 'lang']) {
+    assert.throws(() => updateSettings(id, { 'strike-window': bad }), RangeError, `accepted ${bad}`);
+  }
 });
 
 test('a missing guild id (DM) still yields usable defaults', () => {
@@ -91,13 +116,21 @@ test('reset clears a single setting back to inherited', () => {
 
 test('reset without a name clears everything', () => {
   const id = guild();
-  updateSettings(id, { 'log-channel': '4711', 'welcome-channel': '4712', grace: 5 });
+  updateSettings(id, {
+    'log-channel': '4711',
+    'welcome-channel': '4712',
+    grace: 5,
+    'timeout-ladder': '0,15',
+    'strike-window': 14,
+  });
   const settings = resetSettings(id);
 
   assert.deepEqual(settings.inherited, {
     'log-channel': true,
     'welcome-channel': true,
     grace: true,
+    'timeout-ladder': true,
+    'strike-window': true,
   });
 });
 

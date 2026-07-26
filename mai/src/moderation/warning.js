@@ -79,9 +79,11 @@ export function groupByUser(records) {
 
 /**
  * @param {{ violations: { content: string, timestamp: Date | string | null }[], categories: string[] }} group
+ * @param {{ applied?: boolean, until?: Date | null, strikes?: number } | undefined} [timeout]
+ *   Escalation outcome, when this sweep also timed the member out.
  * @returns {string} DM body, at most `warningDm.maxLength` characters.
  */
-export function buildWarning(group) {
+export function buildWarning(group, timeout) {
   const dm = content.moderation.warningDm;
   const categoryText = group.categories.length
     ? group.categories.join(', ')
@@ -96,7 +98,17 @@ export function buildWarning(group) {
     '',
     dm.messagesLabel,
   ].join('\n');
-  const footer = `\n\n${dm.footer}`;
+
+  // Discord renders the timestamp in the reader's own locale and timezone, so
+  // the note needs no formatting of its own.
+  const timeoutNote = timeout?.applied && timeout.until
+    ? `\n\n${fill(dm.timeoutNote, {
+        strikes: timeout.strikes ?? 0,
+        until: `<t:${Math.floor(new Date(timeout.until).getTime() / 1000)}:f>`,
+        relative: `<t:${Math.floor(new Date(timeout.until).getTime() / 1000)}:R>`,
+      })}`
+    : '';
+  const footer = `${timeoutNote}\n\n${dm.footer}`;
 
   const lines = [];
   let omitted = 0;

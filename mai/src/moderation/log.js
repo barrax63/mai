@@ -24,6 +24,8 @@ export const LOG_REPORTED = 'reported';
 export const LOG_APPEALED = 'appealed';
 export const LOG_STUCK = 'stuck';
 export const LOG_ABANDONED = 'abandoned';
+export const LOG_TIMEOUT = 'timeout';
+export const LOG_TIMEOUT_FAILED = 'timeoutFailed';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
@@ -34,6 +36,8 @@ const COLORS = {
   [LOG_APPEALED]: 0x9b59b6,
   [LOG_STUCK]: 0xe67e22,
   [LOG_ABANDONED]: 0x7f8c8d,
+  [LOG_TIMEOUT]: 0xc0392b,
+  [LOG_TIMEOUT_FAILED]: 0xe67e22,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -102,6 +106,21 @@ function fieldsFor(event) {
 
     case LOG_APPEALED:
       return [user, { name: labels.appeal, value: event.reason ?? none, inline: false }];
+
+    case LOG_TIMEOUT:
+    case LOG_TIMEOUT_FAILED:
+      return [
+        user,
+        { name: labels.strikes, value: String(event.strikes ?? 0), inline: true },
+        { name: labels.duration, value: `${event.minutes} min`, inline: true },
+        ...(event.until
+          ? [{ name: labels.until, value: `<t:${unixSeconds(event.until)}:f>`, inline: true }]
+          : []),
+        { name: labels.categories, value: categories, inline: true },
+        ...(event.reason
+          ? [{ name: labels.reason, value: event.reason, inline: false }]
+          : []),
+      ];
 
     case LOG_STUCK:
     case LOG_ABANDONED:

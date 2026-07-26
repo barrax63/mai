@@ -11,7 +11,9 @@
  */
 import { config } from '../config.js';
 import { openViolations } from '../db/queue.js';
+import { strikeCount } from '../db/violations.js';
 import { logger } from '../logger.js';
+import { strikeWindowStart } from '../moderation/escalation.js';
 
 const NO_ARGUMENTS = { type: 'object', properties: {}, additionalProperties: false };
 
@@ -68,14 +70,20 @@ const handlers = {
   /**
    * @param {{ userId: string }} context
    */
-  get_my_violations({ userId }) {
+  get_my_violations({ userId, guildId }) {
     const { count, categories, nextDueAt } = openViolations(userId);
+
     return {
       open_violations: count,
       categories,
       next_deletion_at: nextDueAt ?? null,
       next_deletion_local: localTime(nextDueAt),
       timezone: config.timezone,
+      // Enforced strikes on this server inside the escalation window — what
+      // decides whether the next one comes with a timeout.
+      ...(guildId
+        ? { strikes_in_window: strikeCount(guildId, userId, strikeWindowStart(guildId)) }
+        : {}),
     };
   },
 

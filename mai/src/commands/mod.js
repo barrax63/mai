@@ -12,6 +12,13 @@ import { stats as historyStats } from '../db/history.js';
 import { depth, forgiveUser } from '../db/queue.js';
 import { effectiveSettings, resetSettings, SETTINGS, updateSettings } from '../db/settings.js';
 import { breakdownFor, budgetState, dayKey, monthKey, totalsFor } from '../db/usage.js';
+import {
+  clearForUser,
+  historyFor,
+  strikeCount,
+  totalsFor as violationTotals,
+} from '../db/violations.js';
+import { ladderFor, strikeWindowStart } from '../moderation/escalation.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
@@ -116,6 +123,53 @@ function spendResponse() {
 }
 
 /**
+ * `/mod history <user>` — the strike record this guild has on a member, and
+ * what the next enforced deletion would cost them.
+ *
+ * @param {object} interaction
+ */
+function historyResponse(interaction) {
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+  const userId = String(optionValue(resolveSubcommand(interaction).options, 'user') ?? '');
+  if (!userId) return ephemeralResponse(content.commands.error);
+
+  const guildId = interaction.guild_id;
+  const strikes = strikeCount(guildId, userId, strikeWindowStart(guildId));
+  const totals = violationTotals(guildId, userId);
+  const entries = historyFor(guildId, userId, 10);
+
+  const ladder = ladderFor(guildId);
+  // What the *next* enforced deletion would trigger.
+  const next = ladder[Math.min(strikes + 1, ladder.length) - 1] ?? 0;
+
+  const lines = entries
+    .map((entry) =>
+      fill(content.commands.history.line, {
+        when: `<t:${Math.floor(new Date(entry.createdAt).getTime() / 1000)}:d>`,
+        action: content.commands.history.actions[entry.action] ?? entry.action,
+        categories: entry.categories.join(', ') || content.moderation.log.none,
+      }),
+    )
+    .join('\n');
+
+  return ephemeralResponse(
+    fill(content.commands.history.body, {
+      userId,
+      strikes,
+      window: effectiveSettings(guildId).strikeWindowDays,
+      total: totals.total,
+      deleted: totals.deleted,
+      selfDeleted: totals.selfDeleted,
+      next: next > 0
+        ? fill(content.commands.history.nextTimeout, { minutes: next })
+        : content.commands.history.nextNothing,
+      entries: lines || content.commands.history.empty,
+    }),
+  );
+}
+
+/**
  * Best-effort cleanup of the scold replies belonging to forgiven rows. Runs
  * detached: the interaction must be answered within Discord's 3 s window.
  *
@@ -142,15 +196,21 @@ function cleanUpScolds(rows) {
  * @param {object} interaction
  */
 function forgiveResponse(interaction) {
-  const userId = optionValue(resolveSubcommand(interaction).options, 'user');
+  const { options } = resolveSubcommand(interaction);
+  const userId = optionValue(options, 'user');
   if (!userId) return ephemeralResponse(content.commands.error);
 
   const rows = forgiveUser(String(userId));
   cleanUpScolds(rows);
 
+  // Optional second step: also wipe the strike record, so the escalation ladder
+  // starts from zero for this member in this guild.
+  const clearStrikes = optionValue(options, 'strikes') === true && interaction.guild_id;
+  const strikesCleared = clearStrikes ? clearForUser(interaction.guild_id, String(userId)) : 0;
+
   const actorId = interaction.member?.user?.id;
   logger.info(
-    { userId, forgiven: rows.length, byUserId: actorId },
+    { userId, forgiven: rows.length, strikesCleared, byUserId: actorId },
     'Forgave open violations',
   );
 
@@ -165,10 +225,14 @@ function forgiveResponse(interaction) {
     });
   }
 
-  const template = rows.length > 0
+  const template = rows.length > 0 || strikesCleared > 0
     ? content.commands.forgive.done
     : content.commands.forgive.nothing;
-  return ephemeralResponse(fill(template, { count: rows.length, userId }));
+  const strikeNote = strikesCleared > 0
+    ? ` ${fill(content.commands.forgive.strikesCleared, { count: strikesCleared })}`
+    : '';
+
+  return ephemeralResponse(`${fill(template, { count: rows.length, userId })}${strikeNote}`);
 }
 
 /**
@@ -189,6 +253,10 @@ function configView(guildId) {
       logChannelSource: inherited('log-channel'),
       welcomeChannel: settings.welcomeChannelId ? `<#${settings.welcomeChannelId}>` : systemChannel,
       welcomeChannelSource: inherited('welcome-channel'),
+      ladder: settings.timeoutLadder.join(', '),
+      ladderSource: inherited('timeout-ladder'),
+      strikeWindow: settings.strikeWindowDays,
+      strikeWindowSource: inherited('strike-window'),
       grace: settings.gracePeriodMinutes,
       graceSource: inherited('grace'),
     }),
@@ -293,6 +361,24 @@ export const mod = {
             type: 6, // USER
             required: true,
           },
+          {
+            name: 'strikes',
+            description: 'Also wipe their strike record, resetting the escalation ladder',
+            type: 5, // BOOLEAN
+          },
+        ],
+      },
+      {
+        name: 'history',
+        description: 'A member’s strike record and what the next violation would cost',
+        type: 1, // SUB_COMMAND
+        options: [
+          {
+            name: 'user',
+            description: 'The member to look up',
+            type: 6, // USER
+            required: true,
+          },
         ],
       },
       {
@@ -334,6 +420,18 @@ export const mod = {
                 min_value: 1,
                 max_value: 1440,
               },
+              {
+                name: 'timeout-ladder',
+                description: 'Timeout minutes per strike, e.g. 0,10,60,1440 (last step repeats)',
+                type: 3, // STRING
+              },
+              {
+                name: 'strike-window',
+                description: 'Days a strike counts towards escalation (1-365)',
+                type: 4, // INTEGER
+                min_value: 1,
+                max_value: 365,
+              },
             ],
           },
           {
@@ -370,6 +468,7 @@ export const mod = {
     const { group, name } = resolveSubcommand(interaction);
     if (group === 'config') return configResponse(interaction);
     if (name === 'forgive') return forgiveResponse(interaction);
+    if (name === 'history') return historyResponse(interaction);
     if (name === 'spend') return spendResponse();
     return statusResponse();
   },

@@ -38,6 +38,41 @@ const int = (name, fallback, { min = 0 } = {}) => {
   return value;
 };
 
+/** Discord refuses a timeout longer than 28 days. */
+export const MAX_TIMEOUT_MINUTES = 28 * 24 * 60;
+
+/**
+ * Parses a comma-separated escalation ladder ("0,10,60,1440") into minutes per
+ * strike. Exported so `/mod config set timeout-ladder` validates identically.
+ *
+ * @param {string} raw
+ * @param {string} [label] Used in the error message.
+ * @returns {number[]}
+ */
+export function parseTimeoutLadder(raw, label = 'timeout ladder') {
+  const steps = String(raw ?? '')
+    .split(',')
+    .map((step) => step.trim())
+    .filter(Boolean)
+    .map((step) => Number.parseInt(step, 10));
+
+  if (steps.length === 0 || steps.some((step) => !Number.isInteger(step))) {
+    throw new RangeError(`${label} must be comma-separated whole minutes, e.g. 0,10,60,1440`);
+  }
+  if (steps.some((step) => step < 0 || step > MAX_TIMEOUT_MINUTES)) {
+    throw new RangeError(`${label} steps must be between 0 and ${MAX_TIMEOUT_MINUTES} minutes`);
+  }
+  return steps;
+}
+
+const ladder = (name, fallback) => {
+  try {
+    return parseTimeoutLadder(optional(name, fallback), name);
+  } catch (error) {
+    throw new Error(`Environment variable ${error.message}`);
+  }
+};
+
 const moderationEnabled = bool('MODERATION_ENABLED', 'true');
 const chatEnabled = bool('CHAT_ENABLED', 'true');
 const needsOpenAi = moderationEnabled || chatEnabled;
@@ -104,6 +139,14 @@ export const config = Object.freeze({
     tickMs: int('MODERATION_TICK_MS', '60000', { min: 1000 }),
     // Also send image attachments to the moderation endpoint (multimodal).
     classifyImages: bool('MODERATION_CLASSIFY_IMAGES', 'false'),
+    // Timeout in minutes per strike, 1-based; the last entry repeats. 0 = no
+    // timeout for that strike, so the default lets a first offence pass with
+    // just the deletion. Discord caps a timeout at 28 days (40320 minutes).
+    timeoutLadder: ladder('MODERATION_TIMEOUT_LADDER', '0,10,60,1440'),
+    // How far back strikes count towards escalation.
+    strikeWindowDays: int('MODERATION_STRIKE_WINDOW_DAYS', '30', { min: 1 }),
+    // How long the strike record is kept at all.
+    violationRetentionDays: int('VIOLATION_RETENTION_DAYS', '90', { min: 1 }),
   },
   chat: {
     enabled: chatEnabled,

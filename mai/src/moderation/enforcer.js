@@ -15,13 +15,22 @@
 import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
 import { bumpAttempts, dueRows, remove } from '../db/queue.js';
+import {
+  ACTION_DELETED,
+  ACTION_SELF_DELETED,
+  pruneOlderThan as pruneViolations,
+  recordViolation,
+} from '../db/violations.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
+import { applyTimeout, decideEscalation } from './escalation.js';
 import {
   LOG_ABANDONED,
   LOG_DELETED,
   LOG_SELF_DELETED,
   LOG_STUCK,
+  LOG_TIMEOUT,
+  LOG_TIMEOUT_FAILED,
   postModerationLog,
 } from './log.js';
 import { buildWarning, groupByUser } from './warning.js';
@@ -133,6 +142,14 @@ async function processRow(client, row) {
     if (error.code === UNKNOWN_MESSAGE || error.code === UNKNOWN_CHANNEL) {
       // Self-deleted (or the whole channel is gone): clean up and stay quiet.
       await deleteMessageById(client, row.channelId, row.scoldMessageId);
+      // On the record, but deliberately not a strike: the grace period worked.
+      recordViolation({
+        guildId: row.guildId,
+        userId: row.userId,
+        messageId: row.messageId,
+        categories: row.categories,
+        action: ACTION_SELF_DELETED,
+      });
       logger.info(
         { messageId: row.messageId, userId: row.userId },
         'Flagged message was removed by the author, no warning sent',
@@ -180,6 +197,14 @@ async function processRow(client, row) {
 
   await deleteMessageById(client, row.channelId, row.scoldMessageId);
 
+  recordViolation({
+    guildId: row.guildId,
+    userId: row.userId,
+    messageId: row.messageId,
+    categories: row.categories,
+    action: ACTION_DELETED,
+  });
+
   logger.info(
     { messageId: row.messageId, guildId: row.guildId, userId: row.userId, categories: row.categories },
     'Deleted flagged message after grace period',
@@ -198,11 +223,62 @@ async function processRow(client, row) {
 }
 
 /**
+ * Escalation runs once per member and guild per tick, not once per deleted
+ * message: three messages removed in one sweep is one incident, not three
+ * timeouts.
+ *
+ * @param {import('discord.js').Client} client
+ * @param {{ userId: string, guildId: string, categories: string[] }[]} enforced
+ * @returns {Promise<Map<string, { minutes: number, until: Date | null, applied: boolean }>>}
+ *   Keyed by `guildId:userId`, for the warning DM to mention.
+ */
+async function escalate(client, enforced) {
+  const members = new Map();
+  for (const record of enforced) {
+    members.set(`${record.guildId}:${record.userId}`, record);
+  }
+
+  const results = new Map();
+
+  for (const [key, record] of members) {
+    const { strikes, minutes } = decideEscalation(record.guildId, record.userId);
+    if (minutes <= 0) {
+      logger.debug({ ...record, strikes }, 'No timeout for this strike count');
+      continue;
+    }
+
+    const reason = `Mai: ${strikes}. Verstoß (${record.categories.join(', ') || 'Regelverstoß'})`;
+    const outcome = await applyTimeout(client, {
+      guildId: record.guildId,
+      userId: record.userId,
+      minutes,
+      reason,
+    });
+
+    results.set(key, { ...outcome, minutes, strikes });
+
+    await postModerationLog(client, {
+      type: outcome.applied ? LOG_TIMEOUT : LOG_TIMEOUT_FAILED,
+      guildId: record.guildId,
+      userId: record.userId,
+      minutes,
+      strikes,
+      until: outcome.until?.toISOString() ?? null,
+      reason: outcome.error ?? null,
+      categories: record.categories,
+    });
+  }
+
+  return results;
+}
+
+/**
  * @param {import('discord.js').Client} client
  * @param {{ userId: string, guildId: string, violations: object[], categories: string[] }} group
+ * @param {{ minutes: number, until: Date | null, applied: boolean } | undefined} timeout
  */
-async function warnAuthor(client, group) {
-  const body = buildWarning(group);
+async function warnAuthor(client, group, timeout) {
+  const body = buildWarning(group, timeout);
   try {
     const user = await client.users.fetch(group.userId);
     await user.send({
@@ -246,20 +322,33 @@ export async function runTick(client) {
     }
   }
 
+  // Escalate before the DMs go out, so the warning can name the timeout.
+  const timeouts = await escalate(client, enforced);
+
   for (const group of groupByUser(enforced)) {
-    await warnAuthor(client, group);
+    await warnAuthor(client, group, timeouts.get(`${group.guildId}:${group.userId}`));
   }
 
   const cutoff = new Date(now.getTime() - config.chat.historyMaxAgeHours * 3_600_000).toISOString();
   const pruned = pruneOlderThan(cutoff);
+  const violationCutoff = new Date(
+    now.getTime() - config.moderation.violationRetentionDays * 86_400_000,
+  ).toISOString();
+  const violationsPruned = pruneViolations(violationCutoff);
 
   status.lastTickAt = now.toISOString();
   status.lastTickMs = Date.now() - startedAt;
   status.lastError = null;
 
-  if (enforced.length > 0 || pruned > 0) {
+  if (enforced.length > 0 || pruned > 0 || violationsPruned > 0) {
     logger.info(
-      { enforced: enforced.length, historyRowsPruned: pruned, ms: status.lastTickMs },
+      {
+        enforced: enforced.length,
+        timeouts: timeouts.size,
+        historyRowsPruned: pruned,
+        violationsPruned,
+        ms: status.lastTickMs,
+      },
       'Moderation tick finished',
     );
   }

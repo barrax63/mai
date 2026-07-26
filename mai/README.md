@@ -35,6 +35,7 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 - **Guild allowlist** via `DISCORD_GUILD_IDS` (comma-separated IDs; empty = all guilds). This is the **whole-bot** gate, enforced once in `onMessageCreate` and in the interactions endpoint — in an un-listed guild Mai does nothing (no moderation, no chat, no reactions, no welcome, no slash-command response). Direct messages are never moderated (a bot cannot delete a DM) and are allowed only from users who share a listed guild with the bot (see Chat below).
 - **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
 - **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the message is looked up. Gone (author deleted it) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, the row dropped, and the author gets one DM per tick listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient) keeps the row for the next tick.
+- **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside `MODERATION_STRIKE_WINDOW_DAYS` picks a Discord timeout from the ladder (`MODERATION_TIMEOUT_LADDER`, default `0,10,60,1440` — nothing, 10 min, 1 h, then 24 h repeating). Escalation runs **once per member per tick**: three messages removed in one sweep is one incident. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design — Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped.
 - **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely.
 - **Image attachments** are only checked when `MODERATION_CLASSIFY_IMAGES=true`. While it is off, a message carrying *only* an image is not classified at all — there is no text to look at — so posting an image is a way around moderation. With it on, image URLs are sent to the moderation endpoint alongside any text (Discord's signed CDN links are fetched by OpenAI; nothing is downloaded or stored by Mai).
 - The queue holds **metadata only** — message text is never persisted. The content quoted in the warning DM is read from Discord at enforcement time.
@@ -63,9 +64,10 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 | `/mai ask <frage>` | everyone | A public question to Mai, answered in character. Stateless: no channel history in the prompt, nothing written to her memory. Subject to the same rate limit as chat |
 | `/mai forget` | everyone | Wipes what Mai remembers about you, behind a confirmation button. Removes your own turns everywhere plus the full history of your DM channel with her |
 | `/mod status` | Manage Messages | Open violations, chat-memory size, last moderation tick, configured models, uptime (ephemeral) |
-| `/mod forgive <user>` | Manage Messages | Drops that member's open violations and cleans up the scold replies — Mai calms down immediately |
+| `/mod forgive <user> [strikes]` | Manage Messages | Drops that member's open violations and cleans up the scold replies; `strikes:true` also wipes their strike record, resetting the ladder |
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
 | `/mod config set [log-channel] [welcome-channel] [grace]` | Manage Messages | Sets any subset for this server |
+| `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
 | `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month, per purpose and model, against the budget |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
 | `Mai: melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
@@ -108,6 +110,8 @@ inherited.
 | `log-channel` | none | Target channel for the moderation log. Unset = no log for this guild |
 | `welcome-channel` | the guild's system channel | Where new members are greeted |
 | `grace` | `MODERATION_GRACE_PERIOD_MINUTES` | Minutes an author has to delete a flagged message (1–1440) |
+| `timeout-ladder` | `MODERATION_TIMEOUT_LADDER` | Timeout minutes per strike, e.g. `0,10,60,1440`; the last step repeats |
+| `strike-window` | `MODERATION_STRIKE_WINDOW_DAYS` | Days an enforced deletion counts towards escalation (1–365) |
 
 Adding a setting means: a column in a new migration, an entry in the `SETTINGS`
 map (with its parse/validate rule), and an option on `/mod config set`.
@@ -191,6 +195,7 @@ Two tables:
 | `chat_history` | Mai's short-term memory; `content`/`username` encrypted | `CHAT_HISTORY_MAX_AGE_HOURS` |
 | `guild_settings` | Per-guild overrides of the process defaults | until changed |
 | `usage_daily` | Call and token counters per day, guild, model and purpose | kept |
+| `violations` | Strike record: ids, category slugs, action, timestamp — no content | `VIOLATION_RETENTION_DAYS` |
 
 ## Operations
 
@@ -231,7 +236,7 @@ docker run --rm -v mai_mai-data:/data -v "$PWD:/backup" alpine tar czf /backup/m
    - *Bot* → enable **Server Members Intent** (privileged) **only if** you set `DISCORD_WELCOME_ENABLED=true` — the flag makes the bot request the `GuildMembers` intent, and login fails when the portal toggle is off.
    - Direct-message replies need **no** portal toggle: the non-privileged `DirectMessages` intent is requested in code. Users can DM Mai once they share a server with her (subject to their Discord privacy settings).
    - Copy *Application ID*, *Public Key* (General Information) and *Bot Token* (Bot) into `.env`.
-   - Invite the bot with the `bot` + `applications.commands` scopes. Permissions needed: Read Messages, Send Messages, Add Reactions, Manage Messages (deleting flagged messages).
+   - Invite the bot with the `bot` + `applications.commands` scopes. Permissions needed: Read Messages, Send Messages, Embed Links (moderation log), Add Reactions, Manage Messages (deleting flagged messages), and **Moderate Members** for the escalation timeouts. Mai's role must sit above the members she is expected to time out — Discord refuses otherwise, and admins and the owner can never be timed out.
 2. **Secrets**: `OPENAI_API_KEY`, and `CHAT_HISTORY_KEY` from `openssl rand -base64 32`.
 3. **Cloudflare tunnel**: route your public hostname to `http://mai:3000`.
 4. **Interactions Endpoint URL** (General Information): set to `https://<your-hostname>/interactions`. Discord sends a signed PING to verify — the stack must be running first.
