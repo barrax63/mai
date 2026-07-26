@@ -87,6 +87,36 @@ export function pruneOlderThan(cutoffIso) {
 }
 
 /**
+ * Wipes what Mai remembers about one user (`/mai forget`).
+ *
+ * In a DM channel the whole conversation belongs to that user, so every row of
+ * those channels goes — including Mai's own answers, which may quote them. In a
+ * guild channel only their own turns are removed: Mai's replies were posted
+ * publicly in Discord anyway, and other members' turns are not theirs to delete.
+ *
+ * @param {string} userId
+ * @returns {number} Rows removed.
+ */
+export function deleteForUser(userId) {
+  const db = getDb();
+
+  db.exec('BEGIN');
+  try {
+    const dmChannels = db
+      .prepare('DELETE FROM chat_history WHERE channel_id IN (SELECT channel_id FROM chat_history WHERE user_id = ? AND guild_id IS NULL)')
+      .run(userId).changes;
+    const ownTurns = db
+      .prepare('DELETE FROM chat_history WHERE user_id = ?')
+      .run(userId).changes;
+    db.exec('COMMIT');
+    return dmChannels + ownTurns;
+  } catch (error) {
+    db.exec('ROLLBACK');
+    throw error;
+  }
+}
+
+/**
  * @returns {{ rows: number, channels: number }}
  */
 export function stats() {

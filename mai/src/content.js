@@ -76,6 +76,10 @@ function loadContent() {
   const moderation = section(parsed, 'moderation');
   const warningDm = section(moderation, 'warningDm');
   const commands = section(parsed, 'commands');
+  const ask = section(commands, 'ask');
+  const forget = section(commands, 'forget');
+  const status = section(commands, 'status');
+  const forgive = section(commands, 'forgive');
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
@@ -126,12 +130,31 @@ function loadContent() {
       }),
     }),
     commands: Object.freeze({
-      status: str(commands, ['commands', 'status']),
-      statusNever: str(commands, ['commands', 'statusNever']),
-      forgiven: str(commands, ['commands', 'forgiven']),
-      forgivenNothing: str(commands, ['commands', 'forgivenNothing']),
       forbidden: str(commands, ['commands', 'forbidden']),
       notActive: str(commands, ['commands', 'notActive']),
+      error: str(commands, ['commands', 'error']),
+      expired: str(commands, ['commands', 'expired']),
+      ask: Object.freeze({
+        answer: str(ask, ['commands', 'ask', 'answer']),
+        busy: str(ask, ['commands', 'ask', 'busy']),
+        empty: str(ask, ['commands', 'ask', 'empty']),
+        disabled: str(ask, ['commands', 'ask', 'disabled']),
+      }),
+      forget: Object.freeze({
+        confirm: str(forget, ['commands', 'forget', 'confirm']),
+        confirmButton: str(forget, ['commands', 'forget', 'confirmButton']),
+        cancelButton: str(forget, ['commands', 'forget', 'cancelButton']),
+        done: str(forget, ['commands', 'forget', 'done']),
+        cancelled: str(forget, ['commands', 'forget', 'cancelled']),
+      }),
+      status: Object.freeze({
+        body: str(status, ['commands', 'status', 'body']),
+        never: str(status, ['commands', 'status', 'never']),
+      }),
+      forgive: Object.freeze({
+        done: str(forgive, ['commands', 'forgive', 'done']),
+        nothing: str(forgive, ['commands', 'forgive', 'nothing']),
+      }),
     }),
     welcome: Object.freeze({
       lines: Object.freeze(strings(welcome, ['welcome', 'lines'])),

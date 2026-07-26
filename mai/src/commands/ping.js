@@ -1,4 +1,4 @@
-import { InteractionResponseType } from 'discord-interactions';
+import { ephemeralResponse } from '../interactions/respond.js';
 
 /**
  * Minimal example command. Serves as the template for new commands.
@@ -15,11 +15,6 @@ export const ping = {
    * @returns {object} Interaction response body.
    */
   execute(interaction) {
-    return {
-      type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-      data: {
-        content: `Pong! (interaction ${interaction.id})`,
-      },
-    };
+    return ephemeralResponse(`Pong! (interaction ${interaction.id})`);
   },
 };

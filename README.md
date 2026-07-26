@@ -25,7 +25,7 @@ Every new message in an allowlisted guild (`DISCORD_GUILD_IDS`) is classified. M
 - **Flagged** → warning reaction, a scold reply, and a queue row with a grace period.
 - **After the grace period** → messages the author did not delete themselves are removed and the author gets a warning DM. The scold reply is cleaned up either way.
 
-Operators can inspect and override this with `/mai status` and `/mai forgive <user>`.
+Operators can inspect and override this with `/mod status` and `/mod forgive <user>`. Members can talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
 
 ## Mai — the bot persona
 

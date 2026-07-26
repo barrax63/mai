@@ -5,22 +5,18 @@
  * Exposes:
  *   POST /interactions  Discord interactions endpoint (signature-verified),
  *                       reached from outside through the cloudflared tunnel.
+ *                       Dispatch lives in interactions/router.js.
  *   GET  /healthz       Liveness probe for Docker healthchecks.
  *   GET  /              Static landing page for visitors hitting the public
  *                       tunnel URL in a browser (served from ./public).
  */
 import { fileURLToPath } from 'node:url';
 import express from 'express';
-import {
-  InteractionResponseType,
-  InteractionType,
-  verifyKeyMiddleware,
-} from 'discord-interactions';
-import { config, isGuildAllowed } from '../config.js';
-import { content } from '../content.js';
+import { verifyKeyMiddleware } from 'discord-interactions';
+import { config } from '../config.js';
 import { logger } from '../logger.js';
-import { commandHandlers } from '../commands/index.js';
 import { pingDatabase } from '../db/index.js';
+import { routeInteraction } from '../interactions/router.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
 
 export function createServer() {
@@ -75,51 +71,22 @@ export function createServer() {
     '/interactions',
     verifyKeyMiddleware(config.discord.publicKey),
     async (req, res) => {
-      const interaction = req.body;
+      // All routing lives in interactions/router.js; `send` is called exactly
+      // once and may be followed by slower work that edits the response.
+      const send = (body, status = 200) => {
+        if (res.headersSent) {
+          logger.error({ status }, 'Interaction response sent twice');
+          return;
+        }
+        res.status(status).json(body);
+      };
 
-      if (interaction.type === InteractionType.PING) {
-        return res.send({ type: InteractionResponseType.PONG });
+      try {
+        await routeInteraction(req.body, send);
+      } catch (error) {
+        logger.error({ err: error }, 'Interaction routing failed');
+        send({ error: 'internal error' }, 500);
       }
-
-      if (interaction.type === InteractionType.APPLICATION_COMMAND) {
-        const name = interaction.data?.name;
-
-        // Guild allowlist (DISCORD_GUILD_IDS). Raw interactions use snake_case;
-        // guild_id is absent for DM commands, which bypass the allowlist like
-        // DM chat does. An un-whitelisted guild gets an ephemeral refusal.
-        if (!isGuildAllowed(interaction.guild_id)) {
-          logger.debug(
-            { command: name, guildId: interaction.guild_id },
-            'Refusing command: guild not in allowlist',
-          );
-          return res.send({
-            type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-            data: {
-              content: content.commands.notActive,
-              flags: 64, // EPHEMERAL
-            },
-          });
-        }
-
-        const handler = commandHandlers.get(name);
-
-        if (!handler) {
-          logger.warn({ command: name }, 'Received unknown command');
-          return res.status(400).json({ error: 'unknown command' });
-        }
-
-        try {
-          // Handlers may be async (database access, Discord REST) — Discord
-          // still expects the response within ~3 s.
-          return res.send(await handler(interaction));
-        } catch (error) {
-          logger.error({ err: error, command: name }, 'Command handler failed');
-          return res.status(500).json({ error: 'internal error' });
-        }
-      }
-
-      logger.warn({ type: interaction.type }, 'Unhandled interaction type');
-      return res.status(400).json({ error: 'unhandled interaction type' });
     },
   );
 

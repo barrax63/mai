@@ -56,9 +56,55 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 
 | Command | Who | Effect |
 |---------|-----|--------|
-| `/ping` | everyone | Liveness check |
-| `/mai status` | Manage Messages | Open violations, chat-memory size, last moderation tick, configured models, uptime (ephemeral) |
-| `/mai forgive <user>` | Manage Messages | Drops that member's open violations and cleans up the scold replies — Mai calms down immediately |
+| `/ping` | everyone | Liveness check (ephemeral) |
+| `/mai ask <frage>` | everyone | A public question to Mai, answered in character. Stateless: no channel history in the prompt, nothing written to her memory. Subject to the same rate limit as chat |
+| `/mai forget` | everyone | Wipes what Mai remembers about you, behind a confirmation button. Removes your own turns everywhere plus the full history of your DM channel with her |
+| `/mod status` | Manage Messages | Open violations, chat-memory size, last moderation tick, configured models, uptime (ephemeral) |
+| `/mod forgive <user>` | Manage Messages | Drops that member's open violations and cleans up the scold replies — Mai calms down immediately |
+
+## Interaction handling
+
+Dispatch for everything arriving at `POST /interactions` lives in
+[src/interactions/router.js](src/interactions/router.js): pings, commands,
+autocomplete, component clicks (buttons, select menus) and modal submits. The
+guild allowlist is enforced there, once, for every kind.
+
+Discord expects the HTTP response within ~3 s. A handler that needs longer sets
+`deferred` and the router answers with a placeholder ("Mai is thinking…"), then
+edits it through the interaction webhook when the handler resolves — so handlers
+never deal with the deadline themselves:
+
+```js
+export const example = {
+  definition: { name: 'example', description: '…', type: 1 },
+  deferred: true,          // or (interaction) => boolean, e.g. per subcommand
+  ephemeral: false,        // fixes placeholder visibility; the edit cannot change it
+  execute(interaction) { return messageResponse('…'); },
+};
+```
+
+Response builders (`messageResponse`, `ephemeralResponse`, `updateResponse`,
+`modalResponse`, `autocompleteResponse`, plus `editOriginalResponse` /
+`followUpResponse`) are in
+[src/interactions/respond.js](src/interactions/respond.js). All of them default to
+`allowed_mentions: { parse: [] }`.
+
+Buttons carry their state in the `custom_id` (`name:arg:arg`); the part before the
+first colon selects the handler from
+[src/interactions/registry.js](src/interactions/registry.js). A click by someone
+other than the id's owner is refused — never trust a client-supplied id. Modal
+routing exists but no modal ships yet.
+
+## Tests
+
+```sh
+npm test        # node:test, no dependencies, no network
+```
+
+`test/setup.js` fills the environment before `config.js` is imported and points
+the database at a throwaway file; `test/setup-chat.js` turns chat on for the one
+file that needs it. OpenAI and Discord are reached through a stubbed global
+`fetch`. Tests are not copied into the image — run them on the host.
 
 ## Configuration
 

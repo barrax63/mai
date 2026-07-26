@@ -1,168 +1,173 @@
 /**
- * `/mai status` and `/mai forgive` — the operational window into Mai's state.
+ * `/mai` — the commands every member can use.
  *
- * Both subcommands need the Manage Messages permission. Discord already hides
- * the command from members without it (`default_member_permissions`), but the
- * check is repeated here: that field is a UI default a server admin can widen.
+ * `ask` runs a model call, so it declares `deferred`: the router answers Discord
+ * with a placeholder first and edits it when the reply is ready. `forget` is the
+ * self-service side of the privacy policy: it wipes what Mai remembers about the
+ * caller, behind a confirmation button.
  */
-import { InteractionResponseType } from 'discord-interactions';
-import { PermissionFlagsBits } from 'discord.js';
+import { buildPrompt, generateReply } from '../ai/chat.js';
+import { acquireSlot, consumeRateLimit, releaseSlot } from '../chat/limits.js';
 import { config } from '../config.js';
 import { content, fill } from '../content.js';
-import { stats as historyStats } from '../db/history.js';
-import { depth, forgiveUser } from '../db/queue.js';
-import { getGatewayClient } from '../gateway/client.js';
+import { deleteForUser } from '../db/history.js';
+import { openViolations } from '../db/queue.js';
 import { logger } from '../logger.js';
-import { getEnforcerStatus } from '../moderation/enforcer.js';
+import { ephemeralResponse, messageResponse, updateResponse } from '../interactions/respond.js';
 
-const EPHEMERAL = 64;
+const BUTTON = 2;
+const ACTION_ROW = 1;
+const STYLE_DANGER = 4;
+const STYLE_SECONDARY = 2;
 
-const ephemeral = (text) => ({
-  type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
-  data: { content: text, flags: EPHEMERAL, allowed_mentions: { parse: [] } },
-});
+const actor = (interaction) => interaction.member?.user ?? interaction.user ?? {};
 
 /**
  * @param {object} interaction
- * @returns {boolean}
- */
-function mayModerate(interaction) {
-  // Absent in DMs — there is nothing to moderate there anyway.
-  const raw = interaction.member?.permissions;
-  if (!raw) return false;
-  try {
-    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * @param {number} seconds
  * @returns {string}
  */
-function formatUptime(seconds) {
-  const days = Math.floor(seconds / 86_400);
-  const hours = Math.floor((seconds % 86_400) / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  return [days && `${days}d`, (days || hours) && `${hours}h`, `${minutes}m`]
-    .filter(Boolean)
-    .join(' ');
-}
-
-function statusResponse() {
-  const enforcer = getEnforcerStatus();
-  const history = historyStats();
-
-  const lastTick = enforcer.lastTickAt
-    // Discord renders this as a localized relative timestamp.
-    ? `<t:${Math.floor(new Date(enforcer.lastTickAt).getTime() / 1000)}:R>`
-    : content.commands.statusNever;
-
-  const openai = [
-    `chat \`${config.openai.chatModel}\`${config.chat.enabled ? '' : ' (aus)'}`,
-    `moderation \`${config.openai.moderationModel}\`${config.moderation.enabled ? '' : ' (aus)'}`,
-  ].join(', ');
-
-  return ephemeral(
-    fill(content.commands.status, {
-      queueDepth: depth(),
-      historyRows: history.rows,
-      historyChannels: history.channels,
-      lastTick,
-      openai,
-      uptime: formatUptime(process.uptime()),
-    }),
-  );
-}
+const askedQuestion = (interaction) =>
+  String(
+    interaction.data?.options?.[0]?.options?.find((option) => option.name === 'frage')?.value ?? '',
+  ).trim();
 
 /**
- * Best-effort cleanup of the scold replies belonging to forgiven rows. Runs
- * detached: the interaction must be answered within Discord's 3 s window.
+ * A public question to Mai. Unlike a mention this is stateless: no channel
+ * history goes into the prompt and the exchange is not written to her memory —
+ * one question, one answer.
  *
- * @param {{ channelId: string, scoldMessageId: string | null }[]} rows
+ * @param {object} interaction
  */
-function cleanUpScolds(rows) {
-  const client = getGatewayClient();
-  if (!client) return;
+async function ask(interaction) {
+  const user = actor(interaction);
+  const question = askedQuestion(interaction);
 
-  for (const row of rows.filter((entry) => entry.scoldMessageId)) {
-    client.channels
-      .fetch(row.channelId)
-      .then((channel) => channel?.messages?.delete(row.scoldMessageId))
-      .catch((error) => {
-        logger.debug(
-          { channelId: row.channelId, messageId: row.scoldMessageId, err: error },
-          'Deleting forgiven scold reply failed',
-        );
-      });
+  // This subcommand is deferred, and a deferred response cannot turn ephemeral
+  // afterwards (the edit ignores `flags`) — so every refusal below is a public,
+  // in-character message rather than a private notice.
+  if (!config.chat.enabled) return messageResponse(content.commands.ask.disabled);
+  if (!question) return messageResponse(content.commands.ask.empty);
+  if (!consumeRateLimit(user.id)) return messageResponse(content.commands.ask.busy);
+  if (!acquireSlot()) return messageResponse(content.commands.ask.busy);
+
+  try {
+    const prompt = buildPrompt({
+      history: [],
+      username: user.username ?? '',
+      content: question,
+      // Same grudge as in chat: an open violation makes her hiss here too.
+      violations: openViolations(user.id),
+    });
+
+    const reply = await generateReply(prompt);
+    logger.info(
+      { userId: user.id, replyLength: reply.length, model: config.openai.chatModel },
+      'Answered /mai ask',
+    );
+    logger.debug({ userId: user.id, question, reply }, '/mai ask content');
+
+    // Public answer, quoting the question so the thread of conversation is
+    // visible to everyone; the question is the caller's own text.
+    return messageResponse(fill(content.commands.ask.answer, { question, reply }));
+  } finally {
+    releaseSlot();
   }
 }
 
 /**
+ * Step one of the memory wipe: ask for confirmation. The user id is carried in
+ * the button's custom_id, so the click can be checked against its owner.
+ *
  * @param {object} interaction
  */
-function forgiveResponse(interaction) {
-  const subcommand = interaction.data?.options?.[0];
-  const userId = subcommand?.options?.find((option) => option.name === 'user')?.value;
-  if (!userId) return ephemeral(content.commands.forbidden);
-
-  const rows = forgiveUser(String(userId));
-  cleanUpScolds(rows);
-
-  logger.info(
-    { userId, forgiven: rows.length, byUserId: interaction.member?.user?.id },
-    'Forgave open violations',
-  );
-
-  const template = rows.length > 0 ? content.commands.forgiven : content.commands.forgivenNothing;
-  return ephemeral(fill(template, { count: rows.length, userId }));
-}
-
-export const mai = {
-  definition: {
-    name: 'mai',
-    description: "Mai's moderation state",
-    type: 1, // CHAT_INPUT
-    // Hides the command from members without Manage Messages.
-    default_member_permissions: String(PermissionFlagsBits.ManageMessages),
-    options: [
+function forget(interaction) {
+  const user = actor(interaction);
+  return ephemeralResponse(content.commands.forget.confirm, {
+    components: [
       {
-        name: 'status',
-        description: 'Queue depth, chat memory, last moderation run',
-        type: 1, // SUB_COMMAND
-      },
-      {
-        name: 'forgive',
-        description: 'Drop a member’s open violations (Mai calms down)',
-        type: 1, // SUB_COMMAND
-        options: [
+        type: ACTION_ROW,
+        components: [
           {
-            name: 'user',
-            description: 'The member to forgive',
-            type: 6, // USER
-            required: true,
+            type: BUTTON,
+            style: STYLE_DANGER,
+            label: content.commands.forget.confirmButton,
+            custom_id: `forget:${user.id}`,
+          },
+          {
+            type: BUTTON,
+            style: STYLE_SECONDARY,
+            label: content.commands.forget.cancelButton,
+            custom_id: `forget-cancel:${user.id}`,
           },
         ],
       },
     ],
+  });
+}
+
+/**
+ * Button handlers for the wipe. Registered in interactions/registry.js.
+ *
+ * The ephemeral message is only visible to its owner, but the custom_id is
+ * checked anyway — never trust a client-supplied id to name someone else.
+ */
+export const forgetComponents = {
+  forget(interaction, [ownerId]) {
+    const user = actor(interaction);
+    if (ownerId !== user.id) return ephemeralResponse(content.commands.forbidden);
+
+    const removed = deleteForUser(user.id);
+    logger.info({ userId: user.id, rowsRemoved: removed }, 'Wiped chat memory on request');
+
+    return updateResponse(fill(content.commands.forget.done, { count: removed }));
   },
+
+  'forget-cancel'(interaction, [ownerId]) {
+    const user = actor(interaction);
+    if (ownerId !== user.id) return ephemeralResponse(content.commands.forbidden);
+    return updateResponse(content.commands.forget.cancelled);
+  },
+};
+
+export const mai = {
+  definition: {
+    name: 'mai',
+    description: 'Mit Mai reden',
+    type: 1, // CHAT_INPUT
+    options: [
+      {
+        name: 'ask',
+        description: 'Stell Mai eine Frage',
+        type: 1, // SUB_COMMAND
+        options: [
+          {
+            name: 'frage',
+            description: 'Was willst du wissen?',
+            type: 3, // STRING
+            required: true,
+            max_length: 400,
+          },
+        ],
+      },
+      {
+        name: 'forget',
+        description: 'Lösche, was Mai sich von dir gemerkt hat',
+        type: 1, // SUB_COMMAND
+      },
+    ],
+  },
+
+  // `ask` waits for the model; `forget` answers instantly.
+  deferred: (interaction) => interaction.data?.options?.[0]?.name === 'ask',
+  ephemeral: false,
 
   /**
    * @param {object} interaction Raw interaction payload from Discord.
-   * @returns {object} Interaction response body.
+   * @returns {Promise<object> | object} Interaction response body.
    */
   execute(interaction) {
-    if (!mayModerate(interaction)) {
-      logger.debug(
-        { userId: interaction.member?.user?.id ?? interaction.user?.id },
-        'Refusing /mai: missing Manage Messages',
-      );
-      return ephemeral(content.commands.forbidden);
-    }
-
     const subcommand = interaction.data?.options?.[0]?.name;
-    if (subcommand === 'forgive') return forgiveResponse(interaction);
-    return statusResponse();
+    if (subcommand === 'forget') return forget(interaction);
+    return ask(interaction);
   },
 };

@@ -84,20 +84,49 @@ moderation:
     omittedLine: '> … und {count} weitere Nachricht{plural}.'
     footer: '*Habe ich einen Fehler gemacht? Dann bitte Info an einen Admin.*'
 
-# Replies to /mai … slash commands. {…} placeholders per command.
+# Replies to slash commands and buttons. {…} placeholders per entry.
 commands:
-  status: |
-    # 🐾 Mai
-    **Offene Verstöße:** {queueDepth}
-    **Chat-Verlauf:** {historyRows} Zeilen in {historyChannels} Kanälen
-    **Letzter Moderationslauf:** {lastTick}
-    **OpenAI Modelle:** {openai}
-    **Uptime:** {uptime}
-  statusNever: 'noch nie'
-  forgiven: '*schnurrt widerwillig* Na gut. {count} offene(r) Verstoß/Verstöße von <@{userId}> vergessen.'
-  forgivenNothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
+  # Shared across every interaction.
   forbidden: '*faucht* Das darfst du nicht.'
   notActive: 'Mai is not active in this server.'
+  error: '*verheddert sich im Wollknäuel* Das hat nicht geklappt. Versuch es nochmal.'
+  # A button whose handler no longer exists (older deploy) or whose message is
+  # too old to act on.
+  expired: '*gähnt* Das ist mir zu lange her. Ruf den Befehl nochmal auf.'
+
+  # /mai ask — public question, public answer.
+  ask:
+    answer: |
+      > {question}
+
+      {reply}
+    busy: '*gähnt und dreht sich weg* Nicht jetzt, ich hab schon genug geredet. Frag später nochmal.'
+    empty: '*schaut dich fragend an* Du hast nichts gefragt.'
+    disabled: '*putzt sich* Ich hab gerade keine Lust zu reden.'
+
+  # /mai forget — self-service wipe of Mai's memory about the caller.
+  forget:
+    confirm: 'Soll ich wirklich vergessen, was du mir erzählt hast? *legt den Kopf schief*'
+    confirmButton: 'Ja, vergiss alles'
+    cancelButton: 'Abbrechen'
+    done: '*schüttelt sich* Vergessen. {count} Zeile(n) sind weg.'
+    cancelled: '*schnurrt* Gut, ich behalte es im Kopf.'
+
+  # /mod status
+  status:
+    body: |
+      # 🐾 Mai
+      **Offene Verstöße:** {queueDepth}
+      **Chat-Verlauf:** {historyRows} Zeilen in {historyChannels} Kanälen
+      **Letzter Moderationslauf:** {lastTick}
+      **OpenAI Modelle:** {openai}
+      **Uptime:** {uptime}
+    never: 'noch nie'
+
+  # /mod forgive
+  forgive:
+    done: '*schnurrt widerwillig* Na gut. {count} offene(r) Verstoß/Verstöße von <@{userId}> vergessen.'
+    nothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
 
 welcome:
   # {member} is replaced by the new member's mention.

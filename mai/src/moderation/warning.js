@@ -29,6 +29,9 @@ const sanitize = (value) =>
  */
 function formatTimestamp(value) {
   const { locale, unknownTimestamp } = content.moderation.warningDm;
+  // `new Date(null)` is the epoch, not an invalid date — reject empties first.
+  if (value === null || value === undefined || value === '') return unknownTimestamp;
+
   const date = value instanceof Date ? value : new Date(value);
   if (Number.isNaN(date.getTime())) return unknownTimestamp;
 
