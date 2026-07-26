@@ -15,9 +15,32 @@
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
 import { config } from '../config.js';
 import { logger } from '../logger.js';
+import { startEnforcer } from '../moderation/enforcer.js';
 import { onMessageCreate } from './events/message-create.js';
 import { onGuildMemberAdd } from './events/guild-member-add.js';
 import { startPresenceRotation } from './presence.js';
+
+/** @type {import('discord.js').Client | null} */
+let readyClient = null;
+
+/** @type {{ stop: () => void } | null} */
+let enforcer = null;
+
+/**
+ * The logged-in client, for code outside the gateway that needs Discord REST
+ * access (the /mai slash commands arrive over HTTP, not over the gateway).
+ *
+ * @returns {import('discord.js').Client | null} null until the gateway is ready.
+ */
+export function getGatewayClient() {
+  return readyClient;
+}
+
+/** Stops the moderation tick loop (shutdown path). */
+export function stopEnforcer() {
+  enforcer?.stop();
+  enforcer = null;
+}
 
 export function createGatewayClient() {
   const intents = [
@@ -37,13 +60,19 @@ export function createGatewayClient() {
     partials: [Partials.Channel, Partials.Message],
   });
 
-  client.once(Events.ClientReady, (readyClient) => {
+  client.once(Events.ClientReady, (ready) => {
+    readyClient = ready;
     logger.info(
-      { user: readyClient.user.tag, guilds: readyClient.guilds.cache.size },
+      { user: ready.user.tag, guilds: ready.guilds.cache.size },
       'Gateway connected',
     );
 
-    startPresenceRotation(readyClient);
+    startPresenceRotation(ready);
+
+    // The enforcer needs a logged-in client to delete messages and send DMs.
+    if (config.moderation.enabled && !enforcer) {
+      enforcer = startEnforcer(ready);
+    }
   });
 
   client.on(Events.Error, (error) => {

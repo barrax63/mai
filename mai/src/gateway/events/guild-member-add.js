@@ -7,18 +7,8 @@
  */
 import { PermissionFlagsBits } from 'discord.js';
 import { isGuildAllowed } from '../../config.js';
+import { content, fill, pick } from '../../content.js';
 import { logger } from '../../logger.js';
-
-const WELCOME_LINES = [
-  (member) =>
-    `*streckt sich, gähnt und tapst heran* Miau, ${member}! Willkommen - die besten Sonnenplätze sind leider schon besetzt. Von mir. 🐾`,
-  (member) =>
-    `Ein neuer Mensch! Willkommen, ${member}! *reibt den Kopf an deinem Bein* 😺`,
-  (member) =>
-    `*späht hinter dem Kratzbaum hervor* Oh, ${member} ist da! Willkommen. Mitgebrachte Leckerlis bitte direkt bei mir abgeben. 🐟`,
-  (member) =>
-    `${member}! *springt aufs Sofa* Willkommen! Ich bin Mai, die Moderatorin hier. Kraulen erlaubt, aber nur am Kopf. 🐱`,
-];
 
 /**
  * @param {import('discord.js').GuildMember} member
@@ -47,11 +37,12 @@ export async function onGuildMemberAdd(member) {
     return;
   }
 
-  const line = WELCOME_LINES[Math.floor(Math.random() * WELCOME_LINES.length)];
+  // {member} renders as a mention; it is the only ping a welcome may send.
+  const line = fill(pick(content.welcome.lines), { member: `<@${member.id}>` });
 
   try {
     await channel.send({
-      content: line(member),
+      content: line,
       allowedMentions: { users: [member.id] },
     });
     logger.info(

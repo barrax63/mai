@@ -17,8 +17,11 @@ import {
   verifyKeyMiddleware,
 } from 'discord-interactions';
 import { config, isGuildAllowed } from '../config.js';
+import { content } from '../content.js';
 import { logger } from '../logger.js';
 import { commandHandlers } from '../commands/index.js';
+import { pingDatabase } from '../db/index.js';
+import { getEnforcerStatus } from '../moderation/enforcer.js';
 
 export function createServer() {
   const app = express();
@@ -35,8 +38,34 @@ export function createServer() {
     }),
   );
 
+  // Liveness plus the two things that can fail silently: the database and the
+  // moderation tick loop. A wedged enforcer means flagged messages are never
+  // deleted, which an HTTP-only probe would not notice.
   app.get('/healthz', (req, res) => {
-    res.status(200).json({ status: 'ok' });
+    const database = pingDatabase();
+    const enforcer = getEnforcerStatus();
+    const tickAgeMs = enforcer.lastTickAt
+      ? Date.now() - new Date(enforcer.lastTickAt).getTime()
+      : null;
+
+    // Before the first tick, allow a startup grace period (the gateway has to
+    // connect first). After that, three missed ticks count as broken.
+    const maxTickAgeMs = config.moderation.tickMs * 3;
+    const startingUp = process.uptime() * 1000 < Math.max(maxTickAgeMs, 60_000);
+    const enforcerOk = !config.moderation.enabled
+      || (tickAgeMs === null ? startingUp : tickAgeMs <= maxTickAgeMs);
+
+    const ok = database && enforcerOk;
+    res.status(ok ? 200 : 503).json({
+      status: ok ? 'ok' : 'degraded',
+      database,
+      enforcer: {
+        enabled: config.moderation.enabled,
+        lastTickAt: enforcer.lastTickAt,
+        tickAgeMs,
+        running: enforcer.running,
+      },
+    });
   });
 
   // verifyKeyMiddleware validates the Ed25519 request signature and rejects
@@ -45,7 +74,7 @@ export function createServer() {
   app.post(
     '/interactions',
     verifyKeyMiddleware(config.discord.publicKey),
-    (req, res) => {
+    async (req, res) => {
       const interaction = req.body;
 
       if (interaction.type === InteractionType.PING) {
@@ -66,7 +95,7 @@ export function createServer() {
           return res.send({
             type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
             data: {
-              content: 'Mai is not active in this server.',
+              content: content.commands.notActive,
               flags: 64, // EPHEMERAL
             },
           });
@@ -80,7 +109,9 @@ export function createServer() {
         }
 
         try {
-          return res.send(handler(interaction));
+          // Handlers may be async (database access, Discord REST) — Discord
+          // still expects the response within ~3 s.
+          return res.send(await handler(interaction));
         } catch (error) {
           logger.error({ err: error, command: name }, 'Command handler failed');
           return res.status(500).json({ error: 'internal error' });

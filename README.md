@@ -4,37 +4,44 @@
   <img src="docs/mai.png" alt="Mai, die Katze" width="380">
 </p>
 
-Docker Compose stack running **Mai**, a Discord bot with a cat persona, behind a Cloudflare tunnel. New messages are forwarded to n8n workflows via public webhook URLs: moderation for every guild message, plus Mai's chat, reactions, and welcome messages.
+Docker Compose stack running **Mai**, a Discord bot with a cat persona, behind a Cloudflare tunnel. Moderation and chat run inside the bot: it classifies messages and generates replies through the OpenAI API and keeps its state in a local SQLite database.
 
 ## Architecture
 
 ```text
 Discord ──HTTPS──▶ Cloudflare Tunnel ──▶ cloudflared ──edge──▶ mai (:3000 /interactions)
 Discord ◀─────────WebSocket (gateway, outbound)──────────────  mai
-n8n     ◀─────────HTTPS webhook (outbound)───────────────────  mai
+OpenAI  ◀─────────HTTPS (outbound: /moderations, /chat/completions)  mai
+                                                                    mai ──▶ SQLite (mai-data volume)
 ```
 
-- **`mai`** — Node.js Discord app: HTTP interactions endpoint (slash commands) + gateway listener for new messages. See [mai/README.md](mai/README.md).
+- **`mai`** — Node.js 24 Discord app: HTTP interactions endpoint (slash commands), gateway listener for messages, moderation pipeline, chat, and an in-process scheduler. See [mai/README.md](mai/README.md).
 - **`cloudflared`** — Cloudflare tunnel exposing the interactions endpoint to Discord without open ports. Browsers hitting the tunnel URL get a static landing page instead of an error.
 
-## Moderation workflows
+## Moderation
 
-The bot forwards every new message (from allowlisted guilds, `DISCORD_GUILD_IDS`) to an n8n webhook. Two workflows handle moderation, connected through a shared metadata queue — message content is never persisted:
+Every new message in an allowlisted guild (`DISCORD_GUILD_IDS`) is classified. Message content is never persisted — only IDs, category labels and timestamps:
 
-- **Check Messages** (webhook) — classifies the message via OpenAI; violations get a warning reaction and are queued with a grace period.
-- **Delete Messages** (scheduler) — after the grace period, deletes messages the author did not remove themselves and DMs them a warning.
+- **Flagged** → warning reaction, a scold reply, and a queue row with a grace period.
+- **After the grace period** → messages the author did not delete themselves are removed and the author gets a warning DM. The scold reply is cleaned up either way.
+
+Operators can inspect and override this with `/mai status` and `/mai forgive <user>`.
 
 ## Mai — the bot persona
 
-The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message triggers the **Mai Chat** n8n workflow (OpenAI, cat persona, short per-channel memory) and she answers in character. Direct messages skip moderation (a bot cannot delete a DM). Her short conversation memory (including DMs) is kept only a few hours to give her context, then deleted; it is stored obfuscated ([n8n/README.md](n8n/README.md)). She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
+The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message gets an in-character reply (OpenAI, cat persona, short per-channel memory). Direct messages skip moderation (a bot cannot delete a DM) and are only accepted from users who share an allowlisted server with her. Her conversation memory is kept a few hours to give her context, then deleted; it is encrypted at rest (AES-256-GCM). While a member has an un-enforced violation, Mai turns aggressive toward them wherever they talk to her. She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
 
-Workflow JSON files and full documentation: [n8n/README.md](n8n/README.md).
+Everything she says — persona, prompts, scold lines, welcome messages, reaction triggers — lives in [mai/config/mai.yaml](mai/config/mai.yaml). Secrets, models and limits live in `.env`.
 
 ## Quick start
 
 ```sh
 # 1. Configure secrets
-cp .env.example .env   # then fill in the values
+cp .env.example .env   # then fill in the values:
+                       #   DISCORD_BOT_TOKEN / DISCORD_PUBLIC_KEY / DISCORD_APP_ID
+                       #   OPENAI_API_KEY
+                       #   CHAT_HISTORY_KEY=$(openssl rand -base64 32)
+                       #   CLOUDFLARED_TUNNEL_TOKEN
 
 # 2. Build and start
 docker compose up -d --build
@@ -47,4 +54,4 @@ Discord-side setup (intents, tunnel hostname, interactions endpoint URL) is docu
 
 ## Security baseline
 
-All services run with `no-new-privileges`, `cap_drop: ALL`, read-only root filesystem, tmpfs-only writes, resource limits, and log rotation. Secrets live only in `.env` (gitignored).
+All services run with `no-new-privileges`, `cap_drop: ALL`, read-only root filesystem, tmpfs-only writes, resource limits, and log rotation. The bot's only writable location is the `mai-data` volume holding the SQLite database. Secrets live only in `.env` (gitignored).

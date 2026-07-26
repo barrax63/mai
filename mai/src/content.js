@@ -1,0 +1,184 @@
+/**
+ * Loads Mai's content configuration (persona, prompts, scold lines, welcome
+ * messages, reaction triggers, presence statuses) from the YAML file at
+ * `MAI_CONFIG_PATH` and validates it once at startup.
+ *
+ * Split of responsibilities: `config.js` = operational knobs and secrets from
+ * the environment, this module = everything user-facing. No handler should
+ * contain a literal string Mai says.
+ */
+import { readFileSync } from 'node:fs';
+import { parse } from 'yaml';
+import { config } from './config.js';
+
+const fail = (message) => {
+  throw new Error(`Content config (${config.content.path}): ${message}`);
+};
+
+const str = (node, path) => {
+  const value = node?.[path.at(-1)];
+  if (typeof value !== 'string' || !value.trim()) {
+    fail(`${path.join('.')} must be a non-empty string`);
+  }
+  return value;
+};
+
+const num = (node, path, { min, max } = {}) => {
+  const value = node?.[path.at(-1)];
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    fail(`${path.join('.')} must be a number`);
+  }
+  if (min !== undefined && value < min) fail(`${path.join('.')} must be >= ${min}`);
+  if (max !== undefined && value > max) fail(`${path.join('.')} must be <= ${max}`);
+  return value;
+};
+
+const strings = (node, path, { min = 1 } = {}) => {
+  const value = node?.[path.at(-1)];
+  if (!Array.isArray(value) || value.length < min) {
+    fail(`${path.join('.')} must be an array of at least ${min} string(s)`);
+  }
+  for (const [index, entry] of value.entries()) {
+    if (typeof entry !== 'string' || !entry.trim()) {
+      fail(`${path.join('.')}[${index}] must be a non-empty string`);
+    }
+  }
+  return value;
+};
+
+const section = (root, name) => {
+  const value = root?.[name];
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    fail(`section "${name}" is missing`);
+  }
+  return value;
+};
+
+function loadContent() {
+  let raw;
+  try {
+    raw = readFileSync(config.content.path, 'utf8');
+  } catch (error) {
+    fail(`cannot be read (${error.code ?? error.message})`);
+  }
+
+  let parsed;
+  try {
+    parsed = parse(raw);
+  } catch (error) {
+    fail(`is not valid YAML: ${error.message}`);
+  }
+  if (!parsed || typeof parsed !== 'object') fail('is empty');
+
+  const chat = section(parsed, 'chat');
+  const flagged = section(chat, 'flagged');
+  const prompt = section(chat, 'prompt');
+  const moderation = section(parsed, 'moderation');
+  const warningDm = section(moderation, 'warningDm');
+  const commands = section(parsed, 'commands');
+  const welcome = section(parsed, 'welcome');
+  const presence = section(parsed, 'presence');
+
+  const reactions = parsed.reactions;
+  if (!Array.isArray(reactions)) fail('section "reactions" must be an array');
+
+  return Object.freeze({
+    chat: Object.freeze({
+      persona: str(chat, ['chat', 'persona']).trim(),
+      friendlyDirective: str(chat, ['chat', 'friendlyDirective']),
+      fallbackReply: str(chat, ['chat', 'fallbackReply']),
+      busyEmoji: str(chat, ['chat', 'busyEmoji']),
+      flagged: Object.freeze({
+        header: str(flagged, ['chat', 'flagged', 'header']),
+        footer: str(flagged, ['chat', 'flagged', 'footer']),
+        unknownCategory: str(flagged, ['chat', 'flagged', 'unknownCategory']),
+        tones: Object.freeze(strings(flagged, ['chat', 'flagged', 'tones'])),
+      }),
+      prompt: Object.freeze({
+        historyHeader: str(prompt, ['chat', 'prompt', 'historyHeader']),
+        newMessageHeader: str(prompt, ['chat', 'prompt', 'newMessageHeader']),
+        emptyMessagePlaceholder: str(prompt, ['chat', 'prompt', 'emptyMessagePlaceholder']),
+        assistantLabel: str(prompt, ['chat', 'prompt', 'assistantLabel']),
+        unknownUserLabel: str(prompt, ['chat', 'prompt', 'unknownUserLabel']),
+      }),
+    }),
+    moderation: Object.freeze({
+      warningEmoji: str(moderation, ['moderation', 'warningEmoji']),
+      // Empty timezone = follow the container clock (TZ).
+      timezone: typeof moderation.timezone === 'string' && moderation.timezone.trim()
+        ? moderation.timezone.trim()
+        : config.timezone,
+      scoldPrefix: typeof moderation.scoldPrefix === 'string' ? moderation.scoldPrefix : '',
+      scoldReplies: Object.freeze(strings(moderation, ['moderation', 'scoldReplies'])),
+      warningDm: Object.freeze({
+        maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
+        maxContentChars: num(warningDm, ['moderation', 'warningDm', 'maxContentChars'], { min: 1 }),
+        locale: str(warningDm, ['moderation', 'warningDm', 'locale']),
+        title: str(warningDm, ['moderation', 'warningDm', 'title']),
+        intro: str(warningDm, ['moderation', 'warningDm', 'intro']),
+        categoryLabel: str(warningDm, ['moderation', 'warningDm', 'categoryLabel']),
+        unknownCategory: str(warningDm, ['moderation', 'warningDm', 'unknownCategory']),
+        messagesLabel: str(warningDm, ['moderation', 'warningDm', 'messagesLabel']),
+        emptyMessage: str(warningDm, ['moderation', 'warningDm', 'emptyMessage']),
+        unknownTimestamp: str(warningDm, ['moderation', 'warningDm', 'unknownTimestamp']),
+        omittedLine: str(warningDm, ['moderation', 'warningDm', 'omittedLine']),
+        footer: str(warningDm, ['moderation', 'warningDm', 'footer']),
+      }),
+    }),
+    commands: Object.freeze({
+      status: str(commands, ['commands', 'status']),
+      statusNever: str(commands, ['commands', 'statusNever']),
+      forgiven: str(commands, ['commands', 'forgiven']),
+      forgivenNothing: str(commands, ['commands', 'forgivenNothing']),
+      forbidden: str(commands, ['commands', 'forbidden']),
+      notActive: str(commands, ['commands', 'notActive']),
+    }),
+    welcome: Object.freeze({
+      lines: Object.freeze(strings(welcome, ['welcome', 'lines'])),
+    }),
+    reactions: Object.freeze(
+      reactions.map((trigger, index) => {
+        const path = ['reactions', String(index)];
+        const emoji = str(trigger, [...path, 'emoji']);
+        const chance = num(trigger, [...path, 'chance'], { min: 0, max: 1 });
+        const source = str(trigger, [...path, 'pattern']);
+        const flags = typeof trigger.flags === 'string' ? trigger.flags : '';
+        let pattern;
+        try {
+          pattern = new RegExp(source, flags);
+        } catch (error) {
+          fail(`reactions[${index}].pattern is not a valid regular expression: ${error.message}`);
+        }
+        return Object.freeze({ emoji, chance, pattern });
+      }),
+    ),
+    presence: Object.freeze({
+      statuses: Object.freeze(strings(presence, ['presence', 'statuses'])),
+    }),
+  });
+}
+
+export const content = loadContent();
+
+/**
+ * Substitutes {name} placeholders. Unknown placeholders are left untouched so a
+ * typo in the config shows up in the output instead of silently vanishing.
+ *
+ * @param {string} template
+ * @param {Record<string, string | number>} values
+ * @returns {string}
+ */
+export function fill(template, values = {}) {
+  return String(template).replace(/\{(\w+)\}/g, (match, key) =>
+    Object.hasOwn(values, key) ? String(values[key]) : match,
+  );
+}
+
+/**
+ * @template T
+ * @param {readonly T[]} items
+ * @returns {T}
+ */
+export function pick(items) {
+  return items[Math.floor(Math.random() * items.length)];
+}

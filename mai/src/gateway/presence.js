@@ -6,20 +6,10 @@
  */
 import { ActivityType } from 'discord.js';
 import { config } from '../config.js';
+import { content } from '../content.js';
 import { logger } from '../logger.js';
 
-const STATUSES = [
-  '😺 schnurrt irgendwo in der Nähe',
-  '😴 hält ein Nickerchen in der Sonne',
-  '🐟 träumt von Fisch',
-  '🧶 jagt einen Wollknäuel',
-  '🐾 tapst über die Tastatur',
-  '📦 sitzt in einem Karton',
-  '🪟 beobachtet Vögel am Fenster',
-  '🍗 wartet auf Leckerlis',
-  '🌙 nachtaktiv unterwegs',
-  '🛋️ kratzt heimlich am Sofa',
-];
+const STATUSES = content.presence.statuses;
 
 /**
  * @param {import('discord.js').Client<true>} client Ready client.

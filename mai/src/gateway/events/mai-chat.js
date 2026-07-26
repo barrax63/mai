@@ -1,17 +1,19 @@
 /**
  * Mai chat: users talk to the bot by mentioning it, replying to one of its
- * messages, or sending it a direct message. The message is forwarded to the
- * n8n "Mai Chat" workflow, which
- * answers in character (cat persona, conversation memory per channel); the
- * workflow response body ({ reply }) is posted back into the channel as a
- * reply to the triggering message.
+ * messages, or sending it a direct message.
+ *
+ * This module owns the Discord side (trigger detection, typing indicator,
+ * posting the answer) and the guards in front of the model call; the reply
+ * itself comes from chat/reply.js.
  */
+import { generateChatReply, rememberExchange } from '../../chat/reply.js';
+import { acquireSlot, consumeRateLimit, releaseSlot, runExclusive } from '../../chat/limits.js';
 import { config, isGuildAllowed } from '../../config.js';
+import { content } from '../../content.js';
 import { logger } from '../../logger.js';
-import { isChatEnabled, sendChatMessageToN8n } from '../../n8n/webhook.js';
 
-// Discord's typing indicator expires after ~10 s; refresh while the workflow
-// (LLM call) is still running.
+// Discord's typing indicator expires after ~10 s; refresh while the model call
+// is still running.
 const TYPING_REFRESH_MS = 8_000;
 
 /**
@@ -52,7 +54,7 @@ export async function isDmAuthorInAllowedGuild(message) {
  * @returns {Promise<boolean>} Whether this message is addressed to Mai.
  */
 export async function isMaiChatTrigger(message) {
-  if (!isChatEnabled()) return false;
+  if (!config.chat.enabled) return false;
 
   const botId = message.client.user?.id;
   if (!botId) return false;
@@ -62,7 +64,7 @@ export async function isMaiChatTrigger(message) {
   // caller (onMessageCreate) before this runs.
   if (!message.guildId) return true;
 
-  // Same guild allowlist as moderation forwarding.
+  // Same guild allowlist as moderation.
   if (!isGuildAllowed(message.guildId)) return false;
 
   // Direct @mention (also covers replies with the mention toggle on).
@@ -86,56 +88,78 @@ export async function isMaiChatTrigger(message) {
 }
 
 /**
+ * Reaction instead of an answer: Mai is rate-limited or at her concurrency cap.
+ *
+ * @param {import('discord.js').Message} message
+ */
+const reactBusy = (message) =>
+  message.react(content.chat.busyEmoji).catch((error) => {
+    logger.debug({ messageId: message.id, err: error }, 'Busy reaction failed');
+  });
+
+/**
  * @param {import('discord.js').Message} message
  */
 export async function handleMaiChat(message) {
   const botId = message.client.user.id;
 
-  // Strip the bot mention; an empty remainder is a bare poke — the workflow
-  // treats it as a greeting.
-  const content = (message.content ?? '')
+  // Strip the bot mention; an empty remainder is a bare poke, answered with a
+  // greeting.
+  const text = (message.content ?? '')
     .replaceAll(`<@${botId}>`, '')
     .replaceAll(`<@!${botId}>`, '')
     .trim();
 
-  const payload = {
+  const input = {
     messageId: message.id,
     guildId: message.guildId,
     channelId: message.channelId,
     userId: message.author.id,
     username: message.author.username,
-    content,
-    createdAt: message.createdAt.toISOString(),
+    content: text,
   };
 
-  await message.channel.sendTyping().catch(() => {});
-  const typing = setInterval(() => {
-    message.channel.sendTyping().catch(() => {});
-  }, TYPING_REFRESH_MS);
-
-  let result;
-  try {
-    result = await sendChatMessageToN8n(payload);
-  } finally {
-    clearInterval(typing);
-  }
-
-  const reply = typeof result?.reply === 'string' ? result.reply.trim() : '';
-  if (!reply) {
-    logger.warn({ messageId: message.id }, 'Chat workflow returned no reply');
+  if (!consumeRateLimit(input.userId)) {
+    await reactBusy(message);
     return;
   }
 
-  // parse: [] blocks @everyone/role/user pings inside the LLM reply; the
-  // reply-ping to the author is allowed explicitly.
-  await message.reply({
-    content: reply,
-    allowedMentions: { parse: [], repliedUser: true },
-  });
+  if (!acquireSlot()) {
+    await reactBusy(message);
+    return;
+  }
 
-  logger.info(
-    { messageId: message.id, replyLength: reply.length },
-    'Mai replied',
-  );
-  logger.debug({ messageId: message.id, reply }, 'Mai reply content');
+  try {
+    // Per-channel serialization keeps read-history -> reply -> store atomic when
+    // several people talk to Mai in the same channel at once.
+    await runExclusive(input.channelId, async () => {
+      await message.channel.sendTyping().catch(() => {});
+      const typing = setInterval(() => {
+        message.channel.sendTyping().catch(() => {});
+      }, TYPING_REFRESH_MS);
+
+      let reply;
+      try {
+        reply = await generateChatReply(input);
+      } finally {
+        clearInterval(typing);
+      }
+
+      if (!reply) return;
+
+      // parse: [] blocks @everyone/role/user pings inside the LLM reply; the
+      // reply-ping to the author is allowed explicitly.
+      await message.reply({
+        content: reply,
+        allowedMentions: { parse: [], repliedUser: true },
+      });
+
+      rememberExchange(input, reply);
+
+      logger.info({ messageId: message.id, replyLength: reply.length }, 'Mai replied');
+      logger.debug({ messageId: message.id, reply }, 'Mai reply content');
+    });
+  } finally {
+    releaseSlot();
+  }
 }

@@ -1,18 +1,18 @@
 /**
  * Handler for new messages in every channel the bot can read.
  *
- * Logs message metadata (no content at info level, to keep container logs
- * free of user text), forwards the message to the n8n moderation webhook
- * when N8N_WEBHOOK_URL is configured, and routes messages addressed to Mai
- * (mention / reply / direct message) to the chat workflow. Everything else may
- * get an ambient cat reaction. Moderation always runs for guild messages,
- * including chat ones; direct messages skip it (a bot cannot delete a DM).
+ * Logs message metadata (no content at info level, to keep container logs free
+ * of user text), runs the moderation check for guild messages, and routes
+ * messages addressed to Mai (mention / reply / direct message) to the chat
+ * pipeline. Everything else may get an ambient cat reaction. Moderation always
+ * runs for guild messages, including chat ones; direct messages skip it (a bot
+ * cannot delete a DM).
  *
  * @param {import('discord.js').Message} message
  */
 import { isGuildAllowed } from '../../config.js';
 import { logger } from '../../logger.js';
-import { forwardMessageToN8n } from '../../n8n/webhook.js';
+import { checkMessage } from '../../moderation/check.js';
 import { handleMaiChat, isDmAuthorInAllowedGuild, isMaiChatTrigger } from './mai-chat.js';
 import { maybeReactAsCat } from './reactions.js';
 
@@ -20,9 +20,9 @@ export async function onMessageCreate(message) {
   // Ignore bots (including ourselves) and system messages.
   if (message.author?.bot || message.system) return;
 
-  // Allowlist gate. An un-whitelisted server gets NO behavior — no moderation
-  // forward, no cat reactions, no chat. A DM has no guildId: it is allowed only
-  // when its author shares a whitelisted guild with the bot, so members of
+  // Allowlist gate. An un-whitelisted server gets NO behavior — no moderation,
+  // no cat reactions, no chat. A DM has no guildId: it is allowed only when its
+  // author shares a whitelisted guild with the bot, so members of
   // non-whitelisted guilds (or strangers) cannot DM Mai.
   if (message.guildId) {
     if (!isGuildAllowed(message.guildId)) {
@@ -60,23 +60,23 @@ export async function onMessageCreate(message) {
   // Not addressed to Mai: moderation and the ambient reaction are independent,
   // run them in parallel.
   if (!wantsChat) {
-    await Promise.all([forwardMessageToN8n(message), maybeReactAsCat(message)]);
+    await Promise.all([checkMessage(message), maybeReactAsCat(message)]);
     return;
   }
 
   // Addressed to Mai in a guild: await the moderation verdict first. A flagged
-  // message gets the workflow's scold reply instead of a chat answer — the chat
-  // workflow (and its history table) never sees it. Fails open: no verdict
-  // (moderation disabled, timeout, error) or not flagged -> normal chat.
+  // message gets the scold reply instead of a chat answer — the chat pipeline
+  // (and its history table) never sees it. Fails open: no verdict (moderation
+  // disabled, API error) or not flagged -> normal chat.
   //
   // Direct messages skip this: a bot cannot delete a user's DM, so the
   // moderation pipeline (grace-period delete + scold) has nothing to enforce.
   if (message.guildId) {
-    const verdict = await forwardMessageToN8n(message);
+    const verdict = await checkMessage(message);
     if (verdict?.action === 'flagged') {
       logger.info(
         { messageId: message.id },
-        'Message flagged, skipping chat reply (workflow scolds instead)',
+        'Message flagged, skipping chat reply (scolded instead)',
       );
       return;
     }

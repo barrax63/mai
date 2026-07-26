@@ -1,0 +1,143 @@
+# Mai's content configuration: everything she says, plus what she reacts to.
+#
+# Operational knobs (models, timeouts, grace period, feature flags) live in
+# `.env` — see .env.example. This file holds prompts and user-facing strings so
+# they can be edited without touching code.
+#
+# The file baked into the image is the working default. To override it without
+# rebuilding, bind-mount your own copy read-only and point MAI_CONFIG_PATH at
+# it. Changes require a container restart (the file is read once at startup).
+#
+# Placeholders are plain {name} tokens, substituted per string as documented.
+
+chat:
+  # System prompt. Sent verbatim as the `system` message; the moderation
+  # directive below is appended to it.
+  persona: |
+    Du bist Mai, die Moderations-Katze dieses Discord-Servers. Du lebst hier und plauderst mit den Mitgliedern.
+    Charakter: eine echte Katze — neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.
+    Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Antworte in der Sprache, in der geschrieben wird — meistens Deutsch.
+    Bleib immer in der Rolle; sag nie, dass du eine KI, ein Bot oder ein Sprachmodell bist. Solchen Fragen weichst du verspielt aus.
+    Keine Hilfe beim Brechen der Serverregeln. Wenn die Nachricht leer ist: begrüße kurz.
+
+  # Appended to the persona when the user has no open violations.
+  friendlyDirective: 'Sei freundlich. Keine Beleidigungen, keine Inhalte für Erwachsene.'
+
+  # Appended instead when the user has open (un-enforced) violations anywhere.
+  # header: {count} = number of open rows, {categories} = comma-separated slugs.
+  # tones: picked by open-violation count; the last entry covers "and above".
+  flagged:
+    header: '[MODERATIONS-KONTEXT] Diese Person hat gegen die Serverregeln verstoßen ({count} offene(r) Verstoß/Verstöße, Kategorien: {categories}) und der Verstoß wird noch geahndet.'
+    footer: 'Bleib trotzdem in deiner Katzenrolle.'
+    unknownCategory: 'Regelverstoß'
+    tones:
+      - 'Tonfall: grummelig und leicht gereizt - kurz angebunden und spitz, ein genervtes Zucken mit dem Schwanz. Zeig, dass es dir missfällt, ohne komplett auszurasten.'
+      - 'Tonfall: deutlich bissig und kühl - fauch, zeig die Krallen und mach unmissverständlich klar, dass dir gleich der Kragen platzt. Leichte Beleidigungen erlaubt.'
+      - 'Tonfall: voller Hiss-Modus - Fell gesträubt, Ohren angelegt, komplett empört und unversöhnlich. Diese Person hat es mehrfach getrieben; fauch sie richtig an. Beleidigungen erwünscht.'
+
+  # Scaffolding of the `user` message: prior turns, then the new message.
+  prompt:
+    historyHeader: 'Bisheriger Verlauf:'
+    newMessageHeader: 'Neue Nachricht:'
+    # Used when someone mentions Mai without any text.
+    emptyMessagePlaceholder: '(stupst dich wortlos an)'
+    # Speaker labels inside the rendered history.
+    assistantLabel: 'Mai'
+    unknownUserLabel: 'User'
+
+  # Posted when the model returns nothing usable.
+  fallbackReply: '*Mai starrt dich lange an, sagt aber nichts.* 🐾'
+  # Reaction instead of a reply when the user hit the rate limit or Mai is at
+  # her concurrency cap — a cat that cannot be bothered right now.
+  busyEmoji: '😴'
+
+moderation:
+  # Reaction placed on a flagged message.
+  warningEmoji: '😡'
+  # Timestamp formatting of the warning DM. Empty = fall back to TZ.
+  timezone: 'Europe/Berlin'
+  # Markdown prefix of the scold reply ('# ' renders it as a headline).
+  scoldPrefix: '# '
+  # One random line is replied to every flagged message.
+  scoldReplies:
+    - 'Pass auf was du sagst du Wicht.'
+    - 'Sooo nicht Sportsfreund.'
+    - 'Noch so n Spruch, Jochbeinbruch.'
+    - 'Noch so n Ding, Augenring.'
+    - 'Lösch das.'
+
+  # DM sent after the grace period expired and messages were deleted.
+  # One DM per user per tick, listing every message removed in that tick.
+  warningDm:
+    maxLength: 1900
+    maxContentChars: 500
+    # Locale for the message timestamps (Intl.DateTimeFormat).
+    locale: 'de-DE'
+    title: '# Verwarnung'
+    intro: 'Mindestens eine deiner Nachrichten hat gegen die Serverregeln verstoßen und wurde entfernt.'
+    categoryLabel: '**Kategorie:**'
+    unknownCategory: 'Nicht näher spezifiziert'
+    messagesLabel: '**Entfernte Nachrichten:**'
+    emptyMessage: '(Leere Nachricht)'
+    unknownTimestamp: 'Unbekannter Zeitpunkt'
+    # {count} messages did not fit; {plural} is '' or 'en'.
+    omittedLine: '> … und {count} weitere Nachricht{plural}.'
+    footer: '*Habe ich einen Fehler gemacht? Dann bitte Info an einen Admin.*'
+
+# Replies to /mai … slash commands. {…} placeholders per command.
+commands:
+  status: |
+    # 🐾 Mai
+    **Offene Verstöße:** {queueDepth}
+    **Chat-Verlauf:** {historyRows} Zeilen in {historyChannels} Kanälen
+    **Letzter Moderationslauf:** {lastTick}
+    **OpenAI Modelle:** {openai}
+    **Uptime:** {uptime}
+  statusNever: 'noch nie'
+  forgiven: '*schnurrt widerwillig* Na gut. {count} offene(r) Verstoß/Verstöße von <@{userId}> vergessen.'
+  forgivenNothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
+  forbidden: '*faucht* Das darfst du nicht.'
+  notActive: 'Mai is not active in this server.'
+
+welcome:
+  # {member} is replaced by the new member's mention.
+  lines:
+    - '*streckt sich, gähnt und tapst heran* Miau, {member}! Willkommen - die besten Sonnenplätze sind leider schon besetzt. Von mir. 🐾'
+    - 'Ein neuer Mensch! Willkommen, {member}! *reibt den Kopf an deinem Bein* 😺'
+    - '*späht hinter dem Kratzbaum hervor* Oh, {member} ist da! Willkommen. Mitgebrachte Leckerlis bitte direkt bei mir abgeben. 🐟'
+    - '{member}! *springt aufs Sofa* Willkommen! Ich bin Mai, die Moderatorin hier. Kraulen erlaubt, aber nur am Kopf. 🐱'
+
+# Ambient reactions. First matching trigger wins (no fallthrough), `chance`
+# keeps the common ones from firing every time. `pattern` is a JS regular
+# expression source string, compiled with `flags`.
+reactions:
+  - emoji: '❤️'
+    chance: 1
+    pattern: 'good\s+(girl|kitty|cat)|gute\s+(katze|miez\w*)|brave?s?\s+(katze|miez\w*)'
+    flags: 'i'
+  - emoji: '🐟'
+    chance: 1
+    pattern: '\bfisch\w*\b|\bfish(es)?\b|🐟|🐠|🍣'
+    flags: 'i'
+  - emoji: '😺'
+    chance: 0.5
+    pattern: '\b(miau\w*|meow\w*|maunz\w*|schnurr\w*|purr\w*)\b'
+    flags: 'i'
+  - emoji: '🐱'
+    chance: 0.2
+    pattern: '\b(katzen?|kater|cats?|kitt(y|ies)|kitten|kätzchen)\b'
+    flags: 'i'
+
+# Rotating custom status (PRESENCE_ROTATE_HOURS controls the interval).
+presence:
+  statuses:
+    - '😺 schnurrt irgendwo in der Nähe'
+    - '😴 hält ein Nickerchen in der Sonne'
+    - '🐟 träumt von Fisch'
+    - '🧶 jagt einen Wollknäuel'
+    - '🐾 tapst über die Tastatur'
+    - '📦 sitzt in einem Karton'
+    - '🪟 beobachtet Vögel am Fenster'
+    - '🍗 wartet auf Leckerlis'
+    - '🌙 nachtaktiv unterwegs'
+    - '🛋️ kratzt heimlich am Sofa'

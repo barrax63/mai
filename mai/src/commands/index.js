@@ -6,9 +6,10 @@
  *   2. Import and add it to the `commands` array below.
  *   3. Run `npm run register` to sync definitions with Discord.
  */
+import { mai } from './mai.js';
 import { ping } from './ping.js';
 
-const commands = [ping];
+const commands = [ping, mai];
 
 /** Command definitions in the shape Discord's registration API expects. */
 export const commandDefinitions = commands.map((command) => command.definition);

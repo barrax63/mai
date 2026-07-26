@@ -1,12 +1,12 @@
 # syntax=docker/dockerfile:1
 
-FROM node:22-alpine AS deps
+FROM node:24-alpine AS deps
 WORKDIR /app
 COPY package.json package-lock.json* ./
 RUN --mount=type=cache,target=/root/.npm \
     if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi
 
-FROM node:22-alpine
+FROM node:24-alpine
 ENV NODE_ENV=production
 WORKDIR /app
 
@@ -17,12 +17,19 @@ LABEL org.opencontainers.image.title="mai" \
       org.opencontainers.image.url="https://github.com/barrax63/mai" \
       org.opencontainers.image.source="https://github.com/barrax63/mai" \
       org.opencontainers.image.documentation="https://github.com/barrax63/mai/blob/main/README.md" \
-      org.opencontainers.image.base.name="node:22-alpine"
+      org.opencontainers.image.base.name="node:24-alpine"
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY package.json ./
 COPY src ./src
+COPY config ./config
 COPY scripts ./scripts
+
+# SQLite lives on a volume mounted here (the rootfs is read-only). Creating the
+# directory before the volume is attached makes Docker copy this ownership onto
+# the named volume, so the unprivileged user can write.
+RUN mkdir -p /data && chown node:node /data
+VOLUME ["/data"]
 
 # Run as the unprivileged node user; works with read_only rootfs + cap_drop ALL.
 USER node

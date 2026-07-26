@@ -5,7 +5,7 @@
   "type": "module",
   "private": true,
   "engines": {
-    "node": ">=22"
+    "node": ">=24"
   },
   "main": "src/index.js",
   "scripts": {
@@ -17,6 +17,7 @@
     "discord-interactions": "^4.1.0",
     "discord.js": "^14.16.3",
     "express": "^4.21.2",
-    "pino": "^9.6.0"
+    "pino": "^9.6.0",
+    "yaml": "^2.9.0"
   }
 }

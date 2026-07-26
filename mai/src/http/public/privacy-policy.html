@@ -110,7 +110,7 @@
       <img class="cat" src="/mai.png" alt="Mai, a tabby cat" width="320" height="320" />
       <h1>Mai - Privacy Policy</h1>
     </div>
-    <p class="updated">Last updated: 24 July 2026</p>
+    <p class="updated">Last updated: 26 July 2026</p>
 
     <p>Mai is an open-source, self-hosted Discord bot with a cat persona: she chats
     when spoken to, reacts to keywords, can welcome new members, and quietly moderates
@@ -123,7 +123,7 @@
       <strong>In short:</strong>
       <ul>
         <li>Mai does <strong>not</strong> store the content of your messages for moderation - only IDs, timestamps, and flagged category labels.</li>
-        <li>The <strong>only</strong> content Mai retains is short chat memory, and only for messages you deliberately address to her (mention, reply, or DM). It is obfuscated at rest and auto-deleted within a couple of days.</li>
+        <li>The <strong>only</strong> content Mai retains is short chat memory, and only for messages you deliberately address to her (mention, reply, or DM). It is encrypted at rest and auto-deleted within a couple of days.</li>
         <li>Mai does not sell your data, show ads, build advertising profiles, or track you across servers.</li>
       </ul>
     </div>
@@ -138,11 +138,11 @@
     <h2>2. What data Mai processes</h2>
 
     <h3>Moderation (every message in an enabled server)</h3>
-    <p>When moderation is enabled for a server, Mai forwards each new message to a
-    private automation workflow to classify it for policy violations (using OpenAI's
-    moderation classification). During this check the message text is processed
-    <strong>transiently</strong> - it is sent to the classifier and used to produce a
-    verdict, but it is <strong>not written to any Mai database</strong>.</p>
+    <p>When moderation is enabled for a server, Mai sends each new message to OpenAI's
+    moderation classifier to check it for policy violations. During this check the
+    message text is processed <strong>transiently</strong> - it is sent to the classifier
+    and used to produce a verdict, but it is <strong>not written to any Mai
+    database</strong>.</p>
     <p>If a message is flagged, Mai stores only <strong>metadata</strong> in a short-lived
     queue so a scheduled task can enforce a grace period:</p>
     <ul>
@@ -156,16 +156,16 @@
 
     <h3>Chat with Mai (mention, reply, or direct message)</h3>
     <p>When you deliberately address Mai - by @-mentioning her, replying to one of her
-    messages, or sending her a direct message - your message is sent to a chat workflow
-    that generates an in-character reply (using OpenAI's text generation model). To give 
-    Mai short-term memory so she can follow a conversation, these chat turns are stored 
-    in a history table. This is the <strong>one deliberate exception</strong> to the 
-    no-content rule.</p>
+    messages, or sending her a direct message - your message is sent to OpenAI's text
+    generation model, which produces her in-character reply. To give Mai short-term
+    memory so she can follow a conversation, these chat turns are stored in a history
+    table in the bot's own local database. This is the <strong>one deliberate
+    exception</strong> to the no-content rule.</p>
     <ul>
       <li>Only messages <strong>addressed to Mai</strong> are stored here - ordinary server chatter is not.</li>
-      <li>The message <strong>content and username</strong> are <strong>obfuscated at rest</strong> (reversibly scrambled with XOR + base64) so they are not plainly readable when browsing the table.</li>
+      <li>The message <strong>content and username</strong> are <strong>encrypted at rest</strong> (AES-256-GCM, with a key held only by the operator).</li>
       <li>Rows are automatically <strong>pruned after a few hours</strong> (default: 48 hours), so nothing lingers long-term.</li>
-      <li>Direct messages to Mai are treated the same way and are subject to the same obfuscation and auto-deletion.</li>
+      <li>Direct messages to Mai are treated the same way and are subject to the same encryption and auto-deletion.</li>
     </ul>
 
     <h3>Reactions and welcome messages</h3>
@@ -186,8 +186,10 @@
       <li><strong>Discord</strong> - the platform Mai runs on; messages and IDs originate there (<a href="https://discord.com/privacy" rel="noopener">privacy policy</a>).</li>
       <li><strong>OpenAI</strong> - classifies messages for moderation and generates Mai's chat replies (<a href="https://openai.com/policies/privacy-policy" rel="noopener">privacy policy</a>). Message text is sent to OpenAI to produce a result.</li>
       <li><strong>Cloudflare</strong> - provides the secure tunnel that connects Discord to the bot (<a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">privacy policy</a>).</li>
-      <li><strong>n8n</strong> - the automation engine running the moderation and chat workflows, self-hosted by the operator.</li>
     </ul>
+    <p>All other processing - the moderation queue, the grace period, chat memory - happens
+    inside the bot itself, on infrastructure controlled by the operator. No further
+    third party receives your messages.</p>
 
     <h2>5. Data retention</h2>
     <ul>
@@ -210,9 +212,9 @@
 
     <h2>8. Security</h2>
     <p>Mai runs in a hardened container (read-only filesystem, dropped privileges,
-    non-root user, secrets kept out of source control). Chat memory is obfuscated at
-    rest. No method of transmission or storage is completely secure, but data is
-    minimized and short-lived by design.</p>
+    non-root user, secrets kept out of source control). Chat memory is encrypted at
+    rest with AES-256-GCM. No method of transmission or storage is completely secure,
+    but data is minimized and short-lived by design.</p>
 
     <h2>9. Changes to this policy</h2>
     <p>This policy may be updated as Mai evolves. Material changes will be reflected by

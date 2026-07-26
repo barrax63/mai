@@ -1,12 +1,19 @@
 /**
- * Entry point: starts the HTTP interactions server and the gateway client,
- * and shuts both down cleanly on SIGTERM/SIGINT (docker stop).
+ * Entry point: opens the database, starts the HTTP interactions server and the
+ * gateway client, and shuts everything down cleanly on SIGTERM/SIGINT
+ * (docker stop).
+ *
+ * A database that cannot be opened or migrated is fatal: running with a broken
+ * queue would silently drop moderation.
  */
+import { closeDatabase, openDatabase } from './db/index.js';
 import { logger } from './logger.js';
 import { startServer } from './http/server.js';
-import { startGateway } from './gateway/client.js';
+import { startGateway, stopEnforcer } from './gateway/client.js';
 
 async function main() {
+  openDatabase();
+
   const server = await startServer();
   const gateway = await startGateway();
 
@@ -22,10 +29,14 @@ async function main() {
     }, 10_000);
     forceExit.unref();
 
+    stopEnforcer();
+
     await Promise.allSettled([
       new Promise((resolve) => server.close(resolve)),
       gateway.destroy(),
     ]);
+
+    closeDatabase();
 
     logger.info('Shutdown complete');
     process.exit(0);
