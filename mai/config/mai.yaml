@@ -80,6 +80,8 @@ moderation:
       forgiven: '🔵 Verstöße erlassen'
       reported: '🟣 Nachricht gemeldet'
       appealed: '🟪 Einspruch eingelegt'
+      stuck: '🟠 Löschung schlägt fehl'
+      abandoned: '⚫ Löschung aufgegeben'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -90,6 +92,7 @@ moderation:
       count: 'Anzahl'
       reporter: 'Gemeldet von'
       reason: 'Begründung'
+      attempts: 'Versuche'
       resolution: 'Bearbeitet'
       appeal: 'Einspruch'
     jump: 'Zur Nachricht'
@@ -165,6 +168,21 @@ commands:
       **OpenAI Modelle:** {openai}
       **Uptime:** {uptime}
     never: 'noch nie'
+
+  # /mod spend — OpenAI-Verbrauch. Tokens, keine Währung: Preise ändern sich.
+  spend:
+    body: |
+      # 💸 Verbrauch
+      **Heute:** {todayCalls} Aufrufe, {todayTokens} Tokens
+      **Diesen Monat:** {monthCalls} Aufrufe, {monthTokens} Tokens
+      **Budget:** {budget}
+
+      {breakdown}
+    line: '• `{purpose}` ({model}): {calls} Aufrufe, {tokens} Tokens'
+    budgetOff: 'kein Limit'
+    budgetOk: '{used} / {budget} Tokens ({percent} %)'
+    budgetExceeded: '⚠️ {used} / {budget} Tokens ({percent} %) — Chat ist bis nächsten Monat aus'
+    nothing: '_noch nichts verbraucht_'
 
   # /mod forgive
   forgive:

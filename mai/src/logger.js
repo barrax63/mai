@@ -1,5 +1,9 @@
 import { pino } from 'pino';
+import { alert } from './alerts.js';
 import { config } from './config.js';
+
+const ERROR_LEVEL = 50;
+const FATAL_LEVEL = 60;
 
 export const logger = pino({
   level: config.logLevel,
@@ -10,5 +14,19 @@ export const logger = pino({
     // human in `docker compose logs`, so write the label instead — the records
     // stay valid JSON either way.
     level: (label) => ({ level: label }),
+  },
+  hooks: {
+    // Every error and fatal is mirrored into the alert channel from here, so no
+    // call site has to remember to raise one. Alerting is fire-and-forget and
+    // swallows its own failures — see alerts.js.
+    logMethod(args, method, level) {
+      if (level >= ERROR_LEVEL) {
+        const [first, second] = args;
+        const record = typeof first === 'object' ? first : undefined;
+        const message = typeof first === 'string' ? first : second;
+        alert(level >= FATAL_LEVEL ? 'fatal' : 'error', record, message);
+      }
+      return method.apply(this, args);
+    },
   },
 });

@@ -11,6 +11,7 @@ import { content, fill } from '../content.js';
 import { stats as historyStats } from '../db/history.js';
 import { depth, forgiveUser } from '../db/queue.js';
 import { effectiveSettings, resetSettings, SETTINGS, updateSettings } from '../db/settings.js';
+import { breakdownFor, budgetState, dayKey, monthKey, totalsFor } from '../db/usage.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
@@ -68,6 +69,48 @@ function statusResponse() {
       lastTick,
       openai,
       uptime: formatUptime(process.uptime()),
+    }),
+  );
+}
+
+const formatNumber = (value) => new Intl.NumberFormat('de-DE').format(value ?? 0);
+
+/**
+ * `/mod spend` — what Mai has cost this month, from the usage the API already
+ * reports back. Tokens, not currency: pricing changes and is per model.
+ */
+function spendResponse() {
+  const today = totalsFor(dayKey());
+  const month = totalsFor(monthKey());
+  const { used, budget, exceeded } = budgetState();
+
+  const breakdown = breakdownFor(monthKey())
+    .map((row) =>
+      fill(content.commands.spend.line, {
+        purpose: row.purpose,
+        model: row.model,
+        calls: formatNumber(row.calls),
+        tokens: formatNumber(row.totalTokens),
+      }),
+    )
+    .join('\n');
+
+  const budgetLine = budget > 0
+    ? fill(exceeded ? content.commands.spend.budgetExceeded : content.commands.spend.budgetOk, {
+        used: formatNumber(used),
+        budget: formatNumber(budget),
+        percent: Math.round((used / budget) * 100),
+      })
+    : content.commands.spend.budgetOff;
+
+  return ephemeralResponse(
+    fill(content.commands.spend.body, {
+      todayCalls: formatNumber(today.calls),
+      todayTokens: formatNumber(today.totalTokens),
+      monthCalls: formatNumber(month.calls),
+      monthTokens: formatNumber(month.totalTokens),
+      budget: budgetLine,
+      breakdown: breakdown || content.commands.spend.nothing,
     }),
   );
 }
@@ -253,6 +296,11 @@ export const mod = {
         ],
       },
       {
+        name: 'spend',
+        description: 'OpenAI usage today and this month',
+        type: 1, // SUB_COMMAND
+      },
+      {
         name: 'config',
         description: 'Per-server settings',
         type: 2, // SUB_COMMAND_GROUP
@@ -322,6 +370,7 @@ export const mod = {
     const { group, name } = resolveSubcommand(interaction);
     if (group === 'config') return configResponse(interaction);
     if (name === 'forgive') return forgiveResponse(interaction);
+    if (name === 'spend') return spendResponse();
     return statusResponse();
   },
 };

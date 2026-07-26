@@ -50,7 +50,7 @@ export async function checkMessage(message) {
 
   let verdict;
   try {
-    verdict = await classify(message.content, attachments);
+    verdict = await classify(message.content, attachments, { guildId: message.guildId });
   } catch (error) {
     logger.error(
       { messageId: message.id, err: error },

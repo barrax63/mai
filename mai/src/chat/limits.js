@@ -11,6 +11,7 @@
  * replying — a cat that cannot be bothered right now.
  */
 import { config } from '../config.js';
+import { budgetState } from '../db/usage.js';
 import { logger } from '../logger.js';
 import { createRateLimiter } from '../rate-limit.js';
 
@@ -46,6 +47,28 @@ export function acquireSlot() {
 
 export function releaseSlot() {
   inFlight = Math.max(0, inFlight - 1);
+}
+
+/**
+ * Whether this month's token budget still allows a chat reply. Moderation is
+ * never gated by this — safety is not a budget item, and the moderation
+ * endpoint costs nothing anyway.
+ *
+ * @returns {boolean}
+ */
+export function withinBudget() {
+  try {
+    const { exceeded, used, budget } = budgetState();
+    if (exceeded) {
+      logger.warn({ used, budget }, 'Monthly token budget exhausted, chat is off');
+      return false;
+    }
+    return true;
+  } catch (error) {
+    // A broken counter must not silence her.
+    logger.warn({ err: error }, 'Could not read the token budget, allowing the call');
+    return true;
+  }
 }
 
 /**

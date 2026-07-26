@@ -66,6 +66,7 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 | `/mod forgive <user>` | Manage Messages | Drops that member's open violations and cleans up the scold replies — Mai calms down immediately |
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
 | `/mod config set [log-channel] [welcome-channel] [grace]` | Manage Messages | Sets any subset for this server |
+| `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month, per purpose and model, against the budget |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
 | `Mai: melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
 
@@ -189,6 +190,33 @@ Two tables:
 | `moderation_queue` | IDs, category slugs, timestamps of flagged messages — no content | until enforced (grace period) |
 | `chat_history` | Mai's short-term memory; `content`/`username` encrypted | `CHAT_HISTORY_MAX_AGE_HOURS` |
 | `guild_settings` | Per-guild overrides of the process defaults | until changed |
+| `usage_daily` | Call and token counters per day, guild, model and purpose | kept |
+
+## Operations
+
+**Token accounting** ([src/db/usage.js](src/db/usage.js)): every API call is
+counted where the response reports it, so `/mod spend` can answer "how much?"
+without guessing. Counters only — no prompts, no replies, nothing identifying a
+member. `OPENAI_MONTHLY_TOKEN_BUDGET` (UTC calendar month, 0 = no limit) is the
+safety net: once the month's tokens are used up, chat degrades to reactions —
+Mai answers a mention with the busy emoji instead of a reply. **Moderation is
+never gated by the budget**; safety is not a budget item, and the moderation
+endpoint reports no tokens anyway.
+
+**Error alerts**: with `ALERT_CHANNEL_ID` set, every `error` and `fatal` log line
+is mirrored into that channel. It is wired into pino as a hook
+([src/alerts.js](src/alerts.js)), so no call site can forget to raise one, and
+only whitelisted keys (ids, command names, status codes, the error type and
+message) are forwarded — a log record may carry content, an alert must not.
+Throttled to 5 per 5 minutes, with the dropped ones counted and reported by the
+first alert of the next window. Two consequences worth knowing: alerts are
+process-wide, not per guild, and a `LOG_LEVEL` above `error` silences them too,
+because pino replaces a disabled level's method — hook included — with a no-op.
+
+**Stuck enforcement**: a queue row that cannot be enforced (missing permission,
+transient API failure) counts its attempts. After 5 it reports itself once in the
+moderation log *and* at `error` level; after 60 Mai gives up, logs it and drops
+the row. Before this, such a row failed silently every minute forever.
 
 Backup = the volume:
 

@@ -180,7 +180,11 @@ export async function generateReply(messages, context) {
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     // The final round drops the tools, so the model has to answer in words.
     const tools = useTools && round < MAX_TOOL_ROUNDS ? toolDefinitions : undefined;
-    const { message } = await createChatCompletion({ messages: conversation, tools });
+    const { message } = await createChatCompletion({
+      messages: conversation,
+      tools,
+      guildId: context?.guildId,
+    });
 
     const calls = message?.tool_calls ?? [];
     if (calls.length === 0) return normalizeReply(message?.content);

@@ -22,6 +22,8 @@ export const LOG_SELF_DELETED = 'selfDeleted';
 export const LOG_FORGIVEN = 'forgiven';
 export const LOG_REPORTED = 'reported';
 export const LOG_APPEALED = 'appealed';
+export const LOG_STUCK = 'stuck';
+export const LOG_ABANDONED = 'abandoned';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
@@ -30,6 +32,8 @@ const COLORS = {
   [LOG_FORGIVEN]: 0x3498db,
   [LOG_REPORTED]: 0x5865f2,
   [LOG_APPEALED]: 0x9b59b6,
+  [LOG_STUCK]: 0xe67e22,
+  [LOG_ABANDONED]: 0x7f8c8d,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -98,6 +102,16 @@ function fieldsFor(event) {
 
     case LOG_APPEALED:
       return [user, { name: labels.appeal, value: event.reason ?? none, inline: false }];
+
+    case LOG_STUCK:
+    case LOG_ABANDONED:
+      return [
+        user,
+        channel,
+        { name: labels.message, value: `\`${event.messageId}\``, inline: true },
+        { name: labels.attempts, value: String(event.attempts ?? 0), inline: true },
+        { name: labels.reason, value: event.reason ?? none, inline: false },
+      ];
 
     default:
       return [user];

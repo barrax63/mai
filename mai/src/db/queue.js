@@ -26,6 +26,7 @@ const toRow = (row) => ({
   warnedAt: row.warned_at,
   dueAt: row.due_at,
   scoldMessageId: row.scold_message_id || null,
+  attempts: row.attempts ?? 0,
 });
 
 /**
@@ -64,6 +65,22 @@ export function dueRows(nowIso) {
     .prepare('SELECT * FROM moderation_queue WHERE due_at <= ? ORDER BY due_at ASC')
     .all(nowIso)
     .map(toRow);
+}
+
+/**
+ * Counts one failed enforcement attempt (missing permission, transient error),
+ * so a permanently stuck row can report itself instead of failing silently
+ * every minute forever.
+ *
+ * @param {string} messageId
+ * @returns {number} The new attempt count.
+ */
+export function bumpAttempts(messageId) {
+  const db = getDb();
+  db.prepare('UPDATE moderation_queue SET attempts = attempts + 1 WHERE message_id = ?').run(messageId);
+  return db
+    .prepare('SELECT attempts FROM moderation_queue WHERE message_id = ?')
+    .get(messageId)?.attempts ?? 0;
 }
 
 /**

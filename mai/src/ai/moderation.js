@@ -14,10 +14,11 @@ const IMAGE_TYPES = /^image\/(png|jpeg|jpg|gif|webp)$/i;
 /**
  * @param {string} text
  * @param {{ url: string, contentType?: string | null }[]} [attachments]
+ * @param {{ guildId?: string | null }} [options] Accounting context.
  * @returns {Promise<{ flagged: boolean, categories: string[] }>}
  * @throws {import('./openai.js').OpenAiError} Callers decide how to fail.
  */
-export async function classify(text, attachments = []) {
+export async function classify(text, attachments = [], { guildId } = {}) {
   const trimmed = String(text ?? '').trim();
   const images = config.moderation.classifyImages
     ? attachments.filter((attachment) => IMAGE_TYPES.test(attachment.contentType ?? ''))
@@ -36,7 +37,7 @@ export async function classify(text, attachments = []) {
       ]
     : trimmed;
 
-  const result = await createModeration(input);
+  const result = await createModeration(input, { guildId });
   const categories = Object.entries(result.categories)
     .filter(([, isFlagged]) => isFlagged === true)
     .map(([category]) => category);

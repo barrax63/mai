@@ -7,7 +7,13 @@
  * itself comes from chat/reply.js.
  */
 import { generateChatReply, rememberExchange } from '../../chat/reply.js';
-import { acquireSlot, consumeRateLimit, releaseSlot, runExclusive } from '../../chat/limits.js';
+import {
+  acquireSlot,
+  consumeRateLimit,
+  releaseSlot,
+  runExclusive,
+  withinBudget,
+} from '../../chat/limits.js';
 import { config, isGuildAllowed } from '../../config.js';
 import { content } from '../../content.js';
 import { logger } from '../../logger.js';
@@ -175,6 +181,12 @@ export async function handleMaiChat(message) {
     // Tools read guild facts through the client; the model never gets it.
     client: message.client,
   };
+
+  // Out of budget for the month: she still reacts, she just stops talking.
+  if (!withinBudget()) {
+    await reactBusy(message);
+    return;
+  }
 
   if (!consumeRateLimit(input.userId)) {
     await reactBusy(message);

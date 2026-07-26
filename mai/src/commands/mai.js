@@ -7,7 +7,7 @@
  * caller, behind a confirmation button.
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
-import { acquireSlot, consumeRateLimit, releaseSlot } from '../chat/limits.js';
+import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../chat/limits.js';
 import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { deleteForUser } from '../db/history.js';
@@ -47,6 +47,7 @@ async function ask(interaction) {
   // in-character message rather than a private notice.
   if (!config.chat.enabled) return messageResponse(content.commands.ask.disabled);
   if (!question) return messageResponse(content.commands.ask.empty);
+  if (!withinBudget()) return messageResponse(content.commands.ask.busy);
   if (!consumeRateLimit(user.id)) return messageResponse(content.commands.ask.busy);
   if (!acquireSlot()) return messageResponse(content.commands.ask.busy);
 

@@ -14,15 +14,29 @@
  */
 import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
-import { dueRows, remove } from '../db/queue.js';
+import { bumpAttempts, dueRows, remove } from '../db/queue.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
-import { LOG_DELETED, LOG_SELF_DELETED, postModerationLog } from './log.js';
+import {
+  LOG_ABANDONED,
+  LOG_DELETED,
+  LOG_SELF_DELETED,
+  LOG_STUCK,
+  postModerationLog,
+} from './log.js';
 import { buildWarning, groupByUser } from './warning.js';
 
 // Discord REST error codes (discord.js exposes them as error.code).
 const UNKNOWN_CHANNEL = 10003;
 const UNKNOWN_MESSAGE = 10008;
+
+/**
+ * A row that cannot be enforced retries every tick. These thresholds turn that
+ * silent loop into two visible events: one report when it is clearly not
+ * transient, and one when Mai stops trying.
+ */
+const REPORT_AFTER_ATTEMPTS = 5;
+const GIVE_UP_AFTER_ATTEMPTS = 60;
 
 /** @type {{ lastTickAt: string | null, lastTickMs: number | null, running: boolean, lastError: string | null }} */
 const status = { lastTickAt: null, lastTickMs: null, running: false, lastError: null };
@@ -50,6 +64,48 @@ async function deleteMessageById(client, channelId, messageId) {
   } catch (error) {
     logger.debug({ channelId, messageId, err: error }, 'Deleting message failed');
   }
+}
+
+/**
+ * Counts a failed attempt and, at the thresholds, makes the failure visible:
+ * once when it stops looking transient, once when Mai gives up. Silence would
+ * mean a message stays up forever because of a missing permission nobody sees.
+ *
+ * @param {import('discord.js').Client} client
+ * @param {ReturnType<typeof dueRows>[number]} row
+ * @param {Error} error
+ * @returns {Promise<{ enforced: null, keepRow: boolean }>}
+ */
+async function reportFailure(client, row, error) {
+  const attempts = bumpAttempts(row.messageId);
+  const event = {
+    guildId: row.guildId,
+    channelId: row.channelId,
+    messageId: row.messageId,
+    userId: row.userId,
+    attempts,
+    reason: error?.message ?? String(error),
+  };
+
+  if (attempts >= GIVE_UP_AFTER_ATTEMPTS) {
+    // `error` level: this also reaches the alert channel via the logger hook.
+    logger.error(
+      { messageId: row.messageId, guildId: row.guildId, attempts },
+      'Giving up on a queue row after repeated failures',
+    );
+    await postModerationLog(client, { ...event, type: LOG_ABANDONED });
+    return { enforced: null, keepRow: false };
+  }
+
+  if (attempts === REPORT_AFTER_ATTEMPTS) {
+    logger.error(
+      { messageId: row.messageId, guildId: row.guildId, channelId: row.channelId, attempts },
+      'A queue row keeps failing to enforce — check Mai\'s permissions in that channel',
+    );
+    await postModerationLog(client, { ...event, type: LOG_STUCK });
+  }
+
+  return { enforced: null, keepRow: true };
 }
 
 /**
@@ -97,7 +153,7 @@ async function processRow(client, row) {
       { messageId: row.messageId, channelId: row.channelId, err: error },
       'Could not look up flagged message, keeping queue row',
     );
-    return { enforced: null, keepRow: true };
+    return reportFailure(client, row, error);
   }
 
   // Capture before deleting — this content is only ever used for the DM and is
@@ -119,7 +175,7 @@ async function processRow(client, row) {
       { messageId: row.messageId, err: error },
       'Deleting flagged message failed, keeping queue row',
     );
-    return { enforced: null, keepRow: true };
+    return reportFailure(client, row, error);
   }
 
   await deleteMessageById(client, row.channelId, row.scoldMessageId);

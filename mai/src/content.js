@@ -86,6 +86,7 @@ function loadContent() {
   const forgive = section(commands, 'forgive');
   const configSection = section(commands, 'config');
   const reportSection = section(commands, 'report');
+  const spend = section(commands, 'spend');
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
@@ -129,6 +130,8 @@ function loadContent() {
           forgiven: str(logTitles, ['moderation', 'log', 'titles', 'forgiven']),
           reported: str(logTitles, ['moderation', 'log', 'titles', 'reported']),
           appealed: str(logTitles, ['moderation', 'log', 'titles', 'appealed']),
+          stuck: str(logTitles, ['moderation', 'log', 'titles', 'stuck']),
+          abandoned: str(logTitles, ['moderation', 'log', 'titles', 'abandoned']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -140,6 +143,7 @@ function loadContent() {
           count: str(logFields, ['moderation', 'log', 'fields', 'count']),
           reporter: str(logFields, ['moderation', 'log', 'fields', 'reporter']),
           reason: str(logFields, ['moderation', 'log', 'fields', 'reason']),
+          attempts: str(logFields, ['moderation', 'log', 'fields', 'attempts']),
           resolution: str(logFields, ['moderation', 'log', 'fields', 'resolution']),
           appeal: str(logFields, ['moderation', 'log', 'fields', 'appeal']),
         }),
@@ -198,6 +202,14 @@ function loadContent() {
       forgive: Object.freeze({
         done: str(forgive, ['commands', 'forgive', 'done']),
         nothing: str(forgive, ['commands', 'forgive', 'nothing']),
+      }),
+      spend: Object.freeze({
+        body: str(spend, ['commands', 'spend', 'body']),
+        line: str(spend, ['commands', 'spend', 'line']),
+        budgetOff: str(spend, ['commands', 'spend', 'budgetOff']),
+        budgetOk: str(spend, ['commands', 'spend', 'budgetOk']),
+        budgetExceeded: str(spend, ['commands', 'spend', 'budgetExceeded']),
+        nothing: str(spend, ['commands', 'spend', 'nothing']),
       }),
       report: Object.freeze({
         modalTitle: str(reportSection, ['commands', 'report', 'modalTitle']),

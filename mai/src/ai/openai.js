@@ -9,6 +9,7 @@
  * network errors *and* timeouts are retried with exponential backoff.
  */
 import { config } from '../config.js';
+import { recordUsage } from '../db/usage.js';
 import { logger } from '../logger.js';
 
 const BASE_BACKOFF_MS = 500;
@@ -116,17 +117,38 @@ async function postJson(path, body) {
 }
 
 /**
- * @param {{ messages: object[], tools?: object[] }} request Full message array,
- *   including the system message; `tools` enables function calling for this call.
+ * Accounting must never break a call that already succeeded.
+ *
+ * @param {{ guildId?: string | null, model: string, purpose: string, usage?: object }} entry
+ */
+function account(entry) {
+  try {
+    recordUsage(entry);
+  } catch (error) {
+    logger.warn({ purpose: entry.purpose, err: error }, 'Could not record usage');
+  }
+}
+
+/**
+ * @param {{ messages: object[], tools?: object[], guildId?: string | null }} request
+ *   Full message array including the system message; `tools` enables function
+ *   calling for this call; `guildId` is for accounting only.
  * @returns {Promise<{ message: object, usage?: object }>} The assistant message
  *   verbatim — it may carry `tool_calls` instead of `content`, and it has to go
  *   back into the next request unchanged.
  */
-export async function createChatCompletion({ messages, tools }) {
+export async function createChatCompletion({ messages, tools, guildId }) {
   const result = await postJson('/chat/completions', {
     model: config.openai.chatModel,
     messages,
     ...(tools?.length ? { tools } : {}),
+  });
+
+  account({
+    guildId,
+    model: config.openai.chatModel,
+    purpose: 'chat',
+    usage: result?.usage,
   });
 
   return {
@@ -137,13 +159,18 @@ export async function createChatCompletion({ messages, tools }) {
 
 /**
  * @param {string | Array<object>} input Text, or a multimodal content array.
+ * @param {{ guildId?: string | null }} [options] Accounting context.
  * @returns {Promise<{ flagged: boolean, categories: Record<string, boolean> }>}
  */
-export async function createModeration(input) {
+export async function createModeration(input, { guildId } = {}) {
   const result = await postJson('/moderations', {
     model: config.openai.moderationModel,
     input,
   });
+
+  // The moderation endpoint reports no usage; the call itself is still worth
+  // counting to see the volume.
+  account({ guildId, model: config.openai.moderationModel, purpose: 'moderation' });
 
   const first = result?.results?.[0];
   if (!first) {

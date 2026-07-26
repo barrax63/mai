@@ -92,6 +92,9 @@ export const config = Object.freeze({
     timeoutMs: int('OPENAI_TIMEOUT_MS', '30000', { min: 1000 }),
     // Retries are safe here: an API call has no side effects of its own.
     maxRetries: int('OPENAI_MAX_RETRIES', '2'),
+    // Tokens per calendar month (UTC) before chat degrades to reactions.
+    // 0 = no limit. Moderation is never gated — safety is not a budget item.
+    monthlyTokenBudget: int('OPENAI_MONTHLY_TOKEN_BUDGET', '0'),
   },
   moderation: {
     enabled: moderationEnabled,
@@ -126,6 +129,11 @@ export const config = Object.freeze({
   db: {
     // Must be on a writable volume — the container rootfs is read-only.
     path: optional('DATABASE_PATH', '/data/mai.sqlite'),
+  },
+  alerts: {
+    // Channel for error/fatal log lines. Empty = no alerting. This is an
+    // operator channel, not a per-guild setting: most failures are process-wide.
+    channelId: optional('ALERT_CHANNEL_ID', ''),
   },
   content: {
     // Content/prompt YAML. Defaults to the copy baked into the image.
