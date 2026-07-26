@@ -15,6 +15,7 @@
 import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
 import { bumpAttempts, dueRows, remove } from '../db/queue.js';
+import { isGuildActive } from '../db/settings.js';
 import {
   ACTION_DELETED,
   ACTION_SELF_DELETED,
@@ -131,6 +132,16 @@ async function processRow(client, row) {
       'Dropping queue row: guild no longer in allowlist',
     );
     return { enforced: null, keepRow: false };
+  }
+
+  // Paused by its own staff (/mod off): a pause, not an amnesty. The row waits
+  // instead of being enforced or dropped, and resumes when they switch back on.
+  if (!isGuildActive(row.guildId)) {
+    logger.debug(
+      { messageId: row.messageId, guildId: row.guildId },
+      'Skipping queue row: Mai is paused in this guild',
+    );
+    return { enforced: null, keepRow: true, paused: true };
   }
 
   let message = null;

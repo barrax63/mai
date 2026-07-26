@@ -12,7 +12,11 @@ import { InteractionResponseType, InteractionType } from 'discord-interactions';
 import { commandHandlers } from '../commands/index.js';
 import { isGuildAllowed } from '../config.js';
 import { content } from '../content.js';
+import { isGuildActive } from '../db/settings.js';
 import { logger } from '../logger.js';
+
+/** The one command that still answers while a guild is paused. */
+const STAFF_COMMAND = 'mod';
 import { resolveSubcommand } from './options.js';
 import { componentHandlers, modalHandlers, parseCustomId } from './registry.js';
 import {
@@ -110,6 +114,21 @@ function refuseForeignGuild(interaction, send, logContext) {
   return true;
 }
 
+/**
+ * The kill switch (`/mod off`). `/mod` itself stays reachable — otherwise the
+ * only way back on would be editing the database.
+ *
+ * @returns {boolean} Whether the interaction was refused.
+ */
+function refusePausedGuild(interaction, send, logContext, { allowMod = false } = {}) {
+  if (allowMod && interaction.data?.name === STAFF_COMMAND) return false;
+  if (isGuildActive(interaction.guild_id)) return false;
+
+  logger.debug(logContext, 'Refusing interaction: Mai is paused in this guild');
+  send(ephemeralResponse(content.commands.paused));
+  return true;
+}
+
 function routeCommand(interaction, send) {
   const name = interaction.data?.name;
   const { group, name: subcommand } = resolveSubcommand(interaction);
@@ -121,6 +140,7 @@ function routeCommand(interaction, send) {
   };
 
   if (refuseForeignGuild(interaction, send, logContext)) return undefined;
+  if (refusePausedGuild(interaction, send, logContext, { allowMod: true })) return undefined;
 
   const command = commandHandlers.get(name);
   if (!command) {
@@ -159,6 +179,7 @@ function routeComponent(interaction, send) {
   };
 
   if (refuseForeignGuild(interaction, send, logContext)) return undefined;
+  if (refusePausedGuild(interaction, send, logContext)) return undefined;
 
   const handler = componentHandlers.get(name);
   if (!handler) {
@@ -182,6 +203,7 @@ function routeModal(interaction, send) {
   const logContext = { modal: name, guildId: interaction.guild_id, userId: actorId(interaction) };
 
   if (refuseForeignGuild(interaction, send, logContext)) return undefined;
+  if (refusePausedGuild(interaction, send, logContext)) return undefined;
 
   const handler = modalHandlers.get(name);
   if (!handler) {

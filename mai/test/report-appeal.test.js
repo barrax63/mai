@@ -2,7 +2,7 @@
  * The two flows that run entirely on components and modals: reporting a message
  * and appealing a warning.
  */
-import { interaction, openTestDatabase, TEST_GUILD, TEST_USER } from './setup.js';
+import { interaction, openTestDatabase, stubFetch, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
@@ -57,7 +57,7 @@ const contextMenu = (reporterId = TEST_USER) =>
     channel_id: CHANNEL,
     member: member(reporterId),
     data: {
-      name: 'Mai: melden',
+      name: 'Nachricht melden',
       type: 3,
       target_id: MESSAGE,
       resolved: { messages: { [MESSAGE]: { id: MESSAGE, author: { id: AUTHOR } } } },
@@ -148,9 +148,27 @@ test('a report without a reason omits the field instead of showing an empty one'
   );
 });
 
-test('approving deletes the message and closes the entry', async () => {
+/**
+ * A staff click on "Löschen" is deferred, so the decision arrives as an edit of
+ * the log entry through the interaction webhook rather than as the HTTP response.
+ */
+async function clickApprove(payload) {
+  const edits = [];
+  const restore = stubFetch((url, options) => {
+    edits.push({ url, body: JSON.parse(options.body) });
+    return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } });
+  });
+
+  try {
+    return { body: await route(payload), edits };
+  } finally {
+    restore();
+  }
+}
+
+test('approving deletes the message and edits the entry for everyone', async () => {
   const { deleted } = stubGateway();
-  const body = await route(
+  const { body, edits } = await clickApprove(
     interaction({
       type: InteractionType.MESSAGE_COMPONENT,
       member: member(TEST_USER, STAFF_PERMISSIONS),
@@ -160,18 +178,26 @@ test('approving deletes the message and closes the entry', async () => {
   );
 
   assert.deepEqual(deleted, [MESSAGE]);
-  assert.equal(body.type, InteractionResponseType.UPDATE_MESSAGE);
-  assert.deepEqual(body.data.components, [], 'buttons are gone once handled');
+  // Deferred first, so a slow delete cannot blow the 3 s budget…
+  assert.equal(body.type, InteractionResponseType.DEFERRED_UPDATE_MESSAGE);
 
-  const resolution = body.data.embeds[0].fields.at(-1);
+  // …then the entry itself is edited, which is what the other moderators see.
+  assert.equal(edits.length, 1);
+  assert.match(edits[0].url, /\/messages\/@original$/);
+  const edited = edits[0].body;
+  assert.deepEqual(edited.components, [], 'buttons are gone once handled');
+  assert.equal(edited.embeds[0].title, content.commands.report.titleApproved);
+  assert.ok(edited.embeds[0].color > 0, 'the colour changes too');
+
+  const resolution = edited.embeds[0].fields.at(-1);
   assert.equal(resolution.name, content.moderation.log.fields.resolution);
   assert.match(resolution.value, new RegExp(`Gelöscht von <@${TEST_USER}>`));
-  assert.equal(body.data.embeds[0].fields[0].value, 'b', 'the original fields survive');
+  assert.equal(edited.embeds[0].fields[0].value, 'b', 'the original fields survive');
 });
 
 test('an undeletable message is recorded as such, not as a failure', async () => {
   stubGateway({ deleteFails: true });
-  const body = await route(
+  const { edits } = await clickApprove(
     interaction({
       type: InteractionType.MESSAGE_COMPONENT,
       member: member(TEST_USER, STAFF_PERMISSIONS),
@@ -180,7 +206,36 @@ test('an undeletable message is recorded as such, not as a failure', async () =>
     }),
   );
 
-  assert.match(body.data.embeds[0].fields.at(-1).value, /nicht mehr löschbar/);
+  assert.match(edits[0].body.embeds[0].fields.at(-1).value, /nicht mehr löschbar/);
+});
+
+test('a second decision replaces the first instead of stacking', async () => {
+  stubGateway();
+  const alreadyResolved = {
+    embeds: [
+      {
+        fields: [
+          { name: content.moderation.log.fields.reporter, value: '<@1>' },
+          { name: content.moderation.log.fields.resolution, value: 'Verworfen von <@2>' },
+        ],
+      },
+    ],
+  };
+
+  const body = await route(
+    interaction({
+      type: InteractionType.MESSAGE_COMPONENT,
+      member: member(TEST_USER, STAFF_PERMISSIONS),
+      message: alreadyResolved,
+      data: { custom_id: `report-dismiss:${CHANNEL}:${MESSAGE}`, component_type: 2 },
+    }),
+  );
+
+  const resolutions = body.data.embeds[0].fields.filter(
+    (field) => field.name === content.moderation.log.fields.resolution,
+  );
+  assert.equal(resolutions.length, 1, 'one decision field, not two');
+  assert.match(resolutions[0].value, new RegExp(`<@${TEST_USER}>`));
 });
 
 test('dismissing keeps the message and closes the entry', async () => {

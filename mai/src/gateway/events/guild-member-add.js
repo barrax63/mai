@@ -9,7 +9,7 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { isGuildAllowed } from '../../config.js';
 import { content, fill, pick } from '../../content.js';
-import { effectiveSettings } from '../../db/settings.js';
+import { effectiveSettings, isGuildActive } from '../../db/settings.js';
 import { logger } from '../../logger.js';
 
 /**
@@ -42,8 +42,9 @@ async function welcomeChannel(guild) {
 export async function onGuildMemberAdd(member) {
   if (member.user?.bot) return;
 
-  // Same guild allowlist as the rest of the bot.
+  // Same guild allowlist as the rest of the bot, plus the kill switch.
   if (!isGuildAllowed(member.guild.id)) return;
+  if (!isGuildActive(member.guild.id)) return;
 
   const channel = await welcomeChannel(member.guild);
   if (!channel) {

@@ -24,6 +24,8 @@ test('a guild without a row inherits every default', () => {
   assert.deepEqual(settings.timeoutLadder, config.moderation.timeoutLadder);
   assert.equal(settings.strikeWindowDays, config.moderation.strikeWindowDays);
   assert.deepEqual(settings.inherited, {
+    enabled: true,
+    escalation: true,
     'log-channel': true,
     'welcome-channel': true,
     grace: true,
@@ -126,6 +128,8 @@ test('reset without a name clears everything', () => {
   const settings = resetSettings(id);
 
   assert.deepEqual(settings.inherited, {
+    enabled: true,
+    escalation: true,
     'log-channel': true,
     'welcome-channel': true,
     grace: true,

@@ -89,6 +89,7 @@ function loadContent() {
   const spend = section(commands, 'spend');
   const history = section(commands, 'history');
   const historyActions = section(history, 'actions');
+  const power = section(commands, 'power');
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
@@ -188,6 +189,7 @@ function loadContent() {
     commands: Object.freeze({
       forbidden: str(commands, ['commands', 'forbidden']),
       notActive: str(commands, ['commands', 'notActive']),
+      paused: str(commands, ['commands', 'paused']),
       error: str(commands, ['commands', 'error']),
       expired: str(commands, ['commands', 'expired']),
       ask: Object.freeze({
@@ -221,6 +223,7 @@ function loadContent() {
         }),
         nextTimeout: str(history, ['commands', 'history', 'nextTimeout']),
         nextNothing: str(history, ['commands', 'history', 'nextNothing']),
+        nextDisabled: str(history, ['commands', 'history', 'nextDisabled']),
         empty: str(history, ['commands', 'history', 'empty']),
       }),
       spend: Object.freeze({
@@ -238,6 +241,8 @@ function loadContent() {
         thanks: str(reportSection, ['commands', 'report', 'thanks']),
         approveButton: str(reportSection, ['commands', 'report', 'approveButton']),
         dismissButton: str(reportSection, ['commands', 'report', 'dismissButton']),
+        titleApproved: str(reportSection, ['commands', 'report', 'titleApproved']),
+        titleDismissed: str(reportSection, ['commands', 'report', 'titleDismissed']),
         approved: str(reportSection, ['commands', 'report', 'approved']),
         approvedFailed: str(reportSection, ['commands', 'report', 'approvedFailed']),
         dismissed: str(reportSection, ['commands', 'report', 'dismissed']),
@@ -246,9 +251,18 @@ function loadContent() {
         busy: str(reportSection, ['commands', 'report', 'busy']),
         failed: str(reportSection, ['commands', 'report', 'failed']),
       }),
+      power: Object.freeze({
+        on: str(power, ['commands', 'power', 'on']),
+        onAlready: str(power, ['commands', 'power', 'onAlready']),
+        off: str(power, ['commands', 'power', 'off']),
+        offAlready: str(power, ['commands', 'power', 'offAlready']),
+        guildOnly: str(power, ['commands', 'power', 'guildOnly']),
+      }),
       config: Object.freeze({
         body: str(configSection, ['commands', 'config', 'body']),
         inherited: str(configSection, ['commands', 'config', 'inherited']),
+        on: str(configSection, ['commands', 'config', 'on']),
+        off: str(configSection, ['commands', 'config', 'off']),
         unset: str(configSection, ['commands', 'config', 'unset']),
         systemChannel: str(configSection, ['commands', 'config', 'systemChannel']),
         nothing: str(configSection, ['commands', 'config', 'nothing']),

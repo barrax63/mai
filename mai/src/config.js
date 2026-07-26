@@ -139,6 +139,9 @@ export const config = Object.freeze({
     tickMs: int('MODERATION_TICK_MS', '60000', { min: 1000 }),
     // Also send image attachments to the moderation endpoint (multimodal).
     classifyImages: bool('MODERATION_CLASSIFY_IMAGES', 'false'),
+    // Hand out timeouts at all. Off still records strikes, so the record stays
+    // complete and switching it back on picks up where it left off.
+    escalationEnabled: bool('MODERATION_ESCALATION_ENABLED', 'true'),
     // Timeout in minutes per strike, 1-based; the last entry repeats. 0 = no
     // timeout for that strike, so the default lets a first offence pass with
     // just the deletion. Discord caps a timeout at 28 days (40320 minutes).

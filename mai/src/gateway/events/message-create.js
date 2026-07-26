@@ -11,6 +11,7 @@
  * @param {import('discord.js').Message} message
  */
 import { isGuildAllowed } from '../../config.js';
+import { isGuildActive } from '../../db/settings.js';
 import { logger } from '../../logger.js';
 import { checkMessage } from '../../moderation/check.js';
 import { handleMaiChat, isDmAuthorInAllowedGuild, isMaiChatTrigger } from './mai-chat.js';
@@ -29,6 +30,16 @@ export async function onMessageCreate(message) {
       logger.debug(
         { messageId: message.id, guildId: message.guildId },
         'Ignoring message: guild not in allowlist',
+      );
+      return;
+    }
+
+    // The kill switch (/mod off). Same effect as not being allowlisted, but
+    // set by the server's own staff and reversible from Discord.
+    if (!isGuildActive(message.guildId)) {
+      logger.debug(
+        { messageId: message.id, guildId: message.guildId },
+        'Ignoring message: Mai is paused in this guild',
       );
       return;
     }

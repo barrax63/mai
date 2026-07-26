@@ -16,6 +16,20 @@ import { getDb } from './index.js';
  * how to parse/validate an incoming value. Adding a setting means adding an
  * entry here, a column in a migration, and an option to the command.
  */
+/**
+ * SQLite has no boolean type, and node:sqlite refuses a JS boolean outright —
+ * flags are stored as 1/0 with NULL meaning "inherit".
+ *
+ * @param {unknown} value
+ * @param {string} name For the error message.
+ * @returns {number}
+ */
+function toFlag(value, name) {
+  if (value === true || value === 'true' || value === 1 || value === '1') return 1;
+  if (value === false || value === 'false' || value === 0 || value === '0') return 0;
+  throw new RangeError(`${name} must be true or false`);
+}
+
 export const SETTINGS = Object.freeze({
   'log-channel': {
     column: 'log_channel_id',
@@ -44,6 +58,14 @@ export const SETTINGS = Object.freeze({
       // moment someone earns a timeout.
       return parseTimeoutLadder(value, 'timeout-ladder').join(',');
     },
+  },
+  escalation: {
+    column: 'escalation_enabled',
+    parse: (value) => (value === null ? null : toFlag(value, 'escalation')),
+  },
+  enabled: {
+    column: 'enabled',
+    parse: (value) => (value === null ? null : toFlag(value, 'enabled')),
   },
   'strike-window': {
     column: 'strike_window_days',
@@ -78,7 +100,12 @@ export function rawSettings(guildId) {
 export function effectiveSettings(guildId) {
   const row = guildId ? rawSettings(guildId) : null;
 
+  const flag = (column, fallback) => (row?.[column] == null ? fallback : row[column] === 1);
+
   return {
+    // The kill switch: false means Mai does nothing in this guild at all.
+    enabled: flag('enabled', true),
+    escalationEnabled: flag('escalation_enabled', config.moderation.escalationEnabled),
     // No process-wide default: without an explicit channel there is no mod log.
     logChannelId: row?.log_channel_id ?? null,
     // Falls back to the guild's system channel in the welcome handler.
@@ -89,6 +116,8 @@ export function effectiveSettings(guildId) {
       : config.moderation.timeoutLadder,
     strikeWindowDays: row?.strike_window_days ?? config.moderation.strikeWindowDays,
     inherited: {
+      enabled: row?.enabled == null,
+      escalation: row?.escalation_enabled == null,
       'log-channel': !row?.log_channel_id,
       'welcome-channel': !row?.welcome_channel_id,
       grace: row?.grace_period_minutes === null || row?.grace_period_minutes === undefined,
@@ -96,6 +125,18 @@ export function effectiveSettings(guildId) {
       'strike-window': row?.strike_window_days === null || row?.strike_window_days === undefined,
     },
   };
+}
+
+/**
+ * The kill switch, as its own function because every entry point asks it.
+ *
+ * @param {string | null | undefined} guildId
+ * @returns {boolean} False only for a guild that was explicitly paused.
+ */
+export function isGuildActive(guildId) {
+  // A DM has no guild to pause.
+  if (!guildId) return true;
+  return effectiveSettings(guildId).enabled;
 }
 
 /**

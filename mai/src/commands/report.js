@@ -1,5 +1,5 @@
 /**
- * "Mai: melden" — the message context-menu report.
+ * "Nachricht melden" — the message context-menu report.
  *
  * Right-click a message -> Apps -> the entry below -> a modal asks why -> the
  * report lands in the guild's moderation log with Approve / Dismiss buttons for
@@ -75,24 +75,35 @@ const reviewButtons = (channelId, messageId) => [
 ];
 
 /**
- * Marks a report as handled: the buttons go away and the entry keeps a record of
- * who decided what.
+ * Marks a report as handled, in the log channel, for everyone.
+ *
+ * The decision has to be legible at a glance to the *other* moderators, not just
+ * to whoever clicked: the title and the colour change, the buttons go away so
+ * nobody re-decides it, and a field names who did what. Editing the entry in
+ * place is what makes it visible to all — an ephemeral reply would only tell the
+ * clicker.
  *
  * @param {object} interaction
- * @param {string} resolution
+ * @param {{ title: string, color: number, resolution: string }} decision
  */
-function resolveReport(interaction, resolution) {
-  const embed = interaction.message?.embeds?.[0];
+function resolveReport(interaction, decision) {
+  const embed = interaction.message?.embeds?.[0] ?? {};
   const fields = [
-    ...(embed?.fields ?? []),
-    { name: content.moderation.log.fields.resolution, value: resolution, inline: false },
+    // Drop an earlier resolution: a double click must not stack two of them.
+    ...(embed.fields ?? []).filter(
+      (field) => field.name !== content.moderation.log.fields.resolution,
+    ),
+    { name: content.moderation.log.fields.resolution, value: decision.resolution, inline: false },
   ];
 
   return updateResponse(null, {
     components: [],
-    embeds: [{ ...embed, fields }],
+    embeds: [{ ...embed, title: decision.title, color: decision.color, fields }],
   });
 }
+
+const APPROVED_COLOR = 0xe74c3c;
+const DISMISSED_COLOR = 0x7f8c8d;
 
 export const reportComponents = {
   /** Staff agreed: delete the reported message. */
@@ -119,13 +130,14 @@ export const reportComponents = {
       'Report approved',
     );
 
-    return resolveReport(
-      interaction,
-      fill(
+    return resolveReport(interaction, {
+      title: content.commands.report.titleApproved,
+      color: APPROVED_COLOR,
+      resolution: fill(
         deleted ? content.commands.report.approved : content.commands.report.approvedFailed,
         { userId: staff.id },
       ),
-    );
+    });
   },
 
   /** Staff disagreed: keep the message, close the entry. */
@@ -135,12 +147,24 @@ export const reportComponents = {
     const staff = actor(interaction);
     logger.info({ channelId, messageId, byUserId: staff.id }, 'Report dismissed');
 
-    return resolveReport(
-      interaction,
-      fill(content.commands.report.dismissed, { userId: staff.id }),
-    );
+    return resolveReport(interaction, {
+      title: content.commands.report.titleDismissed,
+      color: DISMISSED_COLOR,
+      resolution: fill(content.commands.report.dismissed, { userId: staff.id }),
+    });
   },
 };
+
+// Deleting the reported message needs a Discord round trip, which can outlast
+// Discord's ~3 s interaction budget under a rate limit. Deferring the *update*
+// acknowledges the click immediately and then edits the entry through the
+// interaction webhook, so the decision still lands in the channel for everyone
+// instead of failing with "interaction failed" and leaving stale buttons.
+//
+// Only for staff, though: after a deferral the response is public by
+// definition, and refusing a stranger's click has to stay ephemeral rather than
+// overwrite the entry with "*faucht* Das darfst du nicht."
+reportComponents['report-approve'].deferred = (interaction) => mayModerate(interaction);
 
 export const reportModals = {
   /**
@@ -179,7 +203,7 @@ export const reportModals = {
 export const report = {
   definition: {
     // Context-menu entries carry no description and show their name verbatim.
-    name: 'Mai: melden',
+    name: 'Nachricht melden',
     type: 3, // MESSAGE
   },
 

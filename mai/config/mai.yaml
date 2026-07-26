@@ -143,6 +143,8 @@ commands:
   # Shared across every interaction.
   forbidden: '*faucht* Das darfst du nicht.'
   notActive: 'Mai is not active in this server.'
+  # Antwort, während der Server per /mod off pausiert ist.
+  paused: '*schläft tief und fest* Mai ist auf diesem Server gerade abgeschaltet. Ein Admin kann sie mit `/mod on` wieder wecken.'
   error: '*verheddert sich im Wollknäuel* Das hat nicht geklappt. Versuch es nochmal.'
   # A button whose handler no longer exists (older deploy) or whose message is
   # too old to act on.
@@ -213,6 +215,7 @@ commands:
       self_deleted: 'selbst entfernt'
     nextTimeout: '{minutes} Minuten Timeout'
     nextNothing: 'kein Timeout'
+    nextDisabled: 'kein Timeout (Eskalation ist aus)'
     empty: '_keine Einträge_'
 
   # "Mai: melden" — Kontextmenü-Meldung (Rechtsklick auf eine Nachricht).
@@ -223,6 +226,10 @@ commands:
     thanks: '*spitzt die Ohren* Danke, ich hab es weitergegeben.'
     approveButton: 'Löschen'
     dismissButton: 'Verwerfen'
+    # Titel des Log-Eintrags nach der Entscheidung — damit alle im Kanal auf
+    # einen Blick sehen, dass die Meldung erledigt ist.
+    titleApproved: '🔴 Meldung bestätigt'
+    titleDismissed: '⚪ Meldung verworfen'
     approved: 'Gelöscht von <@{userId}>'
     approvedFailed: 'Von <@{userId}> bestätigt — Nachricht war nicht mehr löschbar'
     dismissed: 'Verworfen von <@{userId}>'
@@ -231,16 +238,28 @@ commands:
     busy: '*gähnt* Du hast gerade schon genug gemeldet. Später nochmal.'
     failed: 'Das hat nicht geklappt — sag einem Admin Bescheid.'
 
+  # /mod on und /mod off — der Notausschalter für diesen Server.
+  power:
+    on: '*streckt sich und gähnt* Bin wieder da. Moderation, Chat und Reaktionen laufen.'
+    onAlready: '*blinzelt* Ich bin doch schon wach.'
+    off: '*rollt sich zusammen* Gut, ich mache hier nichts mehr — keine Moderation, kein Chat, keine Reaktionen. Mit `/mod on` weckst du mich wieder.'
+    offAlready: '*schnarcht weiter* Ich schlafe doch schon.'
+    guildOnly: 'Das geht nur auf einem Server.'
+
   # /mod config — per-server settings. {…Source} marks inherited defaults.
   config:
     body: |
       # ⚙️ Einstellungen für diesen Server
+      **Mai aktiv:** {enabled}{enabledSource}
+      **Eskalation:** {escalation}{escalationSource}
       **Moderations-Log:** {logChannel}{logChannelSource}
       **Willkommens-Kanal:** {welcomeChannel}{welcomeChannelSource}
       **Schonfrist:** {grace} Minuten{graceSource}
       **Timeout-Leiter:** {ladder} Minuten pro Verstoß{ladderSource}
       **Verstoß-Fenster:** {strikeWindow} Tage{strikeWindowSource}
     inherited: '_(Standard)_'
+    on: 'ja'
+    off: 'nein'
     # No log channel means no moderation log at all …
     unset: '_aus_'
     # … while no welcome channel just falls back to the guild's system channel.

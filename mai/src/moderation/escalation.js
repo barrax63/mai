@@ -42,6 +42,9 @@ export function decideEscalation(guildId, userId) {
   const strikes = strikeCount(guildId, userId, strikeWindowStart(guildId));
   if (strikes === 0) return { strikes, minutes: 0 };
 
+  // Switched off: strikes keep accumulating, they just cost nothing yet.
+  if (!effectiveSettings(guildId).escalationEnabled) return { strikes, minutes: 0 };
+
   const ladder = ladderFor(guildId);
   const minutes = ladder[Math.min(strikes, ladder.length) - 1] ?? 0;
   return { strikes, minutes };

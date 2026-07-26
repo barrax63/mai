@@ -70,7 +70,8 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 | `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
 | `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month, per purpose and model, against the budget |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
-| `Mai: melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
+| `Nachricht melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
+| `/mod off` / `/mod on` | Manage Messages | Kill switch: switches Mai off in this server completely, and back on |
 
 ## Reports and appeals
 
@@ -78,14 +79,21 @@ Both need a configured `log-channel` — without one there is nowhere for either
 to land, and Mai says so instead of swallowing them.
 
 **Reporting** ([src/commands/report.js](src/commands/report.js)): right-click a
-message → *Apps* → *Mai: melden* opens a modal asking why (optional). The report
-appears in the log channel with **Löschen** / **Verwerfen** buttons; both are
-Manage Messages-only and checked server-side, not just hidden. Approving deletes
-the reported message immediately — a human already judged it, so there is no
-grace period — and closes the entry with who decided what; a message that is
-already gone is recorded as such rather than failing the click. Dismissing keeps
-the message and closes the entry. Rate limit: 5 reports per member per 10
+message → *Apps* → *Nachricht melden* opens a modal asking why (optional). The
+report appears in the log channel with **Löschen** / **Verwerfen** buttons; both
+are Manage Messages-only and checked server-side, not just hidden. Approving
+deletes the reported message immediately — a human already judged it, so there is
+no grace period; a message that is already gone is recorded as such rather than
+failing the click. Dismissing keeps it. Rate limit: 5 reports per member per 10
 minutes.
+
+The decision is written back into the log entry itself, so **every** moderator
+sees it: the title and colour change, the buttons disappear so nobody
+re-decides, and a field names who decided what. A second click replaces that
+field instead of stacking another one. The approve path is deferred before the
+delete, so a slow Discord round trip cannot make the click fail and leave stale
+buttons behind — but only for staff, since a deferred response can no longer be
+ephemeral and a stranger's refusal must not overwrite the entry.
 
 **Appealing** ([src/moderation/appeal.js](src/moderation/appeal.js)): the warning
 DM carries an *Einspruch einlegen* button. It opens a modal, and the member's
@@ -112,6 +120,18 @@ inherited.
 | `grace` | `MODERATION_GRACE_PERIOD_MINUTES` | Minutes an author has to delete a flagged message (1–1440) |
 | `timeout-ladder` | `MODERATION_TIMEOUT_LADDER` | Timeout minutes per strike, e.g. `0,10,60,1440`; the last step repeats |
 | `strike-window` | `MODERATION_STRIKE_WINDOW_DAYS` | Days an enforced deletion counts towards escalation (1–365) |
+| `escalation` | `MODERATION_ESCALATION_ENABLED` | Hand out timeouts at all; off still records strikes |
+| `enabled` | on | The kill switch — same flag as `/mod off` / `/mod on` |
+
+### Kill switch
+
+`/mod off` stops Mai in that server completely: no moderation, no chat, no
+reactions, no welcome, and queued rows are not enforced. It is a pause, not an
+amnesty — the rows are kept and resume when `/mod on` is used, rather than
+quietly forgiving everything. `/mod` itself keeps answering while she is off,
+otherwise the only way back would be editing the database. Everything else
+replies with the paused message. Direct messages are unaffected: a DM has no
+guild to pause.
 
 Adding a setting means: a column in a new migration, an entry in the `SETTINGS`
 map (with its parse/validate rule), and an option on `/mod config set`.

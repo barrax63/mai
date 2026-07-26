@@ -123,6 +123,45 @@ function spendResponse() {
 }
 
 /**
+ * @param {number} minutes
+ * @param {boolean} escalationEnabled
+ * @returns {string}
+ */
+const nextConsequence = (minutes, escalationEnabled) => {
+  if (!escalationEnabled) return content.commands.history.nextDisabled;
+  return minutes > 0
+    ? fill(content.commands.history.nextTimeout, { minutes })
+    : content.commands.history.nextNothing;
+};
+
+/**
+ * `/mod on` and `/mod off` — the kill switch. Deliberately its own subcommand
+ * rather than only a config flag: switching Mai off is the thing an admin wants
+ * to do quickly, and `/mod` keeps answering while she is off.
+ *
+ * @param {object} interaction
+ * @param {boolean} enabled
+ */
+function powerResponse(interaction, enabled) {
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.power.guildOnly);
+
+  const already = effectiveSettings(interaction.guild_id).enabled === enabled;
+  if (already) {
+    return ephemeralResponse(
+      enabled ? content.commands.power.onAlready : content.commands.power.offAlready,
+    );
+  }
+
+  updateSettings(interaction.guild_id, { enabled }, interaction.member?.user?.id);
+  logger.info(
+    { guildId: interaction.guild_id, enabled, byUserId: interaction.member?.user?.id },
+    enabled ? 'Mai was switched on for a guild' : 'Mai was switched off for a guild',
+  );
+
+  return ephemeralResponse(enabled ? content.commands.power.on : content.commands.power.off);
+}
+
+/**
  * `/mod history <user>` — the strike record this guild has on a member, and
  * what the next enforced deletion would cost them.
  *
@@ -139,9 +178,12 @@ function historyResponse(interaction) {
   const totals = violationTotals(guildId, userId);
   const entries = historyFor(guildId, userId, 10);
 
+  const settings = effectiveSettings(guildId);
   const ladder = ladderFor(guildId);
   // What the *next* enforced deletion would trigger.
-  const next = ladder[Math.min(strikes + 1, ladder.length) - 1] ?? 0;
+  const next = settings.escalationEnabled
+    ? ladder[Math.min(strikes + 1, ladder.length) - 1] ?? 0
+    : 0;
 
   const lines = entries
     .map((entry) =>
@@ -157,13 +199,11 @@ function historyResponse(interaction) {
     fill(content.commands.history.body, {
       userId,
       strikes,
-      window: effectiveSettings(guildId).strikeWindowDays,
+      window: settings.strikeWindowDays,
       total: totals.total,
       deleted: totals.deleted,
       selfDeleted: totals.selfDeleted,
-      next: next > 0
-        ? fill(content.commands.history.nextTimeout, { minutes: next })
-        : content.commands.history.nextNothing,
+      next: nextConsequence(next, settings.escalationEnabled),
       entries: lines || content.commands.history.empty,
     }),
   );
@@ -245,9 +285,14 @@ function configView(guildId) {
   const settings = effectiveSettings(guildId);
   const inherited = (key) => (settings.inherited[key] ? ` ${content.commands.config.inherited}` : '');
   const { unset, systemChannel } = content.commands.config;
+  const yesNo = (value) => (value ? content.commands.config.on : content.commands.config.off);
 
   return ephemeralResponse(
     fill(content.commands.config.body, {
+      enabled: yesNo(settings.enabled),
+      enabledSource: inherited('enabled'),
+      escalation: yesNo(settings.escalationEnabled),
+      escalationSource: inherited('escalation'),
       // No log channel = no moderation log; no welcome channel = system channel.
       logChannel: settings.logChannelId ? `<#${settings.logChannelId}>` : unset,
       logChannelSource: inherited('log-channel'),
@@ -382,6 +427,16 @@ export const mod = {
         ],
       },
       {
+        name: 'off',
+        description: 'Switch Mai off in this server completely (kill switch)',
+        type: 1, // SUB_COMMAND
+      },
+      {
+        name: 'on',
+        description: 'Switch Mai back on in this server',
+        type: 1, // SUB_COMMAND
+      },
+      {
         name: 'spend',
         description: 'OpenAI usage today and this month',
         type: 1, // SUB_COMMAND
@@ -432,6 +487,16 @@ export const mod = {
                 min_value: 1,
                 max_value: 365,
               },
+              {
+                name: 'escalation',
+                description: 'Hand out timeouts at all (strikes are recorded either way)',
+                type: 5, // BOOLEAN
+              },
+              {
+                name: 'enabled',
+                description: 'Mai active in this server — the same switch as /mod off',
+                type: 5, // BOOLEAN
+              },
             ],
           },
           {
@@ -467,6 +532,8 @@ export const mod = {
 
     const { group, name } = resolveSubcommand(interaction);
     if (group === 'config') return configResponse(interaction);
+    if (name === 'on') return powerResponse(interaction, true);
+    if (name === 'off') return powerResponse(interaction, false);
     if (name === 'forgive') return forgiveResponse(interaction);
     if (name === 'history') return historyResponse(interaction);
     if (name === 'spend') return spendResponse();
