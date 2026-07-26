@@ -13,6 +13,7 @@ import { commandHandlers } from '../commands/index.js';
 import { isGuildAllowed } from '../config.js';
 import { content } from '../content.js';
 import { logger } from '../logger.js';
+import { resolveSubcommand } from './options.js';
 import { componentHandlers, modalHandlers, parseCustomId } from './registry.js';
 import {
   autocompleteResponse,
@@ -29,13 +30,6 @@ const flag = (value, interaction) =>
 /** Snowflake of whoever triggered this, in a guild or in a DM. */
 const actorId = (interaction) => interaction.member?.user?.id ?? interaction.user?.id;
 
-/**
- * The subcommand name, for logging and for handlers that branch on it.
- *
- * @param {object} interaction
- * @returns {string | undefined}
- */
-export const subcommandOf = (interaction) => interaction.data?.options?.[0]?.name;
 
 /**
  * Runs a handler and delivers its response, deferring first when the handler
@@ -118,9 +112,10 @@ function refuseForeignGuild(interaction, send, logContext) {
 
 function routeCommand(interaction, send) {
   const name = interaction.data?.name;
+  const { group, name: subcommand } = resolveSubcommand(interaction);
   const logContext = {
     command: name,
-    subcommand: subcommandOf(interaction),
+    subcommand: group ? `${group} ${subcommand}` : subcommand,
     guildId: interaction.guild_id,
     userId: actorId(interaction),
   };

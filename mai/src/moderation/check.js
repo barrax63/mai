@@ -12,7 +12,9 @@ import { classify } from '../ai/moderation.js';
 import { config, isGuildAllowed } from '../config.js';
 import { content, pick } from '../content.js';
 import { enqueue } from '../db/queue.js';
+import { effectiveSettings } from '../db/settings.js';
 import { logger } from '../logger.js';
+import { LOG_FLAGGED, postModerationLog } from './log.js';
 
 const OK = Object.freeze({ action: 'ok' });
 
@@ -63,7 +65,10 @@ export async function checkMessage(message) {
   }
 
   const now = new Date();
-  const dueAt = new Date(now.getTime() + config.moderation.gracePeriodMinutes * 60_000);
+  // The grace period is per guild (/mod config set grace), defaulting to
+  // MODERATION_GRACE_PERIOD_MINUTES.
+  const { gracePeriodMinutes } = effectiveSettings(message.guildId);
+  const dueAt = new Date(now.getTime() + gracePeriodMinutes * 60_000);
 
   // Both Discord actions are best effort: a missing permission must not stop
   // the message from being queued for deletion.
@@ -113,6 +118,19 @@ export async function checkMessage(message) {
     },
     'Message flagged',
   );
+
+  // Staff-visible trail. Detached: the gateway handler is waiting on this
+  // verdict to decide whether Mai may chat, and a slow log channel must not
+  // delay her.
+  void postModerationLog(message.client, {
+    type: LOG_FLAGGED,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    messageId: message.id,
+    userId: message.author.id,
+    categories: verdict.categories,
+    dueAt: dueAt.toISOString(),
+  });
 
   return { action: 'flagged', categories: verdict.categories, dueAt: dueAt.toISOString() };
 }

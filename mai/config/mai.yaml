@@ -66,6 +66,26 @@ moderation:
     - 'Noch so n Ding, Augenring.'
     - 'Lösch das.'
 
+  # Staff-facing moderation log (per guild: /mod config set log-channel).
+  # Metadata only — no message content is ever posted here.
+  log:
+    titles:
+      flagged: '🟡 Nachricht markiert'
+      deleted: '🔴 Nachricht gelöscht'
+      selfDeleted: '🟢 Vom Autor selbst gelöscht'
+      forgiven: '🔵 Verstöße erlassen'
+    fields:
+      user: 'Mitglied'
+      channel: 'Kanal'
+      categories: 'Kategorien'
+      due: 'Löschung'
+      message: 'Nachricht'
+      actor: 'Ausgeführt von'
+      count: 'Anzahl'
+    jump: 'Zur Nachricht'
+    none: '—'
+    footer: 'Nur Metadaten — Mai speichert keine Nachrichteninhalte.'
+
   # DM sent after the grace period expired and messages were deleted.
   # One DM per user per tick, listing every message removed in that tick.
   warningDm:
@@ -127,6 +147,22 @@ commands:
   forgive:
     done: '*schnurrt widerwillig* Na gut. {count} offene(r) Verstoß/Verstöße von <@{userId}> vergessen.'
     nothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
+
+  # /mod config — per-server settings. {…Source} marks inherited defaults.
+  config:
+    body: |
+      # ⚙️ Einstellungen für diesen Server
+      **Moderations-Log:** {logChannel}{logChannelSource}
+      **Willkommens-Kanal:** {welcomeChannel}{welcomeChannelSource}
+      **Schonfrist:** {grace} Minuten{graceSource}
+    inherited: '_(Standard)_'
+    # No log channel means no moderation log at all …
+    unset: '_aus_'
+    # … while no welcome channel just falls back to the guild's system channel.
+    systemChannel: '_System-Kanal_'
+    nothing: 'Nichts angegeben — nichts geändert.'
+    invalid: 'Ungültiger Wert: {reason}'
+    guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'
 
 welcome:
   # {member} is replaced by the new member's mention.

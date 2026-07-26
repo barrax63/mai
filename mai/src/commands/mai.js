@@ -14,6 +14,7 @@ import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { logger } from '../logger.js';
 import { ephemeralResponse, messageResponse, updateResponse } from '../interactions/respond.js';
+import { optionValue, resolveSubcommand } from '../interactions/options.js';
 
 const BUTTON = 2;
 const ACTION_ROW = 1;
@@ -27,9 +28,7 @@ const actor = (interaction) => interaction.member?.user ?? interaction.user ?? {
  * @returns {string}
  */
 const askedQuestion = (interaction) =>
-  String(
-    interaction.data?.options?.[0]?.options?.find((option) => option.name === 'frage')?.value ?? '',
-  ).trim();
+  String(optionValue(resolveSubcommand(interaction).options, 'frage') ?? '').trim();
 
 /**
  * A public question to Mai. Unlike a mention this is stateless: no channel
@@ -158,7 +157,7 @@ export const mai = {
   },
 
   // `ask` waits for the model; `forget` answers instantly.
-  deferred: (interaction) => interaction.data?.options?.[0]?.name === 'ask',
+  deferred: (interaction) => resolveSubcommand(interaction).name === 'ask',
   ephemeral: false,
 
   /**
@@ -166,8 +165,7 @@ export const mai = {
    * @returns {Promise<object> | object} Interaction response body.
    */
   execute(interaction) {
-    const subcommand = interaction.data?.options?.[0]?.name;
-    if (subcommand === 'forget') return forget(interaction);
+    if (resolveSubcommand(interaction).name === 'forget') return forget(interaction);
     return ask(interaction);
   },
 };

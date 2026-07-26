@@ -61,6 +61,43 @@ Every non-bot guild message with text content is classified ([src/moderation/che
 | `/mai forget` | everyone | Wipes what Mai remembers about you, behind a confirmation button. Removes your own turns everywhere plus the full history of your DM channel with her |
 | `/mod status` | Manage Messages | Open violations, chat-memory size, last moderation tick, configured models, uptime (ephemeral) |
 | `/mod forgive <user>` | Manage Messages | Drops that member's open violations and cleans up the scold replies — Mai calms down immediately |
+| `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
+| `/mod config set [log-channel] [welcome-channel] [grace]` | Manage Messages | Sets any subset for this server |
+| `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
+
+## Per-guild settings
+
+One process serves several servers, and they disagree about where Mai should log
+and how long the grace period is. `guild_settings` holds only what a server
+actually changed; a NULL column inherits the process default from `.env`.
+[src/db/settings.js](src/db/settings.js) is the single authority —
+`effectiveSettings(guildId)` returns the merged view plus which keys are
+inherited.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `log-channel` | none | Target channel for the moderation log. Unset = no log for this guild |
+| `welcome-channel` | the guild's system channel | Where new members are greeted |
+| `grace` | `MODERATION_GRACE_PERIOD_MINUTES` | Minutes an author has to delete a flagged message (1–1440) |
+
+Adding a setting means: a column in a new migration, an entry in the `SETTINGS`
+map (with its parse/validate rule), and an option on `/mod config set`.
+
+## Moderation log
+
+With `log-channel` set, every moderation action is posted as an embed
+([src/moderation/log.js](src/moderation/log.js)): flagged (amber, with a jump
+link and the deletion deadline), deleted (red), deleted by the author during the
+grace period (green), and forgiven (blue, naming the staff member who did it).
+
+**Metadata only.** No message content goes into the channel — a Discord channel
+is permanent storage readable by everyone with access, which would undo the
+no-content rule. Entries carry ids, category slugs, timestamps and a jump link
+while the message still exists; the offender's own warning DM stays the only
+place their text is quoted back. The embed footer says so, in the channel.
+
+Posting is best effort: a missing channel, a wrong channel type or a missing
+permission is logged locally and never breaks the moderation pipeline.
 
 ## Interaction handling
 
@@ -123,6 +160,7 @@ Two tables:
 |-------|----------|-----------|
 | `moderation_queue` | IDs, category slugs, timestamps of flagged messages — no content | until enforced (grace period) |
 | `chat_history` | Mai's short-term memory; `content`/`username` encrypted | `CHAT_HISTORY_MAX_AGE_HOURS` |
+| `guild_settings` | Per-guild overrides of the process defaults | until changed |
 
 Backup = the volume:
 

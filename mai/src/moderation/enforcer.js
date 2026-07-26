@@ -16,6 +16,7 @@ import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
 import { dueRows, remove } from '../db/queue.js';
 import { logger } from '../logger.js';
+import { LOG_DELETED, LOG_SELF_DELETED, postModerationLog } from './log.js';
 import { buildWarning, groupByUser } from './warning.js';
 
 // Discord REST error codes (discord.js exposes them as error.code).
@@ -79,6 +80,14 @@ async function processRow(client, row) {
         { messageId: row.messageId, userId: row.userId },
         'Flagged message was removed by the author, no warning sent',
       );
+      await postModerationLog(client, {
+        type: LOG_SELF_DELETED,
+        guildId: row.guildId,
+        channelId: row.channelId,
+        messageId: row.messageId,
+        userId: row.userId,
+        categories: row.categories,
+      });
       return { enforced: null, keepRow: false };
     }
 
@@ -116,6 +125,15 @@ async function processRow(client, row) {
     { messageId: row.messageId, guildId: row.guildId, userId: row.userId, categories: row.categories },
     'Deleted flagged message after grace period',
   );
+
+  await postModerationLog(client, {
+    type: LOG_DELETED,
+    guildId: row.guildId,
+    channelId: row.channelId,
+    messageId: row.messageId,
+    userId: row.userId,
+    categories: row.categories,
+  });
 
   return { enforced: record, keepRow: false };
 }

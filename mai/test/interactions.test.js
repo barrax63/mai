@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
 import { content } from '../src/content.js';
+import { optionValue, resolveSubcommand } from '../src/interactions/options.js';
 import { EPHEMERAL } from '../src/interactions/respond.js';
 import { parseCustomId } from '../src/interactions/registry.js';
 import { routeInteraction } from '../src/interactions/router.js';
@@ -179,6 +180,125 @@ test('modal submits are routed (no modal is registered yet)', async () => {
   );
 
   assert.equal(res.first.body.data.content, content.commands.expired);
+});
+
+const STAFF = { user: { id: TEST_USER, username: 'tester' }, permissions: String(1n << 13n) };
+
+test('resolveSubcommand flattens plain subcommands and groups alike', () => {
+  assert.deepEqual(
+    resolveSubcommand({ data: { options: [{ name: 'status', type: 1 }] } }),
+    { group: null, name: 'status', options: [] },
+  );
+
+  const grouped = resolveSubcommand({
+    data: {
+      options: [
+        { name: 'config', type: 2, options: [{ name: 'set', type: 1, options: [{ name: 'grace', value: 5 }] }] },
+      ],
+    },
+  });
+  assert.equal(grouped.group, 'config');
+  assert.equal(grouped.name, 'set');
+  assert.equal(optionValue(grouped.options, 'grace'), 5);
+
+  // A command without subcommands keeps its options at the top level.
+  const flat = resolveSubcommand({ data: { options: [{ name: 'frage', value: 'hm' }] } });
+  assert.equal(flat.name, undefined);
+  assert.equal(optionValue(flat.options, 'frage'), 'hm');
+});
+
+test('/mod config set stores an override and views it back', async () => {
+  const set = collector();
+  await routeInteraction(
+    command(
+      'mod',
+      [{ name: 'config', type: 2, options: [{ name: 'set', type: 1, options: [{ name: 'grace', value: 42 }] }] }],
+      { member: STAFF },
+    ),
+    set.send,
+  );
+  assert.match(set.first.body.data.content, /42 Minuten/);
+  assert.equal(set.first.body.data.flags, EPHEMERAL);
+
+  const view = collector();
+  await routeInteraction(
+    command('mod', [{ name: 'config', type: 2, options: [{ name: 'view', type: 1 }] }], {
+      member: STAFF,
+    }),
+    view.send,
+  );
+  assert.match(view.first.body.data.content, /42 Minuten/);
+  // The value is no longer inherited, so the default marker must be gone from
+  // that line.
+  const graceLine = view.first.body.data.content
+    .split('\n')
+    .find((line) => line.includes('Schonfrist'));
+  assert.equal(graceLine.includes(content.commands.config.inherited), false);
+});
+
+test('/mod config set rejects an out-of-range value in character', async () => {
+  const res = collector();
+  await routeInteraction(
+    command(
+      'mod',
+      [{ name: 'config', type: 2, options: [{ name: 'set', type: 1, options: [{ name: 'grace', value: 99999 }] }] }],
+      { member: STAFF },
+    ),
+    res.send,
+  );
+
+  assert.match(res.first.body.data.content, /^Ungültiger Wert/);
+});
+
+test('/mod config set with no options changes nothing', async () => {
+  const res = collector();
+  await routeInteraction(
+    command('mod', [{ name: 'config', type: 2, options: [{ name: 'set', type: 1, options: [] }] }], {
+      member: STAFF,
+    }),
+    res.send,
+  );
+
+  assert.equal(res.first.body.data.content, content.commands.config.nothing);
+});
+
+test('/mod config reset returns a setting to inherited', async () => {
+  const res = collector();
+  await routeInteraction(
+    command(
+      'mod',
+      [{ name: 'config', type: 2, options: [{ name: 'reset', type: 1, options: [{ name: 'setting', value: 'grace' }] }] }],
+      { member: STAFF },
+    ),
+    res.send,
+  );
+
+  const graceLine = res.first.body.data.content
+    .split('\n')
+    .find((line) => line.includes('Schonfrist'));
+  assert.ok(graceLine.includes(content.commands.config.inherited), graceLine);
+});
+
+test('/mod config is refused in a DM and to non-staff', async () => {
+  const dm = collector();
+  await routeInteraction(
+    command('mod', [{ name: 'config', type: 2, options: [{ name: 'view', type: 1 }] }], {
+      guild_id: undefined,
+      member: undefined,
+      user: { id: TEST_USER, username: 'tester' },
+    }),
+    dm.send,
+  );
+  // No member object in a DM means no Manage Messages, so the permission check
+  // answers first.
+  assert.equal(dm.first.body.data.content, content.commands.forbidden);
+
+  const plain = collector();
+  await routeInteraction(
+    command('mod', [{ name: 'config', type: 2, options: [{ name: 'view', type: 1 }] }]),
+    plain.send,
+  );
+  assert.equal(plain.first.body.data.content, content.commands.forbidden);
 });
 
 test('parseCustomId splits the handler name from its arguments', () => {

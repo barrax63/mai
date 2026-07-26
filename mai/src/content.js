@@ -75,11 +75,15 @@ function loadContent() {
   const prompt = section(chat, 'prompt');
   const moderation = section(parsed, 'moderation');
   const warningDm = section(moderation, 'warningDm');
+  const log = section(moderation, 'log');
+  const logTitles = section(log, 'titles');
+  const logFields = section(log, 'fields');
   const commands = section(parsed, 'commands');
   const ask = section(commands, 'ask');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
   const forgive = section(commands, 'forgive');
+  const configSection = section(commands, 'config');
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
@@ -114,6 +118,26 @@ function loadContent() {
         : config.timezone,
       scoldPrefix: typeof moderation.scoldPrefix === 'string' ? moderation.scoldPrefix : '',
       scoldReplies: Object.freeze(strings(moderation, ['moderation', 'scoldReplies'])),
+      log: Object.freeze({
+        titles: Object.freeze({
+          flagged: str(logTitles, ['moderation', 'log', 'titles', 'flagged']),
+          deleted: str(logTitles, ['moderation', 'log', 'titles', 'deleted']),
+          selfDeleted: str(logTitles, ['moderation', 'log', 'titles', 'selfDeleted']),
+          forgiven: str(logTitles, ['moderation', 'log', 'titles', 'forgiven']),
+        }),
+        fields: Object.freeze({
+          user: str(logFields, ['moderation', 'log', 'fields', 'user']),
+          channel: str(logFields, ['moderation', 'log', 'fields', 'channel']),
+          categories: str(logFields, ['moderation', 'log', 'fields', 'categories']),
+          due: str(logFields, ['moderation', 'log', 'fields', 'due']),
+          message: str(logFields, ['moderation', 'log', 'fields', 'message']),
+          actor: str(logFields, ['moderation', 'log', 'fields', 'actor']),
+          count: str(logFields, ['moderation', 'log', 'fields', 'count']),
+        }),
+        jump: str(log, ['moderation', 'log', 'jump']),
+        none: str(log, ['moderation', 'log', 'none']),
+        footer: str(log, ['moderation', 'log', 'footer']),
+      }),
       warningDm: Object.freeze({
         maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
         maxContentChars: num(warningDm, ['moderation', 'warningDm', 'maxContentChars'], { min: 1 }),
@@ -154,6 +178,15 @@ function loadContent() {
       forgive: Object.freeze({
         done: str(forgive, ['commands', 'forgive', 'done']),
         nothing: str(forgive, ['commands', 'forgive', 'nothing']),
+      }),
+      config: Object.freeze({
+        body: str(configSection, ['commands', 'config', 'body']),
+        inherited: str(configSection, ['commands', 'config', 'inherited']),
+        unset: str(configSection, ['commands', 'config', 'unset']),
+        systemChannel: str(configSection, ['commands', 'config', 'systemChannel']),
+        nothing: str(configSection, ['commands', 'config', 'nothing']),
+        invalid: str(configSection, ['commands', 'config', 'invalid']),
+        guildOnly: str(configSection, ['commands', 'config', 'guildOnly']),
       }),
     }),
     welcome: Object.freeze({

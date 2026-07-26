@@ -10,9 +10,12 @@ import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { stats as historyStats } from '../db/history.js';
 import { depth, forgiveUser } from '../db/queue.js';
+import { effectiveSettings, resetSettings, SETTINGS, updateSettings } from '../db/settings.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
+import { LOG_FORGIVEN, postModerationLog } from '../moderation/log.js';
+import { optionValue, resolveSubcommand } from '../interactions/options.js';
 import { ephemeralResponse } from '../interactions/respond.js';
 
 /**
@@ -96,23 +99,132 @@ function cleanUpScolds(rows) {
  * @param {object} interaction
  */
 function forgiveResponse(interaction) {
-  const userId = interaction.data?.options?.[0]?.options
-    ?.find((option) => option.name === 'user')?.value;
+  const userId = optionValue(resolveSubcommand(interaction).options, 'user');
   if (!userId) return ephemeralResponse(content.commands.error);
 
   const rows = forgiveUser(String(userId));
   cleanUpScolds(rows);
 
+  const actorId = interaction.member?.user?.id;
   logger.info(
-    { userId, forgiven: rows.length, byUserId: interaction.member?.user?.id },
+    { userId, forgiven: rows.length, byUserId: actorId },
     'Forgave open violations',
   );
+
+  if (rows.length > 0 && interaction.guild_id) {
+    // Detached: the interaction must be answered inside Discord's window.
+    void postModerationLog(getGatewayClient(), {
+      type: LOG_FORGIVEN,
+      guildId: interaction.guild_id,
+      userId: String(userId),
+      actorId,
+      count: rows.length,
+    });
+  }
 
   const template = rows.length > 0
     ? content.commands.forgive.done
     : content.commands.forgive.nothing;
   return ephemeralResponse(fill(template, { count: rows.length, userId }));
 }
+
+/**
+ * `/mod config view` — the effective settings of this guild, marking which ones
+ * are inherited from the process defaults.
+ *
+ * @param {string} guildId
+ */
+function configView(guildId) {
+  const settings = effectiveSettings(guildId);
+  const inherited = (key) => (settings.inherited[key] ? ` ${content.commands.config.inherited}` : '');
+  const { unset, systemChannel } = content.commands.config;
+
+  return ephemeralResponse(
+    fill(content.commands.config.body, {
+      // No log channel = no moderation log; no welcome channel = system channel.
+      logChannel: settings.logChannelId ? `<#${settings.logChannelId}>` : unset,
+      logChannelSource: inherited('log-channel'),
+      welcomeChannel: settings.welcomeChannelId ? `<#${settings.welcomeChannelId}>` : systemChannel,
+      welcomeChannelSource: inherited('welcome-channel'),
+      grace: settings.gracePeriodMinutes,
+      graceSource: inherited('grace'),
+    }),
+  );
+}
+
+/**
+ * `/mod config set [log-channel] [welcome-channel] [grace]` — any subset.
+ *
+ * @param {object} interaction
+ * @param {string} guildId
+ */
+function configSet(interaction, guildId) {
+  const { options } = resolveSubcommand(interaction);
+  const patch = {};
+  for (const name of Object.keys(SETTINGS)) {
+    const value = optionValue(options, name);
+    if (value !== undefined) patch[name] = value;
+  }
+
+  if (Object.keys(patch).length === 0) {
+    return ephemeralResponse(content.commands.config.nothing);
+  }
+
+  try {
+    updateSettings(guildId, patch, interaction.member?.user?.id);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return ephemeralResponse(fill(content.commands.config.invalid, { reason: error.message }));
+    }
+    throw error;
+  }
+
+  logger.info(
+    { guildId, changed: Object.keys(patch), byUserId: interaction.member?.user?.id },
+    'Updated guild settings',
+  );
+  return configView(guildId);
+}
+
+/**
+ * `/mod config reset <setting>` — back to the inherited default.
+ *
+ * @param {object} interaction
+ * @param {string} guildId
+ */
+function configReset(interaction, guildId) {
+  const name = optionValue(resolveSubcommand(interaction).options, 'setting');
+
+  try {
+    resetSettings(guildId, name ? String(name) : undefined, interaction.member?.user?.id);
+  } catch (error) {
+    if (error instanceof RangeError) {
+      return ephemeralResponse(fill(content.commands.config.invalid, { reason: error.message }));
+    }
+    throw error;
+  }
+
+  logger.info(
+    { guildId, reset: name ?? 'all', byUserId: interaction.member?.user?.id },
+    'Reset guild settings',
+  );
+  return configView(guildId);
+}
+
+/**
+ * @param {object} interaction
+ */
+function configResponse(interaction) {
+  // Settings are per guild, so there is nothing to configure in a DM.
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+  const { name } = resolveSubcommand(interaction);
+  if (name === 'set') return configSet(interaction, interaction.guild_id);
+  if (name === 'reset') return configReset(interaction, interaction.guild_id);
+  return configView(interaction.guild_id);
+}
+
+const settingChoices = Object.keys(SETTINGS).map((name) => ({ name, value: name }));
 
 export const mod = {
   definition: {
@@ -140,6 +252,57 @@ export const mod = {
           },
         ],
       },
+      {
+        name: 'config',
+        description: 'Per-server settings',
+        type: 2, // SUB_COMMAND_GROUP
+        options: [
+          {
+            name: 'view',
+            description: 'Show the settings in effect here',
+            type: 1,
+          },
+          {
+            name: 'set',
+            description: 'Change one or more settings',
+            type: 1,
+            options: [
+              {
+                name: 'log-channel',
+                description: 'Where Mai posts moderation entries (metadata only)',
+                type: 7, // CHANNEL
+                channel_types: [0, 5], // text, announcement
+              },
+              {
+                name: 'welcome-channel',
+                description: 'Where new members are greeted (default: system channel)',
+                type: 7,
+                channel_types: [0, 5],
+              },
+              {
+                name: 'grace',
+                description: 'Minutes an author has to delete a flagged message (1-1440)',
+                type: 4, // INTEGER
+                min_value: 1,
+                max_value: 1440,
+              },
+            ],
+          },
+          {
+            name: 'reset',
+            description: 'Back to the default (omit the setting to reset all)',
+            type: 1,
+            options: [
+              {
+                name: 'setting',
+                description: 'Which setting to reset',
+                type: 3, // STRING
+                choices: settingChoices,
+              },
+            ],
+          },
+        ],
+      },
     ],
   },
 
@@ -156,8 +319,9 @@ export const mod = {
       return ephemeralResponse(content.commands.forbidden);
     }
 
-    const subcommand = interaction.data?.options?.[0]?.name;
-    if (subcommand === 'forgive') return forgiveResponse(interaction);
+    const { group, name } = resolveSubcommand(interaction);
+    if (group === 'config') return configResponse(interaction);
+    if (name === 'forgive') return forgiveResponse(interaction);
     return statusResponse();
   },
 };
