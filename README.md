@@ -8,15 +8,33 @@ Docker Compose stack running **Mai**, a Discord bot with a cat persona, behind a
 
 ## Architecture
 
-```text
-Discord ──HTTPS──▶ Cloudflare Tunnel ──▶ cloudflared ──edge──▶ mai (:3000 /interactions)
-Discord ◀─────────WebSocket (gateway, outbound)──────────────  mai
-OpenAI  ◀─────────HTTPS (outbound: /moderations, /chat/completions)  mai
-                                                                    mai ──▶ SQLite (mai-data volume)
+```mermaid
+flowchart LR
+    discord(["Discord"])
+    browser(["Browser"])
+    tunnel{{"Cloudflare Tunnel"}}
+    openai(["OpenAI API"])
+
+    subgraph stack["docker compose stack"]
+        direction TB
+        cloudflared["cloudflared"]
+        mai["mai<br/>Node.js 24, :3000"]
+        data[("SQLite<br/>mai-data volume")]
+    end
+
+    discord -- "HTTPS<br/>POST /interactions" --> tunnel
+    browser -- "HTTPS<br/>GET / (landing page)" --> tunnel
+    tunnel --> cloudflared
+    cloudflared -- "edge network" --> mai
+    mai <-- "gateway WebSocket, outbound:<br/>messageCreate, messageUpdate,<br/>messageDelete, guildMemberAdd<br/>plus every REST action" --> discord
+    mai -- "HTTPS, outbound:<br/>/moderations, /chat/completions" --> openai
+    mai --> data
 ```
 
-- **`mai`**: Node.js 24 Discord app: HTTP interactions endpoint (slash commands), gateway listener for messages, moderation pipeline, chat, and an in-process scheduler. See [mai/README.md](mai/README.md).
+- **`mai`**: Node.js 24 Discord app: HTTP interactions endpoint (slash commands, buttons, modals), gateway listener for messages, moderation pipeline, chat, and an in-process scheduler. See [mai/README.md](mai/README.md).
 - **`cloudflared`**: Cloudflare tunnel exposing the interactions endpoint to Discord without open ports. Browsers hitting the tunnel URL get a static landing page instead of an error.
+
+The gateway connection is outbound, so message listening keeps working even when the tunnel is down; cloudflared is only needed for the interactions endpoint.
 
 ## Moderation
 
@@ -27,11 +45,15 @@ Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) i
 - **Edited** → re-classified, so the edit button is not a way past the check. The verdict cuts both ways: an edit that fixes a flagged message takes the warning reaction, the scold reply and the queue row back off it. Editing one violation into another refreshes the categories but keeps the original deadline.
 - **`/mai ask`** → the question is classified before Mai quotes it back into the channel. Her own replies are deliberately *not* classified: she is written to get ruder the more open violations someone has, and a filter would cut exactly that.
 
+Enforced deletions add up: a strike record drives an escalation ladder that ends in a Discord timeout ([mai/README.md](mai/README.md#moderation)). Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable.
+
 Every action can also be mirrored into a staff channel as an embed: metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)).
 
 How hard Mai judges is per server too: `/mod config set threshold` decides violations on the classifier's own scores instead of its English-tuned default, and `/mod exempt add` leaves a channel alone entirely (chat and reactions keep working there).
 
-Staff inspect and override with `/mod status`, `/mod forgive <user>` and `/mod config` (log channel, welcome channel, grace period, threshold and categories, all per server); everything they see and do is scoped to their own server, and every change is announced in the server's own log channel. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
+Members are not only on the receiving end: anyone can report a message to staff (right-click → *Apps* → *Nachricht melden*), and a warning DM carries an *Einspruch einlegen* button. Both land in the server's log channel with decision buttons, and granting an appeal overturns exactly the strikes it was about ([mai/README.md](mai/README.md#reports-and-appeals)).
+
+Staff inspect and override with `/mod status`, `/mod history <user>`, `/mod forgive <user>`, `/mod spend`, `/mod off` / `/mod on` and `/mod config` (log channel, welcome channel, grace period, timeout ladder, strike window, escalation, threshold and categories, all per server); everything they see and do is scoped to their own server, and every change is announced in the server's own log channel. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
 
 ## Mai: the bot persona
 
@@ -61,3 +83,5 @@ Discord-side setup (intents, tunnel hostname, interactions endpoint URL) is docu
 ## Security baseline
 
 All services run with `no-new-privileges`, `cap_drop: ALL`, read-only root filesystem, tmpfs-only writes, resource limits, and log rotation. The bot's only writable location is the `mai-data` volume holding the SQLite database. Secrets live only in `.env` (gitignored).
+
+The interactions endpoint is public through the tunnel, so a rate limit and a body-size cap run *in front of* the Ed25519 signature check. `GET /metrics` on the same server is process-wide operator data and therefore 404s unless `METRICS_TOKEN` is set, then wants it as a bearer token. Mai's chat memory is the only place message content is stored, and it is encrypted at rest (AES-256-GCM).
