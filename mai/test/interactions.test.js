@@ -1,4 +1,4 @@
-import { interaction, openTestDatabase, OTHER_GUILD, stubFetch, TEST_USER } from './setup.js';
+import { interaction, openTestDatabase, OTHER_GUILD, stubFetch, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
@@ -170,6 +170,52 @@ test('answers autocomplete with an empty list when the command has none', async 
     InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
   );
   assert.deepEqual(res.first.body.data.choices, []);
+});
+
+test('autocomplete passes the same guild gates as every other interaction kind', async () => {
+  // A command that actually answers, so a refusal is distinguishable from
+  // "this command has no autocomplete" (both produce an empty list otherwise).
+  const { commandHandlers } = await import('../src/commands/index.js');
+  const { updateSettings } = await import('../src/db/settings.js');
+  const choices = [{ name: 'fisch', value: 'fisch' }];
+  commandHandlers.set('autotest', { definition: { name: 'autotest' }, autocomplete: () => choices });
+
+  const suggest = async (overrides = {}) => {
+    const res = collector();
+    await routeInteraction(
+      interaction({
+        type: InteractionType.APPLICATION_COMMAND_AUTOCOMPLETE,
+        data: { name: 'autotest' },
+        ...overrides,
+      }),
+      res.send,
+    );
+    return res.first.body;
+  };
+
+  try {
+    const allowed = await suggest();
+    assert.deepEqual(allowed.data.choices, choices, 'the baseline actually suggests something');
+
+    const foreign = await suggest({ guild_id: OTHER_GUILD });
+    assert.equal(
+      foreign.type,
+      InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT,
+      'refused in the autocomplete protocol, never with a message',
+    );
+    assert.deepEqual(foreign.data.choices, [], 'a guild outside the allowlist gets nothing');
+
+    updateSettings(TEST_GUILD, { enabled: false });
+    try {
+      const paused = await suggest();
+      assert.equal(paused.type, InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT);
+      assert.deepEqual(paused.data.choices, [], 'a paused guild gets nothing either');
+    } finally {
+      updateSettings(TEST_GUILD, { enabled: true });
+    }
+  } finally {
+    commandHandlers.delete('autotest');
+  }
 });
 
 test('modal submits are routed (no modal is registered yet)', async () => {

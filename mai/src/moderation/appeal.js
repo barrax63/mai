@@ -285,3 +285,8 @@ export const appealModals = {
     );
   },
 };
+
+// Same reason as the report modal: posting the appeal is a channel lookup plus
+// a send, and a member who loses their statement to a timed-out interaction has
+// no way to get it back. The whole point of an appeal is that it reaches staff.
+appealModals['appeal-submit'].deferred = true;

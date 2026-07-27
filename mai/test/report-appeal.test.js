@@ -119,9 +119,14 @@ test('reporting is refused in a DM', async () => {
 
 test('a submitted report reaches the log channel with review buttons', async () => {
   const { sent } = stubGateway();
-  const body = await route(modalSubmit(`report:${CHANNEL}:${MESSAGE}:${AUTHOR}`, 'Werbung'));
+  const { body, edits } = await routeDeferred(
+    modalSubmit(`report:${CHANNEL}:${MESSAGE}:${AUTHOR}`, 'Werbung'),
+  );
 
-  assert.equal(body.data.content, content.commands.report.thanks);
+  // Deferred, then confirmed by editing the placeholder: publishing the report
+  // is two Discord round trips and must not race the 3 s budget.
+  assert.equal(body.type, InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
+  assert.equal(edits.at(-1).body.content, content.commands.report.thanks);
   assert.equal(sent.length, 1);
   assert.equal(sent[0].channelId, LOG_CHANNEL);
 
@@ -142,7 +147,7 @@ test('a submitted report reaches the log channel with review buttons', async () 
 
 test('a report without a reason omits the field instead of showing an empty one', async () => {
   const { sent } = stubGateway();
-  await route(modalSubmit(`report:${CHANNEL}:${MESSAGE}:${AUTHOR}`, '   '));
+  await routeDeferred(modalSubmit(`report:${CHANNEL}:${MESSAGE}:${AUTHOR}`, '   '));
 
   const embed = sent[0].embeds[0];
   assert.equal(
@@ -152,10 +157,14 @@ test('a report without a reason omits the field instead of showing an empty one'
 });
 
 /**
- * A staff click on "Löschen" is deferred, so the decision arrives as an edit of
- * the log entry through the interaction webhook rather than as the HTTP response.
+ * Drives an interaction whose handler is deferred: the HTTP response is only a
+ * placeholder, and what the member (or the log channel) actually ends up with
+ * arrives afterwards as an edit through the interaction webhook.
+ *
+ * Both flows in this file have one: a staff click on "Löschen" needs a Discord
+ * round trip to delete, and both modal submits need two to publish.
  */
-async function clickApprove(payload) {
+async function routeDeferred(payload) {
   const edits = [];
   const restore = stubFetch((url, options) => {
     edits.push({ url, body: JSON.parse(options.body) });
@@ -171,7 +180,7 @@ async function clickApprove(payload) {
 
 test('approving deletes the message and edits the entry for everyone', async () => {
   const { deleted } = stubGateway();
-  const { body, edits } = await clickApprove(
+  const { body, edits } = await routeDeferred(
     interaction({
       type: InteractionType.MESSAGE_COMPONENT,
       member: member(TEST_USER, STAFF_PERMISSIONS),
@@ -203,7 +212,7 @@ test('approval refuses a target channel outside the clicking guild', async () =>
   // against the guild the click came from, so a target elsewhere must not be
   // deleted through the bot's client, which can reach every guild Mai is in.
   const { deleted } = stubGateway({ channelGuildId: '999999999999999999' });
-  const { edits } = await clickApprove(
+  const { edits } = await routeDeferred(
     interaction({
       type: InteractionType.MESSAGE_COMPONENT,
       member: member(TEST_USER, STAFF_PERMISSIONS),
@@ -226,7 +235,7 @@ test('approval refuses a target channel outside the clicking guild', async () =>
 
 test('an undeletable message is recorded as such, not as a failure', async () => {
   stubGateway({ deleteFails: true });
-  const { edits } = await clickApprove(
+  const { edits } = await routeDeferred(
     interaction({
       type: InteractionType.MESSAGE_COMPONENT,
       member: member(TEST_USER, STAFF_PERMISSIONS),
@@ -333,7 +342,7 @@ test('the appeal button opens a modal carrying the incident forward', async () =
 
 test('a submitted appeal is forwarded to the guild it belongs to', async () => {
   const { sent } = stubGateway();
-  const body = await route(
+  const { body, edits } = await routeDeferred(
     interaction({
       type: InteractionType.MODAL_SUBMIT,
       guild_id: undefined,
@@ -356,12 +365,16 @@ test('a submitted appeal is forwarded to the guild it belongs to', async () => {
     embed.fields.find((field) => field.name === content.moderation.log.fields.appeal).value,
     'Das war ein Zitat!',
   );
-  assert.equal(body.data.content, content.moderation.appeal.submitted);
+
+  // Deferred: a member who loses their statement to a timed-out interaction
+  // has no way to get it back, and the appeal never reaches staff at all.
+  assert.equal(body.type, InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
+  assert.equal(edits.at(-1).body.content, content.moderation.appeal.submitted);
 });
 
 test('an empty appeal is rejected before it reaches staff', async () => {
   const { sent } = stubGateway();
-  const body = await route(
+  const { edits } = await routeDeferred(
     interaction({
       type: InteractionType.MODAL_SUBMIT,
       guild_id: undefined,
@@ -375,7 +388,7 @@ test('an empty appeal is rejected before it reaches staff', async () => {
   );
 
   assert.equal(sent.length, 0);
-  assert.equal(body.data.content, content.moderation.appeal.empty);
+  assert.equal(edits.at(-1).body.content, content.moderation.appeal.empty);
 });
 
 test('reports are rate limited per member', async () => {

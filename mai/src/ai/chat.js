@@ -206,6 +206,29 @@ export function normalizeReply(raw) {
 }
 
 /**
+ * A tool result travels back to the provider as a JSON string. Serializing it
+ * sits outside `runTool`'s own error handling, so a result that cannot be
+ * stringified (anything cyclic, a BigInt) would throw here and take the entire
+ * reply down with it rather than costing one tool call. The model gets an
+ * error payload instead and answers without that tool.
+ *
+ * @param {{ id: string, function?: { name?: string } }} call
+ * @param {{ userId: string, guildId: string | null, client?: object }} context
+ * @returns {string}
+ */
+function toolPayload(call, context) {
+  try {
+    return JSON.stringify(runTool(call, context));
+  } catch (error) {
+    logger.error(
+      { tool: call?.function?.name, err: error },
+      'Tool result could not be serialized',
+    );
+    return JSON.stringify({ error: 'tool_failed' });
+  }
+}
+
+/**
  * Runs the completion, serving any tool calls the model makes along the way.
  *
  * @param {object[]} messages From `buildMessages`.
@@ -241,7 +264,7 @@ export async function generateReply(messages, context) {
       conversation.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: JSON.stringify(runTool(call, context)),
+        content: toolPayload(call, context),
       });
     }
   }

@@ -318,6 +318,22 @@ test('server facts are unavailable in a DM, and unknown tools are refused', () =
   assert.deepEqual(runTool({ function: { name: 'rm_rf' } }, context), { error: 'unknown_tool' });
 });
 
+test('a tool name from Object.prototype is not a tool', () => {
+  // The handler table is a plain object, so a bare lookup answers for
+  // everything on the prototype chain too. `constructor` resolved to Object,
+  // which the caller then invoked *with the chat context as its argument* and
+  // got that context handed straight back for serialization to the provider.
+  const context = { userId: 'u', guildId: 'g1', client: { secret: true } };
+
+  for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
+    assert.deepEqual(
+      runTool({ function: { name } }, context),
+      { error: 'unknown_tool' },
+      `${name} must not resolve to a handler`,
+    );
+  }
+});
+
 test('server facts come from the gateway, not from the model', () => {
   const client = {
     guilds: { cache: new Map([['g1', { name: 'Katzenhaus', memberCount: 42, createdAt: new Date(0) }]]) },

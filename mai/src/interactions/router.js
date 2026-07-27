@@ -103,30 +103,36 @@ export async function routeInteraction(interaction, send) {
 }
 
 /**
- * Guild allowlist (DISCORD_GUILD_IDS). Raw interactions use snake_case;
- * `guild_id` is absent for DM interactions, which bypass the allowlist like DM
- * chat does. An un-listed guild gets an ephemeral refusal.
- */
-function refuseForeignGuild(interaction, send, logContext) {
-  if (isGuildAllowed(interaction.guild_id)) return false;
-  logger.debug(logContext, 'Refusing interaction: guild not in allowlist');
-  send(ephemeralResponse(content.commands.notActive));
-  return true;
-}
-
-/**
- * The kill switch (`/mod off`). `/mod` itself stays reachable, otherwise the
- * only way back on would be editing the database.
+ * The two gates in front of every interaction, in order: the operator's guild
+ * allowlist (DISCORD_GUILD_IDS), then the guild's own kill switch (`/mod off`).
+ * Raw interactions use snake_case, and `guild_id` is absent for DM
+ * interactions, which bypass both like DM chat does.
  *
- * @returns {boolean} Whether the interaction was refused.
+ * Deciding is deliberately split from answering. Every interaction kind has to
+ * pass these, but they cannot all be refused the same way: an autocomplete
+ * response has to be a list of choices, and answering one with a message is a
+ * protocol error, not a refusal the user ever sees.
+ *
+ * @param {object} interaction
+ * @param {object} logContext
+ * @param {{ allowMod?: boolean }} [options] `/mod` itself stays reachable while
+ *   a guild is paused, otherwise the only way back on would be the database.
+ * @returns {string | null} The refusal text, or null when it may proceed.
  */
-function refusePausedGuild(interaction, send, logContext, { allowMod = false } = {}) {
-  if (allowMod && interaction.data?.name === STAFF_COMMAND) return false;
-  if (isGuildActive(interaction.guild_id)) return false;
+function refusalReason(interaction, logContext, { allowMod = false } = {}) {
+  if (!isGuildAllowed(interaction.guild_id)) {
+    logger.debug(logContext, 'Refusing interaction: guild not in allowlist');
+    return content.commands.notActive;
+  }
 
-  logger.debug(logContext, 'Refusing interaction: Mai is paused in this guild');
-  send(ephemeralResponse(content.commands.paused));
-  return true;
+  if (allowMod && interaction.data?.name === STAFF_COMMAND) return null;
+
+  if (!isGuildActive(interaction.guild_id)) {
+    logger.debug(logContext, 'Refusing interaction: Mai is paused in this guild');
+    return content.commands.paused;
+  }
+
+  return null;
 }
 
 function routeCommand(interaction, send) {
@@ -139,8 +145,8 @@ function routeCommand(interaction, send) {
     userId: actorId(interaction),
   };
 
-  if (refuseForeignGuild(interaction, send, logContext)) return undefined;
-  if (refusePausedGuild(interaction, send, logContext, { allowMod: true })) return undefined;
+  const refusal = refusalReason(interaction, logContext, { allowMod: true });
+  if (refusal) return send(ephemeralResponse(refusal));
 
   const command = commandHandlers.get(name);
   if (!command) {
@@ -157,6 +163,17 @@ function routeCommand(interaction, send) {
 }
 
 function routeAutocomplete(interaction, send) {
+  const logContext = {
+    autocomplete: interaction.data?.name,
+    guildId: interaction.guild_id,
+    userId: actorId(interaction),
+  };
+
+  // Same two gates as every other kind, answered in this one's protocol: an
+  // un-listed or paused guild gets no suggestions rather than a message, which
+  // Discord would reject outright.
+  if (refusalReason(interaction, logContext)) return send(autocompleteResponse([]));
+
   const command = commandHandlers.get(interaction.data?.name);
   if (typeof command?.autocomplete !== 'function') {
     return send(autocompleteResponse([]));
@@ -166,7 +183,7 @@ function routeAutocomplete(interaction, send) {
     handler: async (payload) => autocompleteResponse(await command.autocomplete(payload)),
     deferred: false,
     ephemeral: false,
-    logContext: { autocomplete: interaction.data?.name, userId: actorId(interaction) },
+    logContext,
   });
 }
 
@@ -178,8 +195,8 @@ function routeComponent(interaction, send) {
     userId: actorId(interaction),
   };
 
-  if (refuseForeignGuild(interaction, send, logContext)) return undefined;
-  if (refusePausedGuild(interaction, send, logContext)) return undefined;
+  const refusal = refusalReason(interaction, logContext);
+  if (refusal) return send(ephemeralResponse(refusal));
 
   const handler = componentHandlers.get(name);
   if (!handler) {
@@ -202,8 +219,8 @@ function routeModal(interaction, send) {
   const { name, args } = parseCustomId(interaction.data?.custom_id);
   const logContext = { modal: name, guildId: interaction.guild_id, userId: actorId(interaction) };
 
-  if (refuseForeignGuild(interaction, send, logContext)) return undefined;
-  if (refusePausedGuild(interaction, send, logContext)) return undefined;
+  const refusal = refusalReason(interaction, logContext);
+  if (refusal) return send(ephemeralResponse(refusal));
 
   const handler = modalHandlers.get(name);
   if (!handler) {

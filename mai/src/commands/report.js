@@ -224,6 +224,15 @@ export const reportModals = {
   },
 };
 
+// Publishing the report is a channel lookup plus a send, two Discord round
+// trips, which under a rate limit outlast Discord's ~3 s interaction budget.
+// A modal *submit* can be deferred (only the response that opens a modal
+// cannot), and without it a slow log channel costs the reporter the text they
+// just typed: "interaction failed", nothing posted, nothing to retry from.
+// Unconditional, unlike the report buttons: this answer is ephemeral either
+// way, so there is no entry for a refusal to overwrite.
+reportModals.report.deferred = true;
+
 export const report = {
   definition: {
     // Context-menu entries carry no description and show their name verbatim.

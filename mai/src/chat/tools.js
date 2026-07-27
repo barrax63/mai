@@ -124,7 +124,10 @@ const handlers = {
  */
 export function runTool(call, context) {
   const name = call?.function?.name;
-  const handler = handlers[name];
+  // Own properties only: a plain lookup also finds everything on
+  // Object.prototype, so a model naming `constructor` as its tool got Object
+  // back and had the caller's context handed to it as an argument.
+  const handler = Object.hasOwn(handlers, String(name)) ? handlers[name] : null;
 
   if (!handler) {
     logger.warn({ tool: name }, 'Model asked for an unknown tool');
