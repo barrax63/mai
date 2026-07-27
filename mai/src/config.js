@@ -29,9 +29,41 @@ const bool = (name, fallback) => {
   return value === 'true';
 };
 
+/**
+ * A whole number, or NaN when the value is not spelled as one.
+ *
+ * `Number.parseInt` stops at the first character it cannot use, so "1O" (with
+ * the letter) parses as 1 and "10min" as 10: a typo turns into a plausible
+ * value instead of a refusal, and every message below promises whole numbers.
+ * The shape is checked first so that promise holds. A sign is allowed through
+ * to the range check, which has something useful to say about a negative.
+ *
+ * Exported because `/mod config set` has to refuse exactly what the environment
+ * refuses: the same knob, typed by a moderator instead of the operator.
+ *
+ * @param {unknown} raw
+ * @returns {number}
+ */
+export function wholeNumber(raw) {
+  const text = String(raw ?? '').trim();
+  return /^[+-]?\d+$/.test(text) ? Number.parseInt(text, 10) : Number.NaN;
+}
+
+/**
+ * The same for a value that may carry decimals (a ratio, a number of hours).
+ * `Number.parseFloat` truncates just as quietly as its integer sibling.
+ *
+ * @param {unknown} raw
+ * @returns {number}
+ */
+export function decimalNumber(raw) {
+  const text = String(raw ?? '').trim();
+  return /^[+-]?(\d+(\.\d*)?|\.\d+)([eE][+-]?\d+)?$/.test(text) ? Number.parseFloat(text) : Number.NaN;
+}
+
 const int = (name, fallback, { min = 0 } = {}) => {
   const raw = optional(name, fallback);
-  const value = Number.parseInt(raw, 10);
+  const value = wholeNumber(raw);
   if (!Number.isInteger(value) || value < min) {
     throw new Error(`Environment variable ${name} must be an integer >= ${min}, got: ${raw}`);
   }
@@ -54,7 +86,7 @@ export function parseTimeoutLadder(raw, label = 'timeout ladder') {
     .split(',')
     .map((step) => step.trim())
     .filter(Boolean)
-    .map((step) => Number.parseInt(step, 10));
+    .map((step) => wholeNumber(step));
 
   if (steps.length === 0 || steps.some((step) => !Number.isInteger(step))) {
     throw new RangeError(`${label} must be comma-separated whole minutes, e.g. 0,10,60,1440`);
@@ -103,7 +135,7 @@ export function parseCategoryList(raw, label = 'categories') {
  * @returns {number} 0 = fall back to the provider's own `flagged` boolean.
  */
 export function parseThreshold(raw, label = 'threshold') {
-  const value = Number.parseFloat(raw);
+  const value = decimalNumber(raw);
   if (!Number.isFinite(value) || value < 0 || value > 1) {
     throw new RangeError(`${label} must be a number between 0 and 1`);
   }
@@ -121,7 +153,7 @@ const ratio = (name, fallback) => {
 /** A non-negative number of hours, fractional allowed. 0 = disabled. */
 const hours = (name, fallback) => {
   const raw = optional(name, fallback);
-  const value = Number.parseFloat(raw);
+  const value = decimalNumber(raw);
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(
       `Environment variable ${name} must be a non-negative number of hours, got: ${raw}`,

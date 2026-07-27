@@ -95,6 +95,38 @@ test('grace is validated, and a bad value changes nothing', () => {
   assert.equal(effectiveSettings(id).gracePeriodMinutes, 30);
 });
 
+test('a typo is refused, not read up to the first bad character', () => {
+  const id = guild();
+  updateSettings(id, { grace: 30, 'strike-window': 14, 'timeout-ladder': '0,10' });
+
+  // Each of these parses as a plausible number if the digits are simply read
+  // off the front, which is what a moderator would then live with unnoticed.
+  for (const bad of ['1O', '10min', '10.5', '1 0', '0x10']) {
+    assert.throws(() => updateSettings(id, { grace: bad }), RangeError, `accepted grace ${bad}`);
+    assert.throws(() => updateSettings(id, { 'strike-window': bad }), RangeError, `accepted window ${bad}`);
+    assert.throws(
+      () => updateSettings(id, { 'timeout-ladder': `0,${bad}` }),
+      RangeError,
+      `accepted ladder step ${bad}`,
+    );
+  }
+
+  const settings = effectiveSettings(id);
+  assert.equal(settings.gracePeriodMinutes, 30, 'nothing changed');
+  assert.equal(settings.strikeWindowDays, 14);
+  assert.deepEqual(settings.timeoutLadder, [0, 10]);
+});
+
+test('a threshold is refused the same way', () => {
+  const id = guild();
+  updateSettings(id, { threshold: '0.7' });
+
+  for (const bad of ['0.7abc', '0,7', 'null']) {
+    assert.throws(() => updateSettings(id, { threshold: bad }), RangeError, `accepted ${bad}`);
+  }
+  assert.equal(effectiveSettings(id).threshold, 0.7);
+});
+
 test('grace accepts the boundaries', () => {
   const id = guild();
   assert.equal(updateSettings(id, { grace: 1 }).gracePeriodMinutes, 1);

@@ -12,12 +12,14 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   config,
+  decimalNumber,
   isGuildAllowed,
   isOperator,
   MAX_TIMEOUT_MINUTES,
   parseCategoryList,
   parseThreshold,
   parseTimeoutLadder,
+  wholeNumber,
 } from '../src/config.js';
 import { TEST_GUILD, OTHER_GUILD, TEST_USER } from './setup.js';
 
@@ -39,10 +41,12 @@ test('a ladder step that is not a number at all is refused', () => {
   }
 });
 
-test('a fractional step is truncated to whole minutes, not refused', () => {
-  // parseInt semantics, and the unit is minutes: "10.5" is 10 minutes, which is
-  // what the error message asks for anyway.
-  assert.deepEqual(parseTimeoutLadder('10.5,20'), [10, 20]);
+test('a step that only starts like a number is refused, not read up to the typo', () => {
+  // Every one of these parses as a plausible number if the digits are read off
+  // the front, which is how a typo becomes policy instead of an error message.
+  for (const raw of ['1O', '10min', '10.5', '1 0', '0x10', '1e3', '١٠']) {
+    assert.throws(() => parseTimeoutLadder(`0,${raw}`), RangeError, raw);
+  }
 });
 
 test('Discord caps a timeout at 28 days, so the ladder does too', () => {
@@ -90,9 +94,42 @@ test('a threshold is a number between 0 and 1, boundaries included', () => {
   assert.equal(parseThreshold('0'), 0);
   assert.equal(parseThreshold('1'), 1);
   assert.equal(parseThreshold(0.55), 0.55);
+  assert.equal(parseThreshold('.5'), 0.5);
+  // Exponent notation stays readable as a number, and an existing .env may
+  // already hold one.
+  assert.equal(parseThreshold('5e-1'), 0.5);
 
   for (const raw of ['-0.1', '1.1', 'abc', '', null, undefined, Infinity, NaN]) {
     assert.throws(() => parseThreshold(raw), RangeError, String(raw));
+  }
+});
+
+test('a threshold that only starts like a number is refused too', () => {
+  // '0,7' is the German decimal comma, which is exactly the typo this knob
+  // invites: it used to parse as 0 and switch the threshold off silently.
+  for (const raw of ['0.7abc', '0,7', '. 5', '0.5.1']) {
+    assert.throws(() => parseThreshold(raw), RangeError, raw);
+  }
+});
+
+test('the whole-number check is the one both surfaces share', () => {
+  assert.equal(wholeNumber('42'), 42);
+  assert.equal(wholeNumber(' 42 '), 42);
+  assert.equal(wholeNumber('-42'), -42, 'the sign passes, so the range check can explain itself');
+  assert.equal(wholeNumber(7), 7);
+
+  for (const raw of ['4 2', '42abc', '4.2', '', '  ', null, undefined, {}, '0b1']) {
+    assert.ok(Number.isNaN(wholeNumber(raw)), String(raw));
+  }
+});
+
+test('the decimal check accepts what a ratio needs and nothing else', () => {
+  assert.equal(decimalNumber('0.5'), 0.5);
+  assert.equal(decimalNumber('2.'), 2);
+  assert.equal(decimalNumber('-1.25e2'), -125);
+
+  for (const raw of ['0,5', '1/2', 'NaN', 'Infinity', '', null, '1.2.3']) {
+    assert.ok(Number.isNaN(decimalNumber(raw)), String(raw));
   }
 });
 

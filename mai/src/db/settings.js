@@ -8,7 +8,13 @@
  * Reads are single-row primary-key lookups on SQLite, so they happen inline
  * (per flagged message, per queue row) without a cache.
  */
-import { config, parseCategoryList, parseThreshold, parseTimeoutLadder } from '../config.js';
+import {
+  config,
+  parseCategoryList,
+  parseThreshold,
+  parseTimeoutLadder,
+  wholeNumber,
+} from '../config.js';
 import { getDb } from './index.js';
 
 /** Discord snowflakes, as stored in the comma-separated channel columns. */
@@ -69,7 +75,7 @@ export const SETTINGS = Object.freeze({
     column: 'grace_period_minutes',
     parse: (value) => {
       if (value === null) return null;
-      const minutes = Number.parseInt(value, 10);
+      const minutes = wholeNumber(value);
       if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) {
         throw new RangeError('grace must be between 1 and 1440 minutes');
       }
@@ -109,7 +115,7 @@ export const SETTINGS = Object.freeze({
     column: 'strike_window_days',
     parse: (value) => {
       if (value === null) return null;
-      const days = Number.parseInt(value, 10);
+      const days = wholeNumber(value);
       if (!Number.isInteger(days) || days < 1 || days > 365) {
         throw new RangeError('strike-window must be between 1 and 365 days');
       }
