@@ -76,7 +76,7 @@ export async function applyTimeout(client, { guildId, userId, minutes, reason })
     if (member.permissions?.has?.(PermissionFlagsBits.Administrator) || guild.ownerId === userId) {
       logger.info(
         { guildId, userId, minutes },
-        'Not timing out an admin or the owner — Discord does not allow it',
+        'Not timing out an admin or the owner; Discord does not allow it',
       );
       return { applied: false, until: null, error: content.moderation.timeoutImmune };
     }
@@ -91,7 +91,7 @@ export async function applyTimeout(client, { guildId, userId, minutes, reason })
     // ladder that silently does nothing is worse than none.
     logger.error(
       { guildId, userId, minutes, err: error },
-      'Could not time out a member — check Moderate Members and the role hierarchy',
+      'Could not time out a member; check Moderate Members and the role hierarchy',
     );
     return { applied: false, until: null, error: error.message };
   }

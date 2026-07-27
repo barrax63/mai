@@ -38,7 +38,7 @@ test('an error log reaches the alert channel', async () => {
 
   assert.equal(sent.length, 1);
   assert.equal(sent[0].channelId, ALERT_CHANNEL);
-  assert.match(sent[0].content, /\*\*error\*\* — Something broke/);
+  assert.match(sent[0].content, /\*\*error\*\*: Something broke/);
   assert.match(sent[0].content, /messageId=m1/);
   assert.match(sent[0].content, /guildId=g1/);
   // The error's *name* identifies it; its message is free text that can quote

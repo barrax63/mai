@@ -245,7 +245,7 @@ function historyResponse(interaction) {
       strikes,
       window: settings.strikeWindowDays,
       total: totals.total,
-      breakdown: breakdown ? ` — ${breakdown}` : '',
+      breakdown: breakdown ? ` (${breakdown})` : '',
       next: nextConsequence(next, settings.escalationEnabled),
       entries: lines || content.commands.history.empty,
     }),
@@ -685,7 +685,7 @@ export const mod = {
               },
               {
                 name: 'enabled',
-                description: 'Mai active in this server — the same switch as /mod off',
+                description: 'Mai active in this server (the same switch as /mod off)',
                 type: 5, // BOOLEAN
               },
               {

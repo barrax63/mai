@@ -242,7 +242,7 @@ async function decide(interaction, userId, since, granted) {
     title: granted ? content.moderation.log.titles.appealGranted : content.moderation.log.titles.appealDenied,
     color: granted ? GRANTED_COLOR : DENIED_COLOR,
     resolution: `${fill(granted ? appeal.granted : appeal.denied, { userId: staff.id })}`
-      + `${note} — ${delivered ? appeal.decisionSent : appeal.decisionNotSent}`,
+      + `${note} ${delivered ? appeal.decisionSent : appeal.decisionNotSent}`,
   });
 }
 

@@ -124,7 +124,7 @@ export function alert(level, record, message) {
 
       const context = describeContext(record);
       const lines = [
-        `${level === 'fatal' ? '💀' : '⚠️'} **${level}** — ${truncate(message) || '(no message)'}`,
+        `${level === 'fatal' ? '💀' : '⚠️'} **${level}**: ${truncate(message) || '(no message)'}`,
         context ? `\`\`\`${context}\`\`\`` : '',
         missed > 0 ? `_(+${missed} weitere unterdrückt)_` : '',
       ].filter(Boolean);

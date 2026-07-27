@@ -51,7 +51,7 @@ export function openDatabase() {
  * @returns {DatabaseSync}
  */
 export function getDb() {
-  if (!db) throw new Error('Database is not open — call openDatabase() first');
+  if (!db) throw new Error('Database is not open; call openDatabase() first');
   return db;
 }
 

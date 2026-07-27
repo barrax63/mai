@@ -1,7 +1,7 @@
 # Mai's content configuration: everything she says, plus what she reacts to.
 #
 # Operational knobs (models, timeouts, grace period, feature flags) live in
-# `.env` — see .env.example. This file holds prompts and user-facing strings so
+# `.env`: see .env.example. This file holds prompts and user-facing strings so
 # they can be edited without touching code.
 #
 # The file baked into the image is the working default. To override it without
@@ -15,8 +15,8 @@ chat:
   # directive below is appended to it.
   persona: |
     Du bist Mai, die Moderations-Katze dieses Discord-Servers. Du lebst hier und plauderst mit den Mitgliedern.
-    Charakter: eine echte Katze — neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.
-    Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Antworte in der Sprache, in der geschrieben wird — meistens Deutsch.
+    Charakter: eine echte Katze: neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.
+    Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Antworte in der Sprache, in der geschrieben wird, meistens Deutsch.
     Bleib immer in der Rolle; sag nie, dass du eine KI, ein Bot oder ein Sprachmodell bist. Solchen Fragen weichst du verspielt aus.
     Keine Hilfe beim Brechen der Serverregeln. Wenn die Nachricht leer ist: begrüße kurz.
 
@@ -61,7 +61,7 @@ chat:
   # Posted when the model returns nothing usable.
   fallbackReply: '*Mai starrt dich lange an, sagt aber nichts.* 🐾'
   # Reaction instead of a reply when the user hit the rate limit or Mai is at
-  # her concurrency cap — a cat that cannot be bothered right now.
+  # her concurrency cap. A cat that cannot be bothered right now.
   busyEmoji: '😴'
 
 moderation:
@@ -83,7 +83,7 @@ moderation:
     - 'Lösch das.'
 
   # Staff-facing moderation log (per guild: /mod config set log-channel).
-  # Metadata only — no message content is ever posted here.
+  # Metadata only. No message content is ever posted here.
   log:
     titles:
       flagged: '🟡 Nachricht markiert'
@@ -121,7 +121,7 @@ moderation:
       # Der Vollstreckungslauf, gegen den sich ein Einspruch richtet.
       incident: 'Vorfall'
     jump: 'Zur Nachricht'
-    none: '—'
+    none: '–'
 
   # Einspruch: Button unter der Verwarnungs-DM (nur wenn ein Log-Kanal gesetzt ist).
   appeal:
@@ -132,7 +132,7 @@ moderation:
     submitted: '*legt die Ohren an* Ist notiert. Ein Mensch schaut sich das an.'
     empty: 'Ohne Text kann ich nichts weitergeben.'
     busy: '*gähnt* Immer mit der Ruhe. Später nochmal.'
-    failed: 'Das hat nicht geklappt — melde dich direkt bei einem Admin.'
+    failed: 'Das hat nicht geklappt. Melde dich direkt bei einem Admin.'
     # Entscheidung des Teams: Buttons unter dem Log-Eintrag, damit jede*r
     # Moderator*in sieht, was entschieden wurde.
     grantButton: 'Stattgeben'
@@ -142,10 +142,10 @@ moderation:
     # Stattgegeben heißt: Mai lag falsch. Die betroffenen Einträge bleiben in
     # der Akte, zählen aber nicht mehr für die Eskalation.
     strikesOverturned: '({count} Verstoß/Verstöße zählen nicht mehr.)'
-    grantedDm: '*schnurrt leise* Dein Einspruch war erfolgreich. Das Team hat mir gesagt, dass ich mich geirrt habe — der Verstoß zählt nicht mehr gegen dich.'
+    grantedDm: '*schnurrt leise* Dein Einspruch war erfolgreich. Das Team hat mir gesagt, dass ich mich geirrt habe. Der Verstoß zählt nicht mehr gegen dich.'
     deniedDm: '*schaut dich lange an* Dein Einspruch wurde geprüft und abgelehnt. Die Verwarnung bleibt.'
     decisionSent: 'Entscheidung ist raus.'
-    decisionNotSent: 'Entscheidung notiert — die DM kam nicht an (DMs zu?).'
+    decisionNotSent: 'Entscheidung notiert, die DM kam nicht an (DMs zu?).'
 
   # DM sent after the grace period expired and messages were deleted.
   # One DM per user per tick, listing every message removed in that tick.
@@ -166,7 +166,7 @@ moderation:
     # {count} messages did not fit; {plural} is '' or 'en'.
     omittedLine: '> … und {count} weitere Nachricht{plural}.'
     # Added when this sweep also timed the member out. {until} and {relative}
-    # are Discord timestamps — every reader sees their own timezone.
+    # are Discord timestamps: every reader sees their own timezone.
     timeoutNote: '**Das war Verstoß Nummer {strikes}.** Du bist bis {until} ({relative}) stummgeschaltet.'
     footer: '*Habe ich einen Fehler gemacht? Dann bitte Info an einen Admin.*'
 
@@ -182,7 +182,7 @@ commands:
   # too old to act on.
   expired: '*gähnt* Das ist mir zu lange her. Ruf den Befehl nochmal auf.'
 
-  # /mai ask — public question, public answer.
+  # /mai ask: public question, public answer.
   ask:
     answer: |
       > {question}
@@ -191,11 +191,11 @@ commands:
     busy: '*gähnt und dreht sich weg* Nicht jetzt, ich hab schon genug geredet. Frag später nochmal.'
     empty: '*schaut dich fragend an* Du hast nichts gefragt.'
     disabled: '*putzt sich* Ich hab gerade keine Lust zu reden.'
-    # Die Frage selbst wurde beanstandet — die Antwort zitiert sie, also
+    # Die Frage selbst wurde beanstandet, die Antwort zitiert sie, also
     # wiederholt Mai sie nicht.
     refused: '*legt die Ohren an* Das wiederhole ich nicht.'
 
-  # /mai forget — self-service wipe of Mai's memory about the caller.
+  # /mai forget: self-service wipe of Mai's memory about the caller.
   forget:
     confirm: 'Soll ich wirklich vergessen, was du mir erzählt hast? *legt den Kopf schief*'
     confirmButton: 'Ja, vergiss alles'
@@ -213,11 +213,11 @@ commands:
       **OpenAI Modelle:** {openai}
       **Uptime:** {uptime}
     never: 'noch nie'
-    # Angehängt an die Überschrift, wenn die Zahlen *alle* Server umfassen —
+    # Angehängt an die Überschrift, wenn die Zahlen *alle* Server umfassen:
     # das sehen nur Betreiber (OPERATOR_USER_IDS), nicht Server-Moderatoren.
     allGuilds: '(alle Server)'
 
-  # /mod spend — OpenAI-Verbrauch. Tokens, keine Währung: Preise ändern sich.
+  # /mod spend: OpenAI-Verbrauch. Tokens, keine Währung: Preise ändern sich.
   spend:
     body: |
       # 💸 Verbrauch{scope}
@@ -229,11 +229,11 @@ commands:
     line: '• `{purpose}` ({model}): {calls} Aufrufe, {tokens} Tokens'
     budgetOff: 'kein Limit'
     budgetOk: '{used} / {budget} Tokens ({percent} %)'
-    budgetExceeded: '⚠️ {used} / {budget} Tokens ({percent} %) — Chat ist bis nächsten Monat aus'
+    budgetExceeded: '⚠️ {used} / {budget} Tokens ({percent} %), Chat ist bis nächsten Monat aus'
     # Das Budget gilt für den ganzen Prozess, seine Zahlen gehören also dem
     # Betreiber. Server-Moderatoren erfahren nur, ob es aufgebraucht ist.
     budgetHidden: 'aktiv'
-    budgetExceededShared: '⚠️ aufgebraucht — Chat ist bis nächsten Monat aus'
+    budgetExceededShared: '⚠️ aufgebraucht, Chat ist bis nächsten Monat aus'
     nothing: '_noch nichts verbraucht_'
 
   # /mod forgive
@@ -242,7 +242,7 @@ commands:
     nothing: '*gähnt* <@{userId}> hat gerade nichts ausgefressen.'
     strikesCleared: 'Außerdem {count} Eintrag/Einträge aus der Akte gelöscht.'
 
-  # /mod history — Verstoß-Akte eines Mitglieds auf diesem Server.
+  # /mod history: Verstoß-Akte eines Mitglieds auf diesem Server.
   history:
     body: |
       # 📓 Akte von <@{userId}>
@@ -251,7 +251,7 @@ commands:
       **Nächster Verstoß:** {next}
 
       {entries}
-    line: '• {when} — {action} ({categories})'
+    line: '• {when}: {action} ({categories})'
     actions:
       deleted: 'gelöscht'
       self_deleted: 'selbst entfernt'
@@ -263,7 +263,7 @@ commands:
     nextDisabled: 'kein Timeout (Eskalation ist aus)'
     empty: '_keine Einträge_'
 
-  # "Mai: melden" — Kontextmenü-Meldung (Rechtsklick auf eine Nachricht).
+  # "Mai: melden": Kontextmenü-Meldung (Rechtsklick auf eine Nachricht).
   report:
     modalTitle: 'Nachricht melden'
     reasonLabel: 'Was stimmt damit nicht? (optional)'
@@ -271,27 +271,27 @@ commands:
     thanks: '*spitzt die Ohren* Danke, ich hab es weitergegeben.'
     approveButton: 'Löschen'
     dismissButton: 'Verwerfen'
-    # Titel des Log-Eintrags nach der Entscheidung — damit alle im Kanal auf
+    # Titel des Log-Eintrags nach der Entscheidung, damit alle im Kanal auf
     # einen Blick sehen, dass die Meldung erledigt ist.
     titleApproved: '🔴 Meldung bestätigt'
     titleDismissed: '⚪ Meldung verworfen'
     approved: 'Gelöscht von <@{userId}>'
-    approvedFailed: 'Von <@{userId}> bestätigt — Nachricht war nicht mehr löschbar'
+    approvedFailed: 'Von <@{userId}> bestätigt, Nachricht war nicht mehr löschbar'
     dismissed: 'Verworfen von <@{userId}>'
     guildOnly: 'Melden geht nur auf einem Server.'
-    unavailable: 'Auf diesem Server ist kein Moderations-Log eingerichtet — sag einem Admin Bescheid.'
+    unavailable: 'Auf diesem Server ist kein Moderations-Log eingerichtet. Sag einem Admin Bescheid.'
     busy: '*gähnt* Du hast gerade schon genug gemeldet. Später nochmal.'
-    failed: 'Das hat nicht geklappt — sag einem Admin Bescheid.'
+    failed: 'Das hat nicht geklappt. Sag einem Admin Bescheid.'
 
-  # /mod on und /mod off — der Notausschalter für diesen Server.
+  # /mod on und /mod off: der Notausschalter für diesen Server.
   power:
     on: '*streckt sich und gähnt* Bin wieder da. Moderation, Chat und Reaktionen laufen.'
     onAlready: '*blinzelt* Ich bin doch schon wach.'
-    off: '*rollt sich zusammen* Gut, ich mache hier nichts mehr — keine Moderation, kein Chat, keine Reaktionen. Mit `/mod on` weckst du mich wieder.'
+    off: '*rollt sich zusammen* Gut, ich mache hier nichts mehr: keine Moderation, kein Chat, keine Reaktionen. Mit `/mod on` weckst du mich wieder.'
     offAlready: '*schnarcht weiter* Ich schlafe doch schon.'
     guildOnly: 'Das geht nur auf einem Server.'
 
-  # /mod config — per-server settings. {…Source} marks inherited defaults.
+  # /mod config: per-server settings. {…Source} marks inherited defaults.
   config:
     body: |
       # ⚙️ Einstellungen für diesen Server
@@ -318,11 +318,11 @@ commands:
     allCategories: '_alle_'
     # No channel is exempt from moderation.
     noExemptChannels: '_keine_'
-    nothing: 'Nichts angegeben — nichts geändert.'
+    nothing: 'Nichts angegeben, nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'
     guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'
 
-  # /mod exempt — Kanäle von der Moderation ausnehmen (Chat und Reaktionen
+  # /mod exempt: Kanäle von der Moderation ausnehmen (Chat und Reaktionen
   # bleiben davon unberührt).
   exempt:
     added: '*schnüffelt kurz* Gut, in <#{channelId}> schau ich nicht mehr hin.'
@@ -335,7 +335,7 @@ commands:
 
       {channels}
     line: '• <#{channelId}>'
-    empty: '_Keine — Mai moderiert überall, wo sie mitlesen darf._'
+    empty: '_Keine. Mai moderiert überall, wo sie mitlesen darf._'
     limit: 'Das sind mir zu viele Kanäle.'
 
 welcome:

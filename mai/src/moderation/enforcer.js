@@ -92,7 +92,7 @@ async function reportFailure(client, row, error) {
   if (attempts === REPORT_AFTER_ATTEMPTS) {
     logger.error(
       { messageId: row.messageId, guildId: row.guildId, channelId: row.channelId, attempts },
-      'A queue row keeps failing to enforce — check Mai\'s permissions in that channel',
+      'A queue row keeps failing to enforce; check Mai\'s permissions in that channel',
     );
     await postModerationLog(client, { ...event, type: LOG_STUCK });
   }

@@ -23,6 +23,10 @@ npm test                           # (in mai/) node:test, no deps, no network
 - **`.env` changes require container recreate** (`docker compose up -d mai`). A plain restart does not re-read the env file — this has caused real debugging sessions.
 - `.env` holds all secrets (gitignored); `.env.example` is the documented template. Env config is read and validated once in `mai/src/config.js` — add new env vars there, not via scattered `process.env` reads.
 
+## Writing rules
+
+- **Never use an em-dash (`—`).** Not in code, not in comments, not in anything Mai says, not in the YAML content file, not in documentation, not in commit messages. Use a colon when the second half explains the first, a semicolon or a full stop when it is a separate thought, parentheses for an aside, or restructure the sentence. This applies to everything written from now on; existing text is not rewritten just to satisfy it, but any line you touch for another reason should come out without one.
+
 ## Architecture constraints that aren't obvious from single files
 
 - **Two config surfaces, both loaded once at startup**: `src/config.js` = operational (secrets, models, flags, timings, limits) from the environment; `src/content.js` = everything user-facing, loaded and validated from `mai/config/mai.yaml` (`MAI_CONFIG_PATH`). No handler may contain a literal string Mai says — persona, prompt scaffolding, scold lines, warning-DM template, `/mai` replies, welcome lines, reaction regexes and presence statuses all live in the YAML. Adding wording = YAML key + a validated field in `content.js`.

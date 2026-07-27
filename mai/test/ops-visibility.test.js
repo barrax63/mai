@@ -185,7 +185,7 @@ test('/mod history renders a breakdown matching the total', async () => {
   );
 
   const body = sent[0].data.content;
-  assert.match(body, /\*\*Gesamt:\*\* 1 — 1 /);
+  assert.match(body, /\*\*Gesamt:\*\* 1 \(1 /);
   assert.ok(body.includes(content.commands.history.actions[ACTION_OVERTURNED]));
 });
 

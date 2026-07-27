@@ -63,7 +63,7 @@ export function renderMetrics(enforcer) {
     ),
     ...metric(
       'mai_queue_overdue',
-      'Queue rows already past due_at — sustained non-zero means enforcement is behind.',
+      'Queue rows already past due_at; sustained non-zero means enforcement is behind.',
       'gauge',
       [{ value: one('SELECT COUNT(*) AS c FROM moderation_queue WHERE due_at <= ?', new Date().toISOString()).c ?? 0 }],
     ),

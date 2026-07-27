@@ -55,6 +55,25 @@ test('the spend template renders in both scopes', () => {
   }
 });
 
+test('nothing Mai says contains an em-dash', () => {
+  // Project writing rule (CLAUDE.md). Checked against the loaded config rather
+  // than the file, so it covers every string that can reach a member: a colon,
+  // a full stop or parentheses instead.
+  const offenders = [];
+  const walk = (value, path) => {
+    if (typeof value === 'string') {
+      if (value.includes('—')) offenders.push(`${path}: ${value}`);
+      return;
+    }
+    if (value && typeof value === 'object') {
+      for (const [key, child] of Object.entries(value)) walk(child, `${path}.${key}`);
+    }
+  };
+
+  walk(content, 'content');
+  assert.deepEqual(offenders, []);
+});
+
 test('pick returns a member of the list', () => {
   for (let i = 0; i < 20; i++) {
     assert.ok(content.moderation.scoldReplies.includes(pick(content.moderation.scoldReplies)));
