@@ -18,6 +18,7 @@ import { logger } from '../logger.js';
 import { startEnforcer } from '../moderation/enforcer.js';
 import { onMessageCreate } from './events/message-create.js';
 import { onMessageUpdate } from './events/message-update.js';
+import { onMessageDelete } from './events/message-delete.js';
 import { onGuildMemberAdd } from './events/guild-member-add.js';
 import { startPresenceRotation } from './presence.js';
 
@@ -105,6 +106,14 @@ export function createGatewayClient() {
   client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
     onMessageUpdate(oldMessage, newMessage).catch((error) => {
       logger.error({ err: error, messageId: newMessage?.id }, 'messageUpdate handler failed');
+    });
+  });
+
+  // So an author who deletes a flagged message sees it resolve at once, instead
+  // of waiting out a grace period that no longer has anything to enforce.
+  client.on(Events.MessageDelete, (message) => {
+    onMessageDelete(message).catch((error) => {
+      logger.error({ err: error, messageId: message?.id }, 'messageDelete handler failed');
     });
   });
 

@@ -300,27 +300,34 @@ test('review buttons are staff-only', async () => {
 });
 
 test('the warning DM only carries an appeal button where appeals can land', () => {
-  assert.equal(appealComponents(TEST_GUILD).length, 1);
+  const since = '2026-07-27T10:00:00.000Z';
+  const components = appealComponents(TEST_GUILD, since);
+
+  assert.equal(components.length, 1);
+  // The guild *and* the enforcement pass being appealed: a DM has no guild
+  // context, and granting later has to know which strikes it overturns.
   assert.equal(
-    appealComponents(TEST_GUILD)[0].components[0].custom_id,
-    `appeal:${TEST_GUILD}`,
+    components[0].components[0].custom_id,
+    `appeal:${TEST_GUILD}:${Math.floor(new Date(since).getTime() / 1000)}`,
   );
-  assert.deepEqual(appealComponents('870000000000000001'), [], 'no log channel, no button');
+  assert.ok(components[0].components[0].custom_id.length <= 100, 'Discord caps custom_id at 100');
+
+  assert.deepEqual(appealComponents('870000000000000001', since), [], 'no log channel, no button');
 });
 
-test('the appeal button opens a modal for that guild', async () => {
+test('the appeal button opens a modal carrying the incident forward', async () => {
   const body = await route(
     interaction({
       type: InteractionType.MESSAGE_COMPONENT,
       guild_id: undefined, // the warning arrives as a DM
       member: undefined,
       user: { id: AUTHOR, username: 'author' },
-      data: { custom_id: `appeal:${TEST_GUILD}`, component_type: 2 },
+      data: { custom_id: `appeal:${TEST_GUILD}:1785067200`, component_type: 2 },
     }),
   );
 
   assert.equal(body.type, InteractionResponseType.MODAL);
-  assert.equal(body.data.custom_id, `appeal-submit:${TEST_GUILD}`);
+  assert.equal(body.data.custom_id, `appeal-submit:${TEST_GUILD}:1785067200`);
   assert.equal(body.data.components[0].components[0].required, true);
 });
 

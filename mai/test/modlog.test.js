@@ -5,6 +5,7 @@ import { content } from '../src/content.js';
 import { updateSettings } from '../src/db/settings.js';
 import {
   buildLogEmbed,
+  LOG_CLEARED,
   LOG_DELETED,
   LOG_FLAGGED,
   LOG_FORGIVEN,
@@ -40,11 +41,37 @@ test('a flagged entry carries ids, categories, deadline and a jump link', () => 
   assert.equal(fieldValue(embed, labels.categories), 'harassment');
   // 2026-07-26T12:00:00Z as a Discord relative timestamp.
   assert.equal(fieldValue(embed, labels.due), '<t:1785067200:R>');
+  // The id first, always, then a jump link while the message still exists.
   assert.equal(
     fieldValue(embed, labels.message),
-    `[${content.moderation.log.jump}](https://discord.com/channels/${GUILD}/${CHANNEL}/${MESSAGE})`,
+    `\`${MESSAGE}\` · [${content.moderation.log.jump}](https://discord.com/channels/${GUILD}/${CHANNEL}/${MESSAGE})`,
   );
-  assert.equal(embed.footer.text, content.moderation.log.footer);
+  assert.equal(embed.footer, undefined, 'no boilerplate footer on every entry');
+  assert.ok(embed.timestamp, 'but a log entry still says when');
+});
+
+test('every message-scoped entry carries the id in the same field', () => {
+  // The point of the shared layout: following one incident across
+  // markiert -> gelöscht -> korrigiert must not mean hunting for the id.
+  for (const type of [LOG_FLAGGED, LOG_DELETED, LOG_SELF_DELETED, LOG_CLEARED]) {
+    const embed = buildLogEmbed({ ...flagged, type });
+    const value = fieldValue(embed, content.moderation.log.fields.message);
+
+    assert.ok(value, `${type} has no message field`);
+    assert.ok(value.includes(`\`${MESSAGE}\``), `${type} does not show the id: ${value}`);
+  }
+});
+
+test('a jump link only appears while there is something to jump to', () => {
+  const gone = buildLogEmbed({ ...flagged, type: LOG_DELETED });
+  assert.equal(
+    fieldValue(gone, content.moderation.log.fields.message).includes('discord.com'),
+    false,
+    'a deleted message would 404',
+  );
+
+  const alive = buildLogEmbed({ ...flagged, type: LOG_CLEARED });
+  assert.ok(fieldValue(alive, content.moderation.log.fields.message).includes('discord.com'));
 });
 
 test('no message content ever reaches an entry', () => {
@@ -61,11 +88,13 @@ test('a deleted entry drops the jump link and keeps the id', () => {
   assert.equal(value.includes('discord.com'), false, 'the message no longer exists');
 });
 
-test('a self-deleted entry needs neither link nor deadline', () => {
+test('a self-deleted entry keeps the id but needs no deadline', () => {
   const embed = buildLogEmbed({ ...flagged, type: LOG_SELF_DELETED });
   const labels = content.moderation.log.fields;
 
-  assert.equal(fieldValue(embed, labels.message), undefined);
+  // It used to have no message field at all, which broke correlation for the
+  // one outcome staff most want to trace back.
+  assert.equal(fieldValue(embed, labels.message), `\`${MESSAGE}\``);
   assert.equal(fieldValue(embed, labels.due), undefined);
   assert.equal(fieldValue(embed, labels.categories), 'harassment');
 });

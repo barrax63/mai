@@ -14,6 +14,13 @@ import { config } from '../src/config.js';
 import { content } from '../src/content.js';
 import { enqueue } from '../src/db/queue.js';
 import { updateSettings } from '../src/db/settings.js';
+import {
+  ACTION_DELETED,
+  ACTION_OVERTURNED,
+  historyFor,
+  recordViolation,
+  strikeCount,
+} from '../src/db/violations.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { renderMetrics } from '../src/http/metrics.js';
 import { routeInteraction } from '../src/interactions/router.js';
@@ -83,9 +90,67 @@ async function clickDecision(customId, permissions = STAFF_PERMISSIONS) {
   return { sent, edits };
 }
 
+test('granting an appeal stops the strike counting, without erasing it', async () => {
+  const incident = new Date(Date.now() - 60_000);
+  const since = Math.floor(incident.getTime() / 1000);
+
+  // One older, correct strike and one from the incident being appealed.
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId: APPELLANT,
+    messageId: 'b50000000000000001',
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+    createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+  });
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId: APPELLANT,
+    messageId: 'b50000000000000002',
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+    createdAt: new Date().toISOString(),
+  });
+
+  const epoch = '1970-01-01T00:00:00.000Z';
+  assert.equal(strikeCount(TEST_GUILD, APPELLANT, epoch), 2);
+
+  stubGateway();
+  await clickDecision(`appeal-grant:${APPELLANT}:${since}`);
+
+  // The appealed one no longer counts towards escalation…
+  assert.equal(strikeCount(TEST_GUILD, APPELLANT, epoch), 1, 'only the appealed incident');
+
+  // …but it is still in the record, marked as what it was.
+  const history = historyFor(TEST_GUILD, APPELLANT, 20);
+  const appealed = history.find((row) => row.messageId === 'b50000000000000002');
+  assert.equal(appealed.action, ACTION_OVERTURNED, 'kept, not deleted');
+  assert.ok(content.commands.history.actions[ACTION_OVERTURNED], 'and it has a label');
+
+  const older = history.find((row) => row.messageId === 'b50000000000000001');
+  assert.equal(older.action, ACTION_DELETED, 'an earlier, correct strike is untouched');
+});
+
+test('denying an appeal leaves the record alone', async () => {
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId: APPELLANT,
+    messageId: 'b50000000000000003',
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+  });
+  const epoch = '1970-01-01T00:00:00.000Z';
+  const before = strikeCount(TEST_GUILD, APPELLANT, epoch);
+
+  stubGateway();
+  await clickDecision(`appeal-deny:${APPELLANT}:${Math.floor(Date.now() / 1000) - 60}`);
+
+  assert.equal(strikeCount(TEST_GUILD, APPELLANT, epoch), before);
+});
+
 test('granting an appeal tells the member and the whole team', async () => {
   const { dms } = stubGateway();
-  const { sent, edits } = await clickDecision(`appeal-grant:${APPELLANT}`);
+  const { sent, edits } = await clickDecision(`appeal-grant:${APPELLANT}:0`);
 
   assert.equal(sent[0].type, InteractionResponseType.DEFERRED_UPDATE_MESSAGE);
 
@@ -107,7 +172,7 @@ test('granting an appeal tells the member and the whole team', async () => {
 
 test('denying is recorded the same way, with the other wording', async () => {
   const { dms } = stubGateway();
-  const { edits } = await clickDecision(`appeal-deny:${APPELLANT}`);
+  const { edits } = await clickDecision(`appeal-deny:${APPELLANT}:0`);
 
   assert.equal(dms[0].content, content.moderation.appeal.deniedDm);
   assert.equal(edits.at(-1).body.embeds[0].title, content.moderation.log.titles.appealDenied);
@@ -115,7 +180,7 @@ test('denying is recorded the same way, with the other wording', async () => {
 
 test('a closed DM still records the decision, and says it did not arrive', async () => {
   stubGateway({ dmFails: true });
-  const { edits } = await clickDecision(`appeal-grant:${APPELLANT}`);
+  const { edits } = await clickDecision(`appeal-grant:${APPELLANT}:0`);
 
   const resolution = edits.at(-1).body.embeds[0].fields.at(-1);
   assert.match(resolution.value, /Stattgegeben/);
@@ -124,7 +189,7 @@ test('a closed DM still records the decision, and says it did not arrive', async
 
 test('a member cannot decide their own appeal', async () => {
   const { dms } = stubGateway();
-  const { sent } = await clickDecision(`appeal-grant:${APPELLANT}`, '0');
+  const { sent } = await clickDecision(`appeal-grant:${APPELLANT}:0`, '0');
 
   assert.equal(dms.length, 0, 'no DM went out');
   // Not deferred for a non-moderator, so the refusal stays ephemeral and cannot

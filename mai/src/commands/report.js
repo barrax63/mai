@@ -22,6 +22,7 @@ import {
   updateResponse,
 } from '../interactions/respond.js';
 import { logger } from '../logger.js';
+import { markOwnDeletion } from '../moderation/cleanup.js';
 import { LOG_REPORTED, postModerationLog } from '../moderation/log.js';
 import { createRateLimiter } from '../rate-limit.js';
 
@@ -133,6 +134,9 @@ export const reportComponents = {
           'Report approval targeted a channel outside the clicking guild',
         );
       } else {
+        // Staff acting through Mai is still Mai deleting: the messageDelete
+        // handler must not read this as the author fixing it themselves.
+        markOwnDeletion(messageId);
         await channel?.messages?.delete(messageId);
         deleted = true;
       }

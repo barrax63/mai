@@ -17,10 +17,10 @@ import { config, isGuildAllowed } from '../config.js';
 import { content, pick } from '../content.js';
 import { enqueue, findRow, remove, updateCategories } from '../db/queue.js';
 import { effectiveSettings } from '../db/settings.js';
-import { ACTION_EDITED, recordViolation } from '../db/violations.js';
+import { ACTION_EDITED, ACTION_SELF_DELETED, recordViolation } from '../db/violations.js';
 import { logger } from '../logger.js';
 import { deleteMessageById, removeWarningReaction } from './cleanup.js';
-import { LOG_CLEARED, LOG_FLAGGED, postModerationLog } from './log.js';
+import { LOG_CLEARED, LOG_FLAGGED, LOG_SELF_DELETED, postModerationLog } from './log.js';
 
 const OK = Object.freeze({ action: 'ok' });
 
@@ -240,6 +240,43 @@ async function clearFlag(message, row) {
   });
 
   return { action: 'cleared', categories: row.categories };
+}
+
+/**
+ * The author removed a flagged message themselves — the grace period doing
+ * exactly what it is for. Shared by the enforcer (which finds it gone at the
+ * deadline) and the `messageDelete` handler (which sees it happen).
+ *
+ * On the record, but deliberately not a strike.
+ *
+ * @param {import('discord.js').Client} client
+ * @param {ReturnType<typeof findRow>} row
+ */
+export async function recordSelfDeletion(client, row) {
+  remove(row.messageId);
+  await deleteMessageById(client, row.channelId, row.scoldMessageId);
+
+  recordViolation({
+    guildId: row.guildId,
+    userId: row.userId,
+    messageId: row.messageId,
+    categories: row.categories,
+    action: ACTION_SELF_DELETED,
+  });
+
+  logger.info(
+    { messageId: row.messageId, guildId: row.guildId, userId: row.userId },
+    'Flagged message was removed by the author, no warning sent',
+  );
+
+  await postModerationLog(client, {
+    type: LOG_SELF_DELETED,
+    guildId: row.guildId,
+    channelId: row.channelId,
+    messageId: row.messageId,
+    userId: row.userId,
+    categories: row.categories,
+  });
 }
 
 /**

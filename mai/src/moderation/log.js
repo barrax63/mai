@@ -52,8 +52,32 @@ const COLORS = {
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
 
-const jumpLink = ({ guildId, channelId, messageId }) =>
-  `[${content.moderation.log.jump}](https://discord.com/channels/${guildId}/${channelId}/${messageId})`;
+/** Kinds where the message still exists, so a jump link resolves. */
+const MESSAGE_ALIVE = new Set([LOG_FLAGGED, LOG_REPORTED, LOG_CLEARED, LOG_STUCK]);
+
+/**
+ * Every entry about a message renders it the same way, in the same position:
+ * the id in a code span — copyable, and the only thing that still works once the
+ * message is gone — plus a jump link while there is something to jump to.
+ *
+ * Consistency is the point. Following one incident across
+ * *markiert → gelöscht → Einspruch* should not mean hunting for the id in a
+ * different field each time, or finding it missing.
+ *
+ * @param {object} event
+ * @returns {object|null}
+ */
+function messageField(event) {
+  if (!event.messageId) return null;
+
+  const id = `\`${event.messageId}\``;
+  const link = `https://discord.com/channels/${event.guildId}/${event.channelId}/${event.messageId}`;
+  const value = MESSAGE_ALIVE.has(event.type)
+    ? `${id} · [${content.moderation.log.jump}](${link})`
+    : id;
+
+  return { name: content.moderation.log.fields.message, value, inline: true };
+}
 
 /**
  * @param {object} event
@@ -64,78 +88,74 @@ function fieldsFor(event) {
   const none = content.moderation.log.none;
   const categories = event.categories?.length ? event.categories.join(', ') : none;
 
-  const user = { name: labels.user, value: `<@${event.userId}> \`${event.userId}\``, inline: true };
-  const channel = event.channelId
-    ? { name: labels.channel, value: `<#${event.channelId}>`, inline: true }
-    : null;
+  // The same head on every entry, in the same order: who, where, which message.
+  // Whatever the event does not carry is simply left out.
+  const head = [
+    event.userId
+      ? { name: labels.user, value: `<@${event.userId}> \`${event.userId}\``, inline: true }
+      : null,
+    event.channelId ? { name: labels.channel, value: `<#${event.channelId}>`, inline: true } : null,
+    messageField(event),
+  ].filter(Boolean);
+
+  const categoryField = { name: labels.categories, value: categories, inline: true };
+  const reason = event.reason
+    ? [{ name: labels.reason, value: event.reason, inline: false }]
+    : [];
+  const resolution = event.resolution
+    ? [{ name: labels.resolution, value: event.resolution, inline: false }]
+    : [];
+  // Which enforcement pass an appeal is about, so its entries line up with the
+  // deletions they follow.
+  const incident = event.since
+    ? [{ name: labels.incident, value: `<t:${unixSeconds(event.since)}:f>`, inline: true }]
+    : [];
 
   switch (event.type) {
     case LOG_FLAGGED:
       return [
-        user,
-        channel,
-        { name: labels.categories, value: categories, inline: true },
+        ...head,
+        categoryField,
         { name: labels.due, value: `<t:${unixSeconds(event.dueAt)}:R>`, inline: true },
-        { name: labels.message, value: jumpLink(event), inline: true },
       ];
 
+    // All three are the same shape: the message id stays useful for correlating
+    // with Discord's audit log even once the message itself is gone.
     case LOG_DELETED:
-      return [
-        user,
-        channel,
-        { name: labels.categories, value: categories, inline: true },
-        // The message is gone, so a jump link would 404 — the id stays useful
-        // for correlating with the audit log.
-        { name: labels.message, value: `\`${event.messageId}\``, inline: true },
-      ];
-
     case LOG_SELF_DELETED:
-      return [user, channel, { name: labels.categories, value: categories, inline: true }];
-
     case LOG_CLEARED:
-      return [
-        user,
-        channel,
-        // What it *was* flagged for. The message itself still exists, so unlike
-        // the deleted cases the jump link still resolves — staff can see what
-        // the author replaced it with.
-        { name: labels.categories, value: categories, inline: true },
-        { name: labels.message, value: jumpLink(event), inline: true },
-      ];
+      return [...head, categoryField];
 
     case LOG_FORGIVEN:
       return [
-        user,
+        ...head,
         { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
         { name: labels.count, value: String(event.count ?? 0), inline: true },
       ];
 
     case LOG_REPORTED:
       return [
-        user,
-        channel,
+        ...head,
         { name: labels.reporter, value: `<@${event.reporterId}>`, inline: true },
-        { name: labels.message, value: jumpLink(event), inline: true },
         // The reporter's own words, deliberately handed to staff. Optional.
-        ...(event.reason
-          ? [{ name: labels.reason, value: event.reason, inline: false }]
-          : []),
-        ...(event.resolution
-          ? [{ name: labels.resolution, value: event.resolution, inline: false }]
-          : []),
+        ...reason,
+        ...resolution,
       ];
 
     case LOG_APPEALED:
-      return [user, { name: labels.appeal, value: event.reason ?? none, inline: false }];
+      return [
+        ...head,
+        ...incident,
+        { name: labels.appeal, value: event.reason ?? none, inline: false },
+      ];
 
     case LOG_APPEAL_GRANTED:
     case LOG_APPEAL_DENIED:
       return [
-        user,
+        ...head,
+        ...incident,
         { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
-        ...(event.resolution
-          ? [{ name: labels.resolution, value: event.resolution, inline: false }]
-          : []),
+        ...resolution,
       ];
 
     case LOG_CONFIG:
@@ -149,30 +169,26 @@ function fieldsFor(event) {
     case LOG_TIMEOUT:
     case LOG_TIMEOUT_FAILED:
       return [
-        user,
+        ...head,
         { name: labels.strikes, value: String(event.strikes ?? 0), inline: true },
         { name: labels.duration, value: `${event.minutes} min`, inline: true },
         ...(event.until
           ? [{ name: labels.until, value: `<t:${unixSeconds(event.until)}:f>`, inline: true }]
           : []),
-        { name: labels.categories, value: categories, inline: true },
-        ...(event.reason
-          ? [{ name: labels.reason, value: event.reason, inline: false }]
-          : []),
+        categoryField,
+        ...reason,
       ];
 
     case LOG_STUCK:
     case LOG_ABANDONED:
       return [
-        user,
-        channel,
-        { name: labels.message, value: `\`${event.messageId}\``, inline: true },
+        ...head,
         { name: labels.attempts, value: String(event.attempts ?? 0), inline: true },
         { name: labels.reason, value: event.reason ?? none, inline: false },
       ];
 
     default:
-      return [user];
+      return head;
   }
 }
 
@@ -187,7 +203,10 @@ export function buildLogEmbed(event) {
     title: content.moderation.log.titles[event.type] ?? event.type,
     color: COLORS[event.type] ?? 0x95a5a6,
     fields: fieldsFor(event).filter(Boolean),
-    footer: { text: content.moderation.log.footer },
+    // No footer. The "metadata only" disclaimer was on every single entry and
+    // told staff nothing they act on — the rule it described is enforced in
+    // code, not by saying so. The timestamp stays: when something happened is
+    // the one thing a log entry always needs.
     timestamp: new Date().toISOString(),
   };
 }

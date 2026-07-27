@@ -67,6 +67,9 @@ chat:
 moderation:
   # Reaction placed on a flagged message.
   warningEmoji: '😡'
+  # Grund im Log-Eintrag, wenn Discord den Timeout grundsätzlich verweigert:
+  # Administrator*innen und Server-Inhaber*innen kann niemand stummschalten.
+  timeoutImmune: 'Discord erlaubt keinen Timeout für Admins oder Server-Inhaber.'
   # Timestamp formatting of the warning DM. Empty = fall back to TZ.
   timezone: 'Europe/Berlin'
   # Markdown prefix of the scold reply ('# ' renders it as a headline).
@@ -115,9 +118,10 @@ moderation:
       appeal: 'Einspruch'
       # Which settings a /mod config run touched, and their new values.
       changes: 'Geändert'
+      # Der Vollstreckungslauf, gegen den sich ein Einspruch richtet.
+      incident: 'Vorfall'
     jump: 'Zur Nachricht'
     none: '—'
-    footer: 'Nur Metadaten — Mai speichert keine Nachrichteninhalte.'
 
   # Einspruch: Button unter der Verwarnungs-DM (nur wenn ein Log-Kanal gesetzt ist).
   appeal:
@@ -135,9 +139,10 @@ moderation:
     denyButton: 'Ablehnen'
     granted: 'Stattgegeben von <@{userId}>'
     denied: 'Abgelehnt von <@{userId}>'
-    # DM an das Mitglied. Der Eintrag in der Akte bleibt bestehen — den löscht
-    # das Team bei Bedarf mit /mod forgive <user> strikes:true.
-    grantedDm: '*schnurrt leise* Dein Einspruch war erfolgreich. Das Team hat mir gesagt, dass ich mich geirrt habe.'
+    # Stattgegeben heißt: Mai lag falsch. Die betroffenen Einträge bleiben in
+    # der Akte, zählen aber nicht mehr für die Eskalation.
+    strikesOverturned: '({count} Verstoß/Verstöße zählen nicht mehr.)'
+    grantedDm: '*schnurrt leise* Dein Einspruch war erfolgreich. Das Team hat mir gesagt, dass ich mich geirrt habe — der Verstoß zählt nicht mehr gegen dich.'
     deniedDm: '*schaut dich lange an* Dein Einspruch wurde geprüft und abgelehnt. Die Verwarnung bleibt.'
     decisionSent: 'Entscheidung ist raus.'
     decisionNotSent: 'Entscheidung notiert — die DM kam nicht an (DMs zu?).'
@@ -251,6 +256,8 @@ commands:
       deleted: 'gelöscht'
       self_deleted: 'selbst entfernt'
       edited: 'korrigiert'
+      # Bleibt in der Akte sichtbar, zählt aber nicht mehr als Verstoß.
+      overturned: 'Einspruch stattgegeben'
     nextTimeout: '{minutes} Minuten Timeout'
     nextNothing: 'kein Timeout'
     nextDisabled: 'kein Timeout (Eskalation ist aus)'

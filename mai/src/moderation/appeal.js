@@ -12,6 +12,7 @@
 import { PermissionFlagsBits } from 'discord.js';
 import { content, fill } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
+import { overturnSince } from '../db/violations.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { modalValue } from '../interactions/options.js';
 import {
@@ -54,10 +55,17 @@ const actor = (interaction) => interaction.member?.user ?? interaction.user ?? {
  * receive appeals.
  *
  * @param {string} guildId
+ * @param {string} [sinceIso] Start of the enforcement pass this DM is about.
+ *   Carried all the way to the decision buttons, because granting an appeal has
+ *   to know *which* strikes it overturns — the record may hold older, correct
+ *   ones that this appeal says nothing about.
  * @returns {object[]}
  */
-export function appealComponents(guildId) {
+export function appealComponents(guildId, sinceIso) {
   if (!effectiveSettings(guildId).logChannelId) return [];
+
+  // Seconds, not an ISO string: the custom_id budget is 100 characters.
+  const since = Math.floor(new Date(sinceIso ?? Date.now()).getTime() / 1000) || 0;
 
   return [
     {
@@ -68,22 +76,25 @@ export function appealComponents(guildId) {
           style: STYLE_SECONDARY,
           label: content.moderation.appeal.button,
           // A DM has no guild context — carry it in the id.
-          custom_id: `appeal:${guildId}`,
+          custom_id: `appeal:${guildId}:${since}`,
         },
       ],
     },
   ];
 }
 
+/** @param {string} since Epoch seconds from a custom_id. */
+const incidentIso = (since) => new Date(Number(since || 0) * 1000).toISOString();
+
 export const appealButtons = {
-  appeal(interaction, [guildId]) {
+  appeal(interaction, [guildId, since]) {
     const member = actor(interaction);
     if (!appealLimiter.consume(member.id)) {
       return ephemeralResponse(content.moderation.appeal.busy);
     }
 
     return modalResponse({
-      customId: `appeal-submit:${guildId}`,
+      customId: `appeal-submit:${guildId}:${since ?? 0}`,
       title: content.moderation.appeal.modalTitle,
       components: [
         textInput({
@@ -109,7 +120,7 @@ export const appealButtons = {
  *
  * @param {string} userId
  */
-const decisionButtons = (userId) => [
+const decisionButtons = (userId, since) => [
   {
     type: ACTION_ROW,
     components: [
@@ -117,13 +128,13 @@ const decisionButtons = (userId) => [
         type: BUTTON,
         style: STYLE_SUCCESS,
         label: content.moderation.appeal.grantButton,
-        custom_id: `appeal-grant:${userId}`,
+        custom_id: `appeal-grant:${userId}:${since}`,
       },
       {
         type: BUTTON,
         style: STYLE_SECONDARY,
         label: content.moderation.appeal.denyButton,
-        custom_id: `appeal-deny:${userId}`,
+        custom_id: `appeal-deny:${userId}:${since}`,
       },
     ],
   },
@@ -179,45 +190,59 @@ const DENIED_COLOR = 0x2c3e50;
 /**
  * Staff answering an appeal.
  *
- * The decision is deliberately **not** wired to the strike record. An appeal
- * carries only the guild and the member, not which of their strikes it is
- * about, so "granted" could only clear *all* of them — wiping four correct
- * strikes because the fifth was wrong. Staff who mean that run
- * `/mod forgive <user> strikes:true`, which says so.
+ * Granting means Mai was wrong, so the strikes it is about stop counting: they
+ * are marked `overturned` rather than deleted, which keeps the record honest
+ * (it shows a mistake was made and corrected) while taking them out of
+ * `strikeCount` and therefore out of the escalation ladder.
+ *
+ * Scoped to the incident the appeal names — the enforcement pass that produced
+ * the warning DM, carried through the `custom_id` since the DM itself is long
+ * gone by then. Appealing one incident must not clear four earlier, correct
+ * strikes; staff who mean *that* run `/mod forgive <user> strikes:true`.
  */
 export const appealDecisions = {
-  async 'appeal-grant'(interaction, [userId]) {
-    return decide(interaction, userId, true);
+  async 'appeal-grant'(interaction, [userId, since]) {
+    return decide(interaction, userId, since, true);
   },
 
-  async 'appeal-deny'(interaction, [userId]) {
-    return decide(interaction, userId, false);
+  async 'appeal-deny'(interaction, [userId, since]) {
+    return decide(interaction, userId, since, false);
   },
 };
 
 /**
  * @param {object} interaction
  * @param {string} userId The appealing member.
+ * @param {string} since Epoch seconds of the incident, from the custom_id.
  * @param {boolean} granted
  */
-async function decide(interaction, userId, granted) {
+async function decide(interaction, userId, since, granted) {
   if (!mayModerate(interaction)) return ephemeralResponse(content.commands.forbidden);
 
   const staff = actor(interaction);
   const { appeal } = content.moderation;
 
+  let overturned = 0;
+  if (granted && interaction.guild_id) {
+    overturned = overturnSince(interaction.guild_id, userId, incidentIso(since));
+  }
+
   const delivered = await notifyMember(userId, granted ? appeal.grantedDm : appeal.deniedDm);
 
   logger.info(
-    { guildId: interaction.guild_id, userId, granted, delivered, byUserId: staff.id },
+    { guildId: interaction.guild_id, userId, granted, overturned, delivered, byUserId: staff.id },
     'Appeal decided',
   );
+
+  const note = granted && overturned > 0
+    ? ` ${fill(appeal.strikesOverturned, { count: overturned })}`
+    : '';
 
   return resolveAppeal(interaction, {
     title: granted ? content.moderation.log.titles.appealGranted : content.moderation.log.titles.appealDenied,
     color: granted ? GRANTED_COLOR : DENIED_COLOR,
     resolution: `${fill(granted ? appeal.granted : appeal.denied, { userId: staff.id })}`
-      + ` — ${delivered ? appeal.decisionSent : appeal.decisionNotSent}`,
+      + `${note} — ${delivered ? appeal.decisionSent : appeal.decisionNotSent}`,
   });
 }
 
@@ -229,7 +254,7 @@ appealDecisions['appeal-grant'].deferred = (interaction) => mayModerate(interact
 appealDecisions['appeal-deny'].deferred = (interaction) => mayModerate(interaction);
 
 export const appealModals = {
-  async 'appeal-submit'(interaction, [guildId]) {
+  async 'appeal-submit'(interaction, [guildId, since]) {
     const member = actor(interaction);
     const text = modalValue(interaction, APPEAL_INPUT);
     if (!text) return ephemeralResponse(content.moderation.appeal.empty);
@@ -241,8 +266,11 @@ export const appealModals = {
         guildId,
         userId: member.id,
         reason: text,
+        // Shown in the entry so staff can see which enforcement pass is being
+        // appealed without hunting through the log.
+        since: incidentIso(since),
       },
-      { components: decisionButtons(member.id) },
+      { components: decisionButtons(member.id, since ?? 0) },
     );
 
     // Metadata at info, the statement itself only at debug — same rule as

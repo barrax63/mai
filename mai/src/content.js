@@ -122,6 +122,7 @@ function loadContent() {
     }),
     moderation: Object.freeze({
       warningEmoji: str(moderation, ['moderation', 'warningEmoji']),
+      timeoutImmune: str(moderation, ['moderation', 'timeoutImmune']),
       // Empty timezone = follow the container clock (TZ).
       timezone: typeof moderation.timezone === 'string' && moderation.timezone.trim()
         ? moderation.timezone.trim()
@@ -162,10 +163,10 @@ function loadContent() {
           resolution: str(logFields, ['moderation', 'log', 'fields', 'resolution']),
           appeal: str(logFields, ['moderation', 'log', 'fields', 'appeal']),
           changes: str(logFields, ['moderation', 'log', 'fields', 'changes']),
+          incident: str(logFields, ['moderation', 'log', 'fields', 'incident']),
         }),
         jump: str(log, ['moderation', 'log', 'jump']),
         none: str(log, ['moderation', 'log', 'none']),
-        footer: str(log, ['moderation', 'log', 'footer']),
       }),
       appeal: Object.freeze({
         button: str(appeal, ['moderation', 'appeal', 'button']),
@@ -185,6 +186,7 @@ function loadContent() {
         deniedDm: str(appeal, ['moderation', 'appeal', 'deniedDm']),
         decisionSent: str(appeal, ['moderation', 'appeal', 'decisionSent']),
         decisionNotSent: str(appeal, ['moderation', 'appeal', 'decisionNotSent']),
+        strikesOverturned: str(appeal, ['moderation', 'appeal', 'strikesOverturned']),
       }),
       warningDm: Object.freeze({
         maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
@@ -242,6 +244,7 @@ function loadContent() {
           deleted: str(historyActions, ['commands', 'history', 'actions', 'deleted']),
           self_deleted: str(historyActions, ['commands', 'history', 'actions', 'self_deleted']),
           edited: str(historyActions, ['commands', 'history', 'actions', 'edited']),
+          overturned: str(historyActions, ['commands', 'history', 'actions', 'overturned']),
         }),
         nextTimeout: str(history, ['commands', 'history', 'nextTimeout']),
         nextNothing: str(history, ['commands', 'history', 'nextNothing']),

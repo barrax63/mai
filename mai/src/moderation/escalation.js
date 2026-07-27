@@ -10,7 +10,9 @@
  * an automated permanent action on a false positive is not recoverable, and
  * staff have `/mod history` plus the log to act on the ones that matter.
  */
+import { PermissionFlagsBits } from 'discord.js';
 import { config } from '../config.js';
+import { content } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
 import { strikeCount } from '../db/violations.js';
 import { logger } from '../logger.js';
@@ -65,6 +67,20 @@ export async function applyTimeout(client, { guildId, userId, minutes, reason })
   try {
     const guild = await client.guilds.fetch(guildId);
     const member = await guild.members.fetch(userId);
+
+    // Discord refuses a timeout on an administrator or the owner, always. That
+    // is a permanent property of the target, not a fault in the deployment, so
+    // it is reported without the `error` level that would page the operator
+    // every single time such a member trips the ladder. The log-channel entry
+    // still goes out — staff should know the ladder had no effect.
+    if (member.permissions?.has?.(PermissionFlagsBits.Administrator) || guild.ownerId === userId) {
+      logger.info(
+        { guildId, userId, minutes },
+        'Not timing out an admin or the owner — Discord does not allow it',
+      );
+      return { applied: false, until: null, error: content.moderation.timeoutImmune };
+    }
+
     await member.timeout(minutes * 60_000, reason);
 
     const until = new Date(Date.now() + minutes * 60_000);

@@ -43,6 +43,7 @@ Every non-bot guild message with text content is classified when it is posted **
   - classification unavailable → an unqueued message passes as usual, but a queued one **keeps its row**: no verdict is not the same as innocent.
 
   Discord also fires `messageUpdate` for link previews resolving, pins and flag changes; those are filtered out by `edited_timestamp` plus a content comparison, so they never cost a classification call. Edits are moderation-only — retrofitting a mention into a message does not make Mai answer it. No extra intent or Developer Portal toggle is needed.
+- **Self-deletion resolves immediately** ([src/gateway/events/message-delete.js](src/gateway/events/message-delete.js)): the moment the author removes a flagged message, the scold reply goes with it, the queue row is dropped and the log gets its entry — no waiting out a grace period that has nothing left to enforce. Deletions Mai performs herself (enforcement, an approved report) are registered beforehand and skipped, or her own work would be recorded as the author having fixed it. The enforcer keeps the same handling as a fallback for a deletion that happened while the gateway was down.
 - **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the message is looked up. Gone (author deleted it) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, the row dropped, and the author gets one DM per tick listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient) keeps the row for the next tick.
 - **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside `MODERATION_STRIKE_WINDOW_DAYS` picks a Discord timeout from the ladder (`MODERATION_TIMEOUT_LADDER`, default `0,10,60,1440` — nothing, 10 min, 1 h, then 24 h repeating). Escalation runs **once per member per tick**: three messages removed in one sweep is one incident. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design — Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped.
 - **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely. Two paths deliberately fail **closed** instead, because there is no deletion to fall back on: an already-queued message being re-checked after an edit (see above), and a `/mai ask` question, which Mai would be republishing herself.
@@ -119,11 +120,16 @@ into the entry — same pattern as a report — *and* DMed to the member, becaus
 appeal that disappears into a staff channel is not an appeals process. A closed
 DM is recorded as such rather than failing the click.
 
-The decision deliberately does **not** touch the strike record. An appeal
-carries only the guild and the member, not which of their strikes it is about,
-so "granted" could only clear *all* of them — wiping four correct strikes
-because the fifth was wrong. Staff who mean that run
-`/mod forgive <user> strikes:true`, which says so.
+Granting an appeal means Mai was wrong, so the strikes it is about **stop
+counting**: they are marked `overturned` rather than deleted, which takes them
+out of the escalation ladder while leaving the record honest — `/mod history`
+still shows them, labelled *Einspruch stattgegeben*.
+
+Only the strikes from the enforcement pass being appealed, though. The warning
+DM covers one pass, and its timestamp travels through the button ids
+(`appeal:<guild>:<since>` → `appeal-grant:<user>:<since>`), so appealing one
+incident cannot clear four earlier, correct strikes. Staff who *do* mean the
+whole record run `/mod forgive <user> strikes:true`.
 
 Reports and appeals are the only paths where member-written text reaches the log
 channel, and only because that member typed it and pressed submit. The reported

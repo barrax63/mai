@@ -18,19 +18,17 @@ import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
 import { isGuildActive } from '../db/settings.js';
 import {
   ACTION_DELETED,
-  ACTION_SELF_DELETED,
   pruneOlderThan as pruneViolations,
   recordViolation,
 } from '../db/violations.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
-import { isExemptChannel } from './check.js';
-import { deleteMessageById } from './cleanup.js';
+import { isExemptChannel, recordSelfDeletion } from './check.js';
+import { deleteMessageById, markOwnDeletion } from './cleanup.js';
 import { applyTimeout, decideEscalation } from './escalation.js';
 import {
   LOG_ABANDONED,
   LOG_DELETED,
-  LOG_SELF_DELETED,
   LOG_STUCK,
   LOG_TIMEOUT,
   LOG_TIMEOUT_FAILED,
@@ -147,28 +145,10 @@ async function processRow(client, row) {
     message = await channel.messages.fetch(row.messageId);
   } catch (error) {
     if (error.code === UNKNOWN_MESSAGE || error.code === UNKNOWN_CHANNEL) {
-      // Self-deleted (or the whole channel is gone): clean up and stay quiet.
-      await deleteMessageById(client, row.channelId, row.scoldMessageId);
-      // On the record, but deliberately not a strike: the grace period worked.
-      recordViolation({
-        guildId: row.guildId,
-        userId: row.userId,
-        messageId: row.messageId,
-        categories: row.categories,
-        action: ACTION_SELF_DELETED,
-      });
-      logger.info(
-        { messageId: row.messageId, userId: row.userId },
-        'Flagged message was removed by the author, no warning sent',
-      );
-      await postModerationLog(client, {
-        type: LOG_SELF_DELETED,
-        guildId: row.guildId,
-        channelId: row.channelId,
-        messageId: row.messageId,
-        userId: row.userId,
-        categories: row.categories,
-      });
+      // Self-deleted (or the whole channel is gone). The messageDelete handler
+      // normally gets here first; this is the fallback for a deletion that
+      // happened while the gateway was down.
+      await recordSelfDeletion(client, row);
       return { enforced: null, keepRow: false };
     }
 
@@ -193,6 +173,9 @@ async function processRow(client, row) {
   };
 
   try {
+    // Marked first: the gateway event for this delete must not be mistaken for
+    // the author having removed it themselves.
+    markOwnDeletion(row.messageId);
     await message.delete();
   } catch (error) {
     logger.warn(
@@ -284,14 +267,16 @@ async function escalate(client, enforced) {
  * @param {{ userId: string, guildId: string, violations: object[], categories: string[] }} group
  * @param {{ minutes: number, until: Date | null, applied: boolean } | undefined} timeout
  */
-async function warnAuthor(client, group, timeout) {
+async function warnAuthor(client, group, timeout, sinceIso) {
   const body = buildWarning(group, timeout);
   try {
     const user = await client.users.fetch(group.userId);
     await user.send({
       content: body,
-      // Only present when the guild can actually receive appeals.
-      components: appealComponents(group.guildId),
+      // Only present when the guild can actually receive appeals. `sinceIso` is
+      // this tick's start, so a granted appeal overturns exactly the strikes
+      // this DM is about and no earlier ones.
+      components: appealComponents(group.guildId, sinceIso),
       allowedMentions: { parse: [] },
     });
     logger.info(
@@ -344,7 +329,12 @@ export async function runTick(client) {
   const timeouts = await escalate(client, enforced);
 
   for (const group of groupByUser(enforced)) {
-    await warnAuthor(client, group, timeouts.get(`${group.guildId}:${group.userId}`));
+    await warnAuthor(
+      client,
+      group,
+      timeouts.get(`${group.guildId}:${group.userId}`),
+      now.toISOString(),
+    );
   }
 
   const cutoff = new Date(now.getTime() - config.chat.historyMaxAgeHours * 3_600_000).toISOString();

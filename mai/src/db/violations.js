@@ -12,6 +12,8 @@ export const ACTION_DELETED = 'deleted';
 export const ACTION_SELF_DELETED = 'self_deleted';
 /** The author edited the violation out of a flagged message during the grace period. */
 export const ACTION_EDITED = 'edited';
+/** Staff granted an appeal: Mai was wrong, so this stops counting as a strike. */
+export const ACTION_OVERTURNED = 'overturned';
 
 const parseCategories = (value) => {
   try {
@@ -103,6 +105,33 @@ export function totalsFor(guildId, userId) {
     deleted: row.deleted ?? 0,
     selfDeleted: row.self_deleted ?? 0,
   };
+}
+
+/**
+ * Marks the enforced deletions of one incident as overturned, because staff
+ * granted an appeal against it.
+ *
+ * The rows are **kept, not deleted**: a record that quietly loses entries is
+ * worse than one showing that Mai was wrong and it was corrected. Since
+ * `strikeCount` only counts `ACTION_DELETED`, changing the action is what makes
+ * the escalation ladder forget it — no separate flag to keep in sync.
+ *
+ * Scoped by time because that is what an appeal actually names: the warning DM
+ * covers one enforcement pass, so `sinceIso` is that pass's start. Appealing one
+ * incident must not clear four earlier, correct strikes.
+ *
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {string} sinceIso
+ * @returns {number} Strikes overturned.
+ */
+export function overturnSince(guildId, userId, sinceIso) {
+  return getDb()
+    .prepare(
+      `UPDATE violations SET action = ?
+       WHERE guild_id = ? AND user_id = ? AND action = ? AND created_at >= ?`,
+    )
+    .run(ACTION_OVERTURNED, guildId, userId, ACTION_DELETED, sinceIso).changes;
 }
 
 /**

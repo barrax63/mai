@@ -11,6 +11,43 @@ import { content } from '../content.js';
 import { logger } from '../logger.js';
 
 /**
+ * Message ids Mai is deleting herself.
+ *
+ * `messageDelete` cannot tell us *who* deleted a message, and the gateway event
+ * for Mai's own enforcement arrives while the queue row is still there — which
+ * would otherwise be recorded as "the author removed it", the exact opposite of
+ * what happened. Ids are marked just before the delete and expire on their own,
+ * so a failed delete cannot leak an entry forever.
+ */
+const ownDeletions = new Map();
+const OWN_DELETION_TTL_MS = 60_000;
+
+/**
+ * @param {string} messageId
+ */
+export function markOwnDeletion(messageId) {
+  if (!messageId) return;
+  clearTimeout(ownDeletions.get(messageId));
+  const timer = setTimeout(() => ownDeletions.delete(messageId), OWN_DELETION_TTL_MS);
+  timer.unref?.();
+  ownDeletions.set(messageId, timer);
+}
+
+/**
+ * @param {string} messageId
+ * @returns {boolean} Whether Mai (or staff acting through her) did this.
+ */
+export function isOwnDeletion(messageId) {
+  return ownDeletions.has(messageId);
+}
+
+/** Test seam: the registry is process-lifetime state. */
+export function clearOwnDeletions() {
+  for (const timer of ownDeletions.values()) clearTimeout(timer);
+  ownDeletions.clear();
+}
+
+/**
  * Deletes a message by id without fetching it first.
  *
  * @param {import('discord.js').Client} client
@@ -19,6 +56,7 @@ import { logger } from '../logger.js';
  */
 export async function deleteMessageById(client, channelId, messageId) {
   if (!messageId) return;
+  markOwnDeletion(messageId);
   try {
     const channel = await client.channels.fetch(channelId);
     await channel?.messages?.delete(messageId);
