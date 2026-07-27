@@ -115,7 +115,10 @@ function spendResponse(interaction) {
 
   const breakdown = breakdownFor(monthKey(), scope)
     .map((row) =>
-      fill(content.commands.spend.line, {
+      // The moderations endpoint returns no `usage` object at all, so its rows
+      // are genuinely tokenless rather than unmeasured. Printing "0 Tokens"
+      // there reads as a broken counter.
+      fill(row.totalTokens > 0 ? content.commands.spend.line : content.commands.spend.lineNoTokens, {
         purpose: row.purpose,
         model: row.model,
         calls: formatNumber(row.calls),

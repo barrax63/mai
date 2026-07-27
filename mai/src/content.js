@@ -254,6 +254,7 @@ function loadContent() {
       spend: Object.freeze({
         body: str(spend, ['commands', 'spend', 'body']),
         line: str(spend, ['commands', 'spend', 'line']),
+        lineNoTokens: str(spend, ['commands', 'spend', 'lineNoTokens']),
         budgetOff: str(spend, ['commands', 'spend', 'budgetOff']),
         // Shown instead of the figures when the caller is not an operator.
         budgetHidden: str(spend, ['commands', 'spend', 'budgetHidden']),

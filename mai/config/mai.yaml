@@ -227,6 +227,10 @@ commands:
 
       {breakdown}
     line: '• `{purpose}` ({model}): {calls} Aufrufe, {tokens} Tokens'
+    # Für Aufrufe, zu denen die API gar keine Token-Zahl zurückgibt (das
+    # Moderations-Modell tut das nicht). Sonst sieht "0 Tokens" nach einem
+    # Fehler aus statt nach "wird nicht abgerechnet".
+    lineNoTokens: '• `{purpose}` ({model}): {calls} Aufrufe, keine Token-Abrechnung'
     budgetOff: 'kein Limit'
     budgetOk: '{used} / {budget} Tokens ({percent} %)'
     budgetExceeded: '⚠️ {used} / {budget} Tokens ({percent} %), Chat ist bis nächsten Monat aus'
