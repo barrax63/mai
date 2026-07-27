@@ -219,15 +219,25 @@ function historyResponse(interaction) {
     ? ladder[Math.min(strikes + 1, ladder.length) - 1] ?? 0
     : 0;
 
+  const actionLabel = (action) => content.commands.history.actions[action] ?? action;
+
   const lines = entries
     .map((entry) =>
       fill(content.commands.history.line, {
         when: `<t:${Math.floor(new Date(entry.createdAt).getTime() / 1000)}:d>`,
-        action: content.commands.history.actions[entry.action] ?? entry.action,
+        action: actionLabel(entry.action),
         categories: entry.categories.join(', ') || content.moderation.log.none,
       }),
     )
     .join('\n');
+
+  // Built from whatever outcomes the record actually holds, so the parts always
+  // add up to the total — a fixed list of buckets silently stopped matching
+  // every time a new outcome was added.
+  const breakdown = Object.entries(totals.byAction)
+    .sort(([, a], [, b]) => b - a)
+    .map(([action, count]) => `${count} ${actionLabel(action)}`)
+    .join(', ');
 
   return ephemeralResponse(
     fill(content.commands.history.body, {
@@ -235,8 +245,7 @@ function historyResponse(interaction) {
       strikes,
       window: settings.strikeWindowDays,
       total: totals.total,
-      deleted: totals.deleted,
-      selfDeleted: totals.selfDeleted,
+      breakdown: breakdown ? ` — ${breakdown}` : '',
       next: nextConsequence(next, settings.escalationEnabled),
       entries: lines || content.commands.history.empty,
     }),

@@ -247,7 +247,7 @@ commands:
     body: |
       # 📓 Akte von <@{userId}>
       **Verstöße im Fenster:** {strikes} (letzte {window} Tage)
-      **Gesamt:** {total} — {deleted} gelöscht, {selfDeleted} selbst entfernt
+      **Gesamt:** {total}{breakdown}
       **Nächster Verstoß:** {next}
 
       {entries}

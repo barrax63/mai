@@ -88,22 +88,29 @@ export function historyFor(guildId, userId, limit = 10) {
 /**
  * @param {string} guildId
  * @param {string} userId
- * @returns {{ total: number, deleted: number, selfDeleted: number }}
+ * @returns {{ total: number, byAction: Record<string, number>, deleted: number,
+ *   selfDeleted: number }}
+ *   `byAction` is grouped rather than a fixed set of columns: hard-coding the
+ *   buckets meant every new outcome (`edited`, then `overturned`) landed in the
+ *   total but in none of them, so `/mod history` printed a breakdown that did
+ *   not add up to its own total.
  */
 export function totalsFor(guildId, userId) {
-  const row = getDb()
+  const rows = getDb()
     .prepare(
-      `SELECT COUNT(*) AS total,
-              SUM(CASE WHEN action = ? THEN 1 ELSE 0 END) AS deleted,
-              SUM(CASE WHEN action = ? THEN 1 ELSE 0 END) AS self_deleted
-       FROM violations WHERE guild_id = ? AND user_id = ?`,
+      `SELECT action, COUNT(*) AS count FROM violations
+       WHERE guild_id = ? AND user_id = ? GROUP BY action`,
     )
-    .get(ACTION_DELETED, ACTION_SELF_DELETED, guildId, userId);
+    .all(guildId, userId);
+
+  const byAction = Object.fromEntries(rows.map((row) => [row.action, row.count]));
 
   return {
-    total: row.total ?? 0,
-    deleted: row.deleted ?? 0,
-    selfDeleted: row.self_deleted ?? 0,
+    total: rows.reduce((sum, row) => sum + row.count, 0),
+    byAction,
+    // Kept as named fields: these two are the ones other callers ask about.
+    deleted: byAction[ACTION_DELETED] ?? 0,
+    selfDeleted: byAction[ACTION_SELF_DELETED] ?? 0,
   };
 }
 

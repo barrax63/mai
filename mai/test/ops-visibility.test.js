@@ -16,10 +16,13 @@ import { enqueue } from '../src/db/queue.js';
 import { updateSettings } from '../src/db/settings.js';
 import {
   ACTION_DELETED,
+  ACTION_EDITED,
   ACTION_OVERTURNED,
+  ACTION_SELF_DELETED,
   historyFor,
   recordViolation,
   strikeCount,
+  totalsFor as violationTotals,
 } from '../src/db/violations.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { renderMetrics } from '../src/http/metrics.js';
@@ -129,6 +132,61 @@ test('granting an appeal stops the strike counting, without erasing it', async (
 
   const older = history.find((row) => row.messageId === 'b50000000000000001');
   assert.equal(older.action, ACTION_DELETED, 'an earlier, correct strike is untouched');
+});
+
+test('the record breakdown always adds up to its own total', async () => {
+  const member = 'b60000000000000001';
+  for (const action of [ACTION_DELETED, ACTION_SELF_DELETED, ACTION_EDITED, ACTION_OVERTURNED]) {
+    recordViolation({
+      guildId: TEST_GUILD,
+      userId: member,
+      messageId: `b7000000000000000${action.length}`,
+      categories: ['harassment'],
+      action,
+    });
+  }
+
+  const totals = violationTotals(TEST_GUILD, member);
+  const summed = Object.values(totals.byAction).reduce((sum, count) => sum + count, 0);
+
+  // The regression: `edited` and `overturned` counted towards the total but
+  // belonged to no bucket, so /mod history printed "Gesamt: 2 — 0 gelöscht,
+  // 1 selbst entfernt".
+  assert.equal(summed, totals.total, JSON.stringify(totals));
+  assert.equal(totals.total, 4);
+
+  // And every outcome the record can hold has a label to render it with.
+  for (const action of Object.keys(totals.byAction)) {
+    assert.ok(content.commands.history.actions[action], `no label for ${action}`);
+  }
+});
+
+test('/mod history renders a breakdown matching the total', async () => {
+  const member = 'b60000000000000002';
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId: member,
+    messageId: 'b70000000000000009',
+    categories: ['harassment'],
+    action: ACTION_OVERTURNED,
+  });
+
+  const sent = [];
+  await routeInteraction(
+    interaction({
+      type: InteractionType.APPLICATION_COMMAND,
+      member: { user: { id: TEST_USER, username: 'staff' }, permissions: STAFF_PERMISSIONS },
+      data: {
+        name: 'mod',
+        options: [{ name: 'history', type: 1, options: [{ name: 'user', value: member }] }],
+      },
+    }),
+    (body) => sent.push(body),
+  );
+
+  const body = sent[0].data.content;
+  assert.match(body, /\*\*Gesamt:\*\* 1 — 1 /);
+  assert.ok(body.includes(content.commands.history.actions[ACTION_OVERTURNED]));
 });
 
 test('denying an appeal leaves the record alone', async () => {
