@@ -46,32 +46,52 @@ function formatTimestamp(value) {
 }
 
 /**
- * Groups enforced records by author. Each group becomes one DM.
+ * The key everything about an incident is scoped by: a member is a user *in a
+ * guild*, never a user on their own. Shared with the enforcer so the grouping
+ * here and its timeout map cannot drift apart.
+ *
+ * @param {string} guildId
+ * @param {string} userId
+ * @returns {string}
+ */
+export const memberKey = (guildId, userId) => `${guildId}:${userId}`;
+
+/**
+ * Groups enforced records by member. Each group becomes one DM.
+ *
+ * By guild *and* user, not by user alone: Mai serves several guilds from one
+ * process, so the same person can be enforced in two of them in the same tick.
+ * Grouping on the user id produced a single DM that quoted one guild's deleted
+ * messages next to another guild's, carried an appeal button scoped to
+ * whichever guild happened to be seen first (so granting it overturned the
+ * wrong strikes), and silently lost the timeout note for the second guild,
+ * because the enforcer keys those by guild and user.
  *
  * @param {{ userId: string, guildId: string, content: string, timestamp: Date | string | null,
  *   categories: string[] }[]} records
  * @returns {{ userId: string, guildId: string, violations: object[], categories: string[] }[]}
  */
-export function groupByUser(records) {
-  const byUser = new Map();
+export function groupByMember(records) {
+  const members = new Map();
 
   for (const record of records) {
-    if (!byUser.has(record.userId)) {
-      byUser.set(record.userId, {
+    const key = memberKey(record.guildId, record.userId);
+    if (!members.has(key)) {
+      members.set(key, {
         userId: record.userId,
         guildId: record.guildId,
         violations: [],
         categories: new Set(),
       });
     }
-    const group = byUser.get(record.userId);
+    const group = members.get(key);
     group.violations.push(record);
     for (const category of record.categories ?? []) {
       if (category) group.categories.add(category);
     }
   }
 
-  return [...byUser.values()].map((group) => ({
+  return [...members.values()].map((group) => ({
     ...group,
     categories: [...group.categories],
   }));

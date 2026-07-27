@@ -34,7 +34,7 @@ import {
   LOG_TIMEOUT_FAILED,
   postModerationLog,
 } from './log.js';
-import { buildWarning, groupByUser } from './warning.js';
+import { buildWarning, groupByMember, memberKey } from './warning.js';
 
 // Discord REST error codes (discord.js exposes them as error.code).
 const UNKNOWN_CHANNEL = 10003;
@@ -242,47 +242,48 @@ async function processRow(client, row) {
 /**
  * Escalation runs once per member and guild per tick, not once per deleted
  * message: three messages removed in one sweep is one incident, not three
- * timeouts.
+ * timeouts. It takes the same groups the warning DMs are built from, so the
+ * two cannot disagree about what counts as one incident, and the categories it
+ * names are the union across the whole group rather than whichever message
+ * happened to be last.
  *
  * @param {import('discord.js').Client} client
- * @param {{ userId: string, guildId: string, categories: string[] }[]} enforced
+ * @param {ReturnType<typeof groupByMember>} groups
  * @returns {Promise<Map<string, { minutes: number, until: Date | null, applied: boolean }>>}
- *   Keyed by `guildId:userId`, for the warning DM to mention.
+ *   Keyed by `memberKey`, for the warning DM to mention.
  */
-async function escalate(client, enforced) {
-  const members = new Map();
-  for (const record of enforced) {
-    members.set(`${record.guildId}:${record.userId}`, record);
-  }
-
+async function escalate(client, groups) {
   const results = new Map();
 
-  for (const [key, record] of members) {
-    const { strikes, minutes } = decideEscalation(record.guildId, record.userId);
+  for (const group of groups) {
+    const { strikes, minutes } = decideEscalation(group.guildId, group.userId);
     if (minutes <= 0) {
-      logger.debug({ ...record, strikes }, 'No timeout for this strike count');
+      logger.debug(
+        { guildId: group.guildId, userId: group.userId, strikes },
+        'No timeout for this strike count',
+      );
       continue;
     }
 
-    const reason = `Mai: ${strikes}. Verstoß (${record.categories.join(', ') || 'Regelverstoß'})`;
+    const reason = `Mai: ${strikes}. Verstoß (${group.categories.join(', ') || 'Regelverstoß'})`;
     const outcome = await applyTimeout(client, {
-      guildId: record.guildId,
-      userId: record.userId,
+      guildId: group.guildId,
+      userId: group.userId,
       minutes,
       reason,
     });
 
-    results.set(key, { ...outcome, minutes, strikes });
+    results.set(memberKey(group.guildId, group.userId), { ...outcome, minutes, strikes });
 
     await postModerationLog(client, {
       type: outcome.applied ? LOG_TIMEOUT : LOG_TIMEOUT_FAILED,
-      guildId: record.guildId,
-      userId: record.userId,
+      guildId: group.guildId,
+      userId: group.userId,
       minutes,
       strikes,
       until: outcome.until?.toISOString() ?? null,
       reason: outcome.error ?? null,
-      categories: record.categories,
+      categories: group.categories,
     });
   }
 
@@ -369,14 +370,17 @@ export async function runTick(client) {
     }
   }
 
-  // Escalate before the DMs go out, so the warning can name the timeout.
-  const timeouts = await escalate(client, enforced);
+  // One grouping pass for both: a member enforced in two guilds this tick is
+  // two incidents, and gets one DM per guild with that guild's own appeal
+  // button. Escalate first, so each warning can name its own timeout.
+  const groups = groupByMember(enforced);
+  const timeouts = await escalate(client, groups);
 
-  for (const group of groupByUser(enforced)) {
+  for (const group of groups) {
     await warnAuthor(
       client,
       group,
-      timeouts.get(`${group.guildId}:${group.userId}`),
+      timeouts.get(memberKey(group.guildId, group.userId)),
       now.toISOString(),
     );
   }

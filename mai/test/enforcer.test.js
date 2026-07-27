@@ -43,8 +43,9 @@ function fakeClient({ parents = {}, onFetchMessage } = {}) {
 
   const message = (channelId, messageId) => ({
     id: messageId,
-    cleanContent: 'text',
-    content: 'text',
+    // Distinguishable, so a DM quoting the wrong guild's messages is visible.
+    cleanContent: `text of ${messageId}`,
+    content: `text of ${messageId}`,
     attachments: { size: 0 },
     createdAt: new Date(),
     delete: async () => record.deleted.push({ channelId, messageId }),
@@ -156,6 +157,44 @@ test('a directly exempted channel still drops its rows', async () => {
     assert.equal(findRow(messageId), null);
   } finally {
     resetSettings(TEST_GUILD, 'exempt-channels');
+  }
+});
+
+test('a member enforced in two guilds gets one DM per guild, not one merged one', async () => {
+  clearOwnDeletions();
+  const here = '950000000000000010';
+  const there = '950000000000000011';
+
+  // Both guilds can receive appeals, so each DM carries its own appeal button.
+  updateSettings(TEST_GUILD, { 'log-channel': '940000000000000100' });
+  updateSettings(OTHER_GUILD, { 'log-channel': '940000000000000101' });
+
+  try {
+    seed(here, { guildId: TEST_GUILD });
+    seed(there, { guildId: OTHER_GUILD });
+
+    const { client, record } = fakeClient();
+    await runTick(client);
+
+    assert.equal(record.deleted.length, 2, 'both messages enforced');
+    assert.equal(record.dms.length, 2, 'one warning per guild');
+
+    const forHere = record.dms.find((dm) => dm.content.includes(here));
+    const forThere = record.dms.find((dm) => dm.content.includes(there));
+    assert.ok(forHere && forThere, 'each guild is warned about its own message');
+
+    // The decisive part: neither DM may quote the other guild's message.
+    assert.equal(forHere.content.includes(there), false);
+    assert.equal(forThere.content.includes(here), false);
+
+    // And each appeal button names its own guild, so granting it overturns the
+    // strikes of that incident rather than the other guild's.
+    const appealId = (dm) => dm.components?.[0]?.components?.[0]?.custom_id ?? '';
+    assert.ok(appealId(forHere).startsWith(`appeal:${TEST_GUILD}:`), appealId(forHere));
+    assert.ok(appealId(forThere).startsWith(`appeal:${OTHER_GUILD}:`), appealId(forThere));
+  } finally {
+    resetSettings(TEST_GUILD, 'log-channel');
+    resetSettings(OTHER_GUILD, 'log-channel');
   }
 });
 

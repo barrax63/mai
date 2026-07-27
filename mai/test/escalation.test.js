@@ -265,8 +265,8 @@ test('/mod forgive can wipe the strike record too', async () => {
 });
 
 test('the warning DM names the timeout when there was one', async () => {
-  const { buildWarning, groupByUser } = await import('../src/moderation/warning.js');
-  const [group] = groupByUser([
+  const { buildWarning, groupByMember } = await import('../src/moderation/warning.js');
+  const [group] = groupByMember([
     {
       userId: MEMBER,
       guildId: GUILD,
