@@ -15,7 +15,7 @@ import { config } from '../config.js';
 import { content } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
 import { strikeCount } from '../db/violations.js';
-import { describeError } from '../errors.js';
+import { explainError } from '../errors.js';
 import { logger } from '../logger.js';
 
 /**
@@ -94,9 +94,9 @@ export async function applyTimeout(client, { guildId, userId, minutes, reason })
       { guildId, userId, minutes, err: error },
       'Could not time out a member; check Moderate Members and the role hierarchy',
     );
-    // `error` here is shown in the guild's log channel, so it gets the name and
-    // the code, never the message: see errors.js. The full one is in the line
-    // above, which the operator has and the guild does not.
-    return { applied: false, until: null, error: describeError(error) };
+    // `error` here is shown in the guild's log channel, so staff get the code
+    // in words, never the raw message: see errors.js. The full one is in the
+    // line above, which the operator has and the guild does not.
+    return { applied: false, until: null, error: explainError(error) };
   }
 }

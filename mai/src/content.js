@@ -74,6 +74,7 @@ function loadContent() {
   const flagged = section(chat, 'flagged');
   const prompt = section(chat, 'prompt');
   const moderation = section(parsed, 'moderation');
+  const errorCodes = section(moderation, 'errors');
   const warningDm = section(moderation, 'warningDm');
   const log = section(moderation, 'log');
   const logTitles = section(log, 'titles');
@@ -127,6 +128,19 @@ function loadContent() {
       // "says" and belongs here rather than in the enforcer.
       timeoutReason: str(moderation, ['moderation', 'timeoutReason']),
       timeoutReasonUnknown: str(moderation, ['moderation', 'timeoutReasonUnknown']),
+      errorLine: str(moderation, ['moderation', 'errorLine']),
+      // Discord error codes staff might see, in words. Keys stay strings: the
+      // API sends numbers, and a YAML author may write them either way.
+      errors: Object.freeze(
+        Object.fromEntries(
+          Object.entries(errorCodes).map(([code, text]) => {
+            if (typeof text !== 'string' || !text.trim()) {
+              fail(`moderation.errors.${code} must be a non-empty string`);
+            }
+            return [String(code).trim(), text];
+          }),
+        ),
+      ),
       // Empty timezone = follow the container clock (TZ).
       timezone: typeof moderation.timezone === 'string' && moderation.timezone.trim()
         ? moderation.timezone.trim()

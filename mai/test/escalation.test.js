@@ -207,14 +207,39 @@ test('a refused timeout is reported, not thrown, and without the raw message', a
   assert.equal(result.applied, false, 'refused rather than thrown');
 
   // `error` is shown in the guild's log channel, which is permanent Discord
-  // storage: the name and the code are actionable, the message is free text
-  // that can quote anything the failing call touched.
-  assert.equal(result.error, 'DiscordAPIError code=50013');
+  // storage. Staff get the code translated into something they can act on; the
+  // raw message is free text that can quote anything the failing call touched.
+  assert.ok(result.error.includes(content.moderation.errors['50013']), result.error);
+  assert.ok(result.error.includes('50013'), 'the code stays, to hand to the operator');
   assert.equal(
     result.error.includes('geheim-intern'),
     false,
     'the raw message must never reach the log channel',
   );
+});
+
+test('an unmapped error code degrades to the name and the code, never the message', async () => {
+  const client = {
+    guilds: {
+      fetch: async () => ({
+        members: {
+          fetch: async () => ({
+            timeout: async () => {
+              throw Object.assign(new Error('quota for guild #intern exceeded'), {
+                name: 'DiscordAPIError',
+                code: 30046,
+              });
+            },
+          }),
+        },
+      }),
+    },
+  };
+
+  const result = await applyTimeout(client, { guildId: GUILD, userId: MEMBER, minutes: 10 });
+
+  assert.equal(result.error, 'DiscordAPIError code=30046');
+  assert.equal(result.error.includes('#intern'), false, 'still no free text');
 });
 
 test('/mod history shows the record and the next consequence', async () => {

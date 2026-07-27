@@ -76,6 +76,26 @@ moderation:
   timeoutReason: 'Mai: {strikes}. Verstoß ({categories})'
   # Statt der Kategorienliste, wenn der Vorfall keine benennt.
   timeoutReasonUnknown: 'Regelverstoß'
+
+  # Wie ein Fehler im Log-Kanal steht. {reason} = der Satz aus `errors`,
+  # {code} = der Discord-Fehlercode, damit das Team ihn weitergeben kann.
+  errorLine: '{reason} (Code {code})'
+  # Discord-Fehlercodes, übersetzt für die Leute, die einen Server moderieren.
+  #
+  # Die Codes sind stabil und dokumentiert, die Meldungen dahinter nicht: eine
+  # Discord-Fehlermeldung ist Freitext und kann einen Kanalnamen, einen
+  # Konfigurationswert oder einen Request-Body zitieren, deshalb landet sie nie
+  # im Log-Kanal. Ein Code ohne Eintrag hier erscheint als Fehlername + Code.
+  #
+  # https://discord.com/developers/docs/topics/opcodes-and-status-codes
+  errors:
+    '10003': 'Diesen Kanal gibt es nicht mehr.'
+    '10004': 'Mai ist nicht mehr auf diesem Server.'
+    '10007': 'Das Mitglied ist nicht mehr auf diesem Server.'
+    '10008': 'Diese Nachricht gibt es nicht mehr.'
+    '50001': 'Mai hat keinen Zugriff auf diesen Kanal.'
+    '50013': 'Mai fehlt die nötige Berechtigung, oder ihre Rolle steht unter der des Mitglieds.'
+    '50021': 'Systemnachrichten kann Mai nicht bearbeiten.'
   # Timestamp formatting of the warning DM. Empty = fall back to TZ.
   timezone: 'Europe/Berlin'
   # Markdown prefix of the scold reply ('# ' renders it as a headline).

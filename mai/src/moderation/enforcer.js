@@ -22,7 +22,7 @@ import {
   pruneOlderThan as pruneViolations,
   recordViolation,
 } from '../db/violations.js';
-import { describeError } from '../errors.js';
+import { explainError } from '../errors.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
 import { isExemptChannel, recordSelfDeletion } from './check.js';
@@ -78,9 +78,9 @@ async function reportFailure(client, row, error) {
     messageId: row.messageId,
     userId: row.userId,
     attempts,
-    // Goes into the guild's log channel, so the name and the code only, never
-    // the message (errors.js). The full one is in the container log.
-    reason: describeError(error),
+    // Goes into the guild's log channel, so staff get the code in words, never
+    // the raw message (errors.js). The full one is in the container log.
+    reason: explainError(error),
   };
 
   if (attempts >= GIVE_UP_AFTER_ATTEMPTS) {
