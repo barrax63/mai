@@ -80,15 +80,19 @@ moderation:
   # Wie ein Fehler im Log-Kanal steht. {reason} = der Satz aus `errors`,
   # {code} = der Discord-Fehlercode, damit das Team ihn weitergeben kann.
   errorLine: '{reason} (Code {code})'
-  # Discord-Fehlercodes, übersetzt für die Leute, die einen Server moderieren.
+  # Fehlercodes, übersetzt für die Leute, die einen Server moderieren.
   #
   # Die Codes sind stabil und dokumentiert, die Meldungen dahinter nicht: eine
   # Discord-Fehlermeldung ist Freitext und kann einen Kanalnamen, einen
   # Konfigurationswert oder einen Request-Body zitieren, deshalb landet sie nie
   # im Log-Kanal. Ein Code ohne Eintrag hier erscheint als Fehlername + Code.
   #
+  # Zahlen sind Discord-Codes, siehe
   # https://discord.com/developers/docs/topics/opcodes-and-status-codes
+  # Namen sind Mais eigene: wer im Code einen neuen vergibt, trägt ihn hier ein,
+  # sonst steht im Log-Kanal wieder nur ein Kürzel.
   errors:
+    'not_text_channel': 'In diesem Kanal können keine Nachrichten liegen (Kategorie oder Sprachkanal), Mai kommt an die markierte Nachricht nicht heran.'
     '10003': 'Diesen Kanal gibt es nicht mehr.'
     '10004': 'Mai ist nicht mehr auf diesem Server.'
     '10007': 'Das Mitglied ist nicht mehr auf diesem Server.'

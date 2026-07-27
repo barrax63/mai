@@ -18,8 +18,10 @@ import { openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bumpAttempts, enqueue, findRow, remove } from '../src/db/queue.js';
+import { content } from '../src/content.js';
 import { resetSettings, updateSettings } from '../src/db/settings.js';
 import { historyFor } from '../src/db/violations.js';
+import { explainError } from '../src/errors.js';
 import { clearOwnDeletions } from '../src/moderation/cleanup.js';
 import { runTick } from '../src/moderation/enforcer.js';
 
@@ -270,6 +272,16 @@ test('a channel that holds no messages is a failure, not a self-deletion', async
     const recorded = historyFor(TEST_GUILD, TEST_USER, 50)
       .filter((entry) => entry.messageId === messageId);
     assert.deepEqual(recorded, [], 'nothing goes on the record');
+
+    // This code is one Mai mints herself rather than one Discord sent, so the
+    // log-channel map has to know it. Unmapped, staff would read
+    // "Error code=not_text_channel", which is the unreadable output the map
+    // exists to prevent: any new internal code needs a line in the YAML.
+    const explained = explainError(Object.assign(new Error('x'), { code: 'not_text_channel' }));
+    assert.ok(
+      explained.includes(content.moderation.errors.not_text_channel),
+      `internal error code is not explained in the content config: ${explained}`,
+    );
   } finally {
     remove(messageId);
   }
