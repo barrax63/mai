@@ -249,6 +249,32 @@ test('a paused guild that also left the allowlist still has its rows dropped', a
   }
 });
 
+test('a channel that is simply gone resolves the row instead of retrying it', async () => {
+  clearOwnDeletions();
+  const messageId = '950000000000000032';
+
+  try {
+    seed(messageId);
+
+    // discord.js usually throws 10003 here, but it can answer with null, which
+    // means the same thing. Retrying a channel that will never come back for an
+    // hour before abandoning it is a slower route to a worse record.
+    const { client, record } = fakeClient();
+    client.channels.fetch = async () => null;
+
+    await runTick(client);
+
+    assert.equal(findRow(messageId), null, 'resolved, not kept for 60 more ticks');
+    assert.equal(record.deleted.length, 0, 'there was nothing left to delete');
+
+    const recorded = historyFor(TEST_GUILD, TEST_USER, 50)
+      .filter((entry) => entry.messageId === messageId);
+    assert.equal(recorded[0]?.action, 'self_deleted', 'recorded truthfully, and not as a strike');
+  } finally {
+    remove(messageId);
+  }
+});
+
 test('a channel that holds no messages is a failure, not a self-deletion', async () => {
   clearOwnDeletions();
   const messageId = '950000000000000031';

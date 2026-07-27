@@ -166,12 +166,27 @@ async function processRow(client, row) {
     return handleLookupError(client, row, error);
   }
 
-  // Resolved, but not something messages live in (a category, a voice channel,
-  // a forum's parent). Deliberately *not* thrown as UNKNOWN_CHANNEL: that code
-  // means "the author deleted it" and would record a self-deletion, silently
+  // Not found. discord.js usually throws 10003 for this, but it can also answer
+  // with null, which means the same thing and deserves the same resolution:
+  // the channel is not coming back, so retrying it for an hour before giving up
+  // would be a slower route to a worse outcome (a LOG_ABANDONED entry instead
+  // of the truthful self-deletion one). This is a deliberate exception to
+  // "any other lookup failure must keep the row": a null here is not a failure
+  // to look up, it is a successful lookup that found nothing.
+  if (!channel) {
+    return handleLookupError(
+      client,
+      row,
+      Object.assign(new Error('Channel not found'), { code: UNKNOWN_CHANNEL }),
+    );
+  }
+
+  // Found, but not something messages live in (a category, a voice channel, a
+  // forum's parent). Deliberately *not* treated as UNKNOWN_CHANNEL: that means
+  // "the author deleted it" and would record a self-deletion, silently
   // downgrading a strike over what is really an unenforceable row. Reported as
   // the failure it is, so it counts attempts and eventually gives up.
-  if (!channel?.messages) {
+  if (!channel.messages) {
     return reportFailure(
       client,
       row,

@@ -341,6 +341,42 @@ test('metrics render real numbers in Prometheus format', () => {
   assert.equal(text.includes(APPELLANT), false);
 });
 
+test('a paused guild counts as parked, not as enforcement running late', async () => {
+  const { updateSettings } = await import('../src/db/settings.js');
+  const { enqueue, remove } = await import('../src/db/queue.js');
+  const messageId = 'b30000000000000002';
+
+  // Overdue, and staying that way: a paused guild's rows are held on purpose.
+  enqueue({
+    messageId,
+    guildId: TEST_GUILD,
+    channelId: 'b40000000000000001',
+    userId: APPELLANT,
+    categories: ['harassment'],
+    warnedAt: new Date(Date.now() - 900_000).toISOString(),
+    dueAt: new Date(Date.now() - 600_000).toISOString(),
+    scoldMessageId: null,
+  });
+
+  const gauge = (text, name) => Number(new RegExp(`^${name} (\\d+)$`, 'm').exec(text)?.[1]);
+
+  try {
+    const active = renderMetrics({ lastTickAt: new Date().toISOString(), running: false });
+    assert.ok(gauge(active, 'mai_queue_overdue') >= 1, 'overdue while Mai is running');
+    assert.equal(gauge(active, 'mai_queue_paused'), 0);
+
+    updateSettings(TEST_GUILD, { enabled: false });
+    const paused = renderMetrics({ lastTickAt: new Date().toISOString(), running: false });
+
+    // The alerting signal must not fire because a server switched Mai off.
+    assert.equal(gauge(paused, 'mai_queue_overdue'), 0, 'nothing a tick would act on');
+    assert.ok(gauge(paused, 'mai_queue_paused') >= 1, 'held rows are visible, just not as late');
+  } finally {
+    updateSettings(TEST_GUILD, { enabled: true });
+    remove(messageId);
+  }
+});
+
 test('metrics are off without a token, and gated by it when set', async () => {
   const { createServer } = await import('../src/http/server.js');
 

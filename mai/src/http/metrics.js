@@ -15,8 +15,10 @@
  * small fixed sets. Never label by guild, user or channel: that turns a metrics
  * series into a per-member activity record, and it is unbounded besides.
  */
-import { config } from '../config.js';
+import { config, isGuildAllowed } from '../config.js';
 import { getDb } from '../db/index.js';
+import { depth, dueCount } from '../db/queue.js';
+import { pausedGuildIds } from '../db/settings.js';
 import { monthKey } from '../db/usage.js';
 
 /** Prometheus wants an escaped label value. */
@@ -49,6 +51,10 @@ export function renderMetrics(enforcer) {
   const one = (sql, ...params) => db.prepare(sql).get(...params) ?? {};
   const all = (sql, ...params) => db.prepare(sql).all(...params);
 
+  // The same list the enforcer skips, filtered the same way: a guild that is
+  // paused *and* no longer allowlisted has its rows dropped rather than parked.
+  const paused = pausedGuildIds().filter((guildId) => isGuildAllowed(guildId));
+
   const tickAgeSeconds = enforcer.lastTickAt
     ? (Date.now() - new Date(enforcer.lastTickAt).getTime()) / 1000
     : -1;
@@ -61,11 +67,23 @@ export function renderMetrics(enforcer) {
       'gauge',
       [{ value: one('SELECT COUNT(*) AS c FROM moderation_queue').c ?? 0 }],
     ),
+    // Split, because these two say opposite things about the same rows. A
+    // paused guild's rows sit past due_at forever *by design*, so counting them
+    // as overdue made the alerting signal fire on a server that had simply run
+    // /mod off. `overdue` is what a tick would act on right now; `paused` is
+    // what is deliberately parked. The exclusion mirrors the enforcer exactly,
+    // allowlist filter included, so the two views cannot drift apart.
     ...metric(
       'mai_queue_overdue',
-      'Queue rows already past due_at; sustained non-zero means enforcement is behind.',
+      'Queue rows past due_at that a tick would act on; sustained non-zero means enforcement is behind.',
       'gauge',
-      [{ value: one('SELECT COUNT(*) AS c FROM moderation_queue WHERE due_at <= ?', new Date().toISOString()).c ?? 0 }],
+      [{ value: dueCount(new Date().toISOString(), paused) }],
+    ),
+    ...metric(
+      'mai_queue_paused',
+      'Pending rows held in guilds that switched Mai off. Waiting, not late.',
+      'gauge',
+      [{ value: paused.reduce((total, guildId) => total + depth(guildId), 0) }],
     ),
     ...metric(
       'mai_queue_attempts_max',
