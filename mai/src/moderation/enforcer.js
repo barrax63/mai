@@ -15,7 +15,7 @@
 import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
 import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
-import { isGuildActive } from '../db/settings.js';
+import { isGuildActive, pausedGuildIds } from '../db/settings.js';
 import {
   ACTION_DELETED,
   pruneOlderThan as pruneViolations,
@@ -101,6 +101,33 @@ async function reportFailure(client, row, error) {
 }
 
 /**
+ * What a failed Discord lookup means for the row: "the author deleted it"
+ * resolves it, anything else keeps it for the next tick. Shared by the channel
+ * and the message lookup, which fail the same way for the same reasons.
+ *
+ * @param {import('discord.js').Client} client
+ * @param {ReturnType<typeof dueRows>[number]} row
+ * @param {Error} error
+ * @returns {Promise<{ enforced: null, keepRow: boolean }>}
+ */
+async function handleLookupError(client, row, error) {
+  if (error.code === UNKNOWN_MESSAGE || error.code === UNKNOWN_CHANNEL) {
+    // Self-deleted (or the whole channel is gone). The messageDelete handler
+    // normally gets here first; this is the fallback for a deletion that
+    // happened while the gateway was down.
+    await recordSelfDeletion(client, row);
+    return { enforced: null, keepRow: false };
+  }
+
+  // Missing permissions or a transient failure: retry next tick.
+  logger.warn(
+    { messageId: row.messageId, channelId: row.channelId, err: error },
+    'Could not look up flagged message, keeping queue row',
+  );
+  return reportFailure(client, row, error);
+}
+
+/**
  * @param {import('discord.js').Client} client
  * @param {ReturnType<typeof dueRows>[number]} row
  * @returns {Promise<{ enforced: object | null, keepRow: boolean }>}
@@ -116,20 +143,10 @@ async function processRow(client, row) {
     return { enforced: null, keepRow: false };
   }
 
-  // Staff declared this channel off-limits after the message was flagged.
-  // Dropped rather than paused: an exemption is a statement about *scope*:
-  // "Mai does not moderate here", so leaving her to delete a message in it
-  // later would contradict the setting they just made.
-  if (isExemptChannel(row.guildId, row.channelId)) {
-    logger.info(
-      { messageId: row.messageId, channelId: row.channelId },
-      'Dropping queue row: channel is now exempt',
-    );
-    return { enforced: null, keepRow: false };
-  }
-
   // Paused by its own staff (/mod off): a pause, not an amnesty. The row waits
   // instead of being enforced or dropped, and resumes when they switch back on.
+  // `dueRows` already leaves paused guilds out of the query; this is the guard
+  // for a guild paused between that query and this row's turn.
   if (!isGuildActive(row.guildId)) {
     logger.debug(
       { messageId: row.messageId, guildId: row.guildId },
@@ -138,26 +155,36 @@ async function processRow(client, row) {
     return { enforced: null, keepRow: true, paused: true };
   }
 
+  let channel = null;
+  try {
+    channel = await client.channels.fetch(row.channelId);
+    if (!channel?.messages) throw Object.assign(new Error('Channel has no messages'), { code: UNKNOWN_CHANNEL });
+  } catch (error) {
+    return handleLookupError(client, row, error);
+  }
+
+  // Staff declared this channel off-limits after the message was flagged.
+  // Dropped rather than paused: an exemption is a statement about *scope*:
+  // "Mai does not moderate here", so leaving her to delete a message in it
+  // later would contradict the setting they just made.
+  //
+  // After the channel lookup, not before it: exempting a channel covers the
+  // threads inside it, and the parent id is only knowable from the channel
+  // object. Checking on the id alone let a thread whose parent was exempted
+  // *after* the flag be enforced anyway.
+  if (isExemptChannel(row.guildId, row.channelId, channel.parentId)) {
+    logger.info(
+      { messageId: row.messageId, channelId: row.channelId, parentId: channel.parentId ?? null },
+      'Dropping queue row: channel is now exempt',
+    );
+    return { enforced: null, keepRow: false };
+  }
+
   let message = null;
   try {
-    const channel = await client.channels.fetch(row.channelId);
-    if (!channel?.messages) throw Object.assign(new Error('Channel has no messages'), { code: UNKNOWN_CHANNEL });
     message = await channel.messages.fetch(row.messageId);
   } catch (error) {
-    if (error.code === UNKNOWN_MESSAGE || error.code === UNKNOWN_CHANNEL) {
-      // Self-deleted (or the whole channel is gone). The messageDelete handler
-      // normally gets here first; this is the fallback for a deletion that
-      // happened while the gateway was down.
-      await recordSelfDeletion(client, row);
-      return { enforced: null, keepRow: false };
-    }
-
-    // Missing permissions or a transient failure: retry next tick.
-    logger.warn(
-      { messageId: row.messageId, channelId: row.channelId, err: error },
-      'Could not look up flagged message, keeping queue row',
-    );
-    return reportFailure(client, row, error);
+    return handleLookupError(client, row, error);
   }
 
   // Capture before deleting, this content is only ever used for the DM and is
@@ -306,7 +333,12 @@ export async function runTick(client) {
   // Rows stay serial on purpose: each one is several Discord calls, and running
   // them in parallel only trades a shorter tick for a harder rate limit. The cap
   // is what keeps a backlog from outlasting the interval.
-  const overdue = dueCount(now.toISOString());
+  //
+  // Paused guilds are excluded from the query rather than skipped per row: their
+  // rows are kept indefinitely by design, and being oldest-first they would
+  // otherwise occupy the cap on every tick and starve every other guild.
+  const paused = pausedGuildIds();
+  const overdue = dueCount(now.toISOString(), paused);
   if (overdue > config.moderation.maxRowsPerTick) {
     logger.warn(
       { overdue, limit: config.moderation.maxRowsPerTick },
@@ -314,14 +346,26 @@ export async function runTick(client) {
     );
   }
 
-  for (const row of dueRows(now.toISOString(), config.moderation.maxRowsPerTick)) {
+  for (const row of dueRows(now.toISOString(), config.moderation.maxRowsPerTick, paused)) {
     try {
       const { enforced: record, keepRow } = await processRow(client, row);
       if (!keepRow) remove(row.messageId);
       if (record) enforced.push(record);
     } catch (error) {
-      // One bad row must never stall the queue.
+      // One bad row must never stall the queue. It still has to count as a
+      // failed attempt: without that, a row that *throws* (rather than
+      // reporting its failure) retries every tick forever and never reaches
+      // the give-up threshold.
       logger.error({ messageId: row.messageId, err: error }, 'Enforcing queue row failed');
+      try {
+        const { keepRow } = await reportFailure(client, row, error);
+        if (!keepRow) remove(row.messageId);
+      } catch (failure) {
+        logger.error(
+          { messageId: row.messageId, err: failure },
+          'Could not record a failed enforcement attempt',
+        );
+      }
     }
   }
 

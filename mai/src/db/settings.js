@@ -189,6 +189,25 @@ export function isGuildActive(guildId) {
 }
 
 /**
+ * Every guild that ran `/mod off`, as a list rather than one lookup at a time.
+ *
+ * The enforcer needs this to keep paused rows out of its due query entirely.
+ * Skipping them per row is not enough: `dueRows` is ordered oldest-first and
+ * capped at MODERATION_MAX_ROWS_PER_TICK, so rows that are kept but never
+ * resolved stay the oldest forever and fill the cap on every tick, starving
+ * every other guild. The list is short by construction (only guilds that
+ * explicitly paused have a row at all).
+ *
+ * @returns {string[]}
+ */
+export function pausedGuildIds() {
+  return getDb()
+    .prepare('SELECT guild_id FROM guild_settings WHERE enabled = 0')
+    .all()
+    .map((row) => row.guild_id);
+}
+
+/**
  * Applies a patch of public setting names. A value of `null` clears the
  * override (back to inherited).
  *

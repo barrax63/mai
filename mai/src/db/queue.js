@@ -86,31 +86,55 @@ export function updateCategories(messageId, categories) {
 }
 
 /**
+ * Builds the `guild_id NOT IN (…)` tail plus its parameters. Excluding in SQL
+ * rather than skipping in the loop is what keeps a guild whose rows are never
+ * resolvable (a paused one) from filling the tick's cap forever: see
+ * `pausedGuildIds` in db/settings.js.
+ *
+ * @param {string[]} [guildIds]
+ * @returns {{ sql: string, params: string[] }}
+ */
+function excludeGuilds(guildIds) {
+  const excluded = [...new Set(guildIds ?? [])].filter(Boolean);
+  if (excluded.length === 0) return { sql: '', params: [] };
+  return {
+    sql: ` AND guild_id NOT IN (${excluded.map(() => '?').join(', ')})`,
+    params: excluded,
+  };
+}
+
+/**
  * Rows whose grace period has expired, oldest first.
  *
  * @param {string} nowIso
  * @param {number} [limit] Most rows to return. Oldest-first ordering makes the
  *   remainder the *newest* overdue rows, so a capped tick still drains the
  *   backlog in the order it built up.
+ * @param {string[]} [skipGuildIds] Guilds whose rows must not be returned at all.
  */
-export function dueRows(nowIso, limit) {
-  const db = getDb();
-  return (limit
-    ? db.prepare('SELECT * FROM moderation_queue WHERE due_at <= ? ORDER BY due_at ASC LIMIT ?')
-        .all(nowIso, limit)
-    : db.prepare('SELECT * FROM moderation_queue WHERE due_at <= ? ORDER BY due_at ASC')
-        .all(nowIso)
-  ).map(toRow);
+export function dueRows(nowIso, limit, skipGuildIds) {
+  const skip = excludeGuilds(skipGuildIds);
+  return getDb()
+    .prepare(
+      `SELECT * FROM moderation_queue WHERE due_at <= ?${skip.sql}
+       ORDER BY due_at ASC${limit ? ' LIMIT ?' : ''}`,
+    )
+    .all(nowIso, ...skip.params, ...(limit ? [limit] : []))
+    .map(toRow);
 }
 
 /**
  * @param {string} nowIso
+ * @param {string[]} [skipGuildIds] Same exclusion as `dueRows`, so the "more
+ *   overdue rows than one tick handles" warning counts only rows a tick would
+ *   actually pick up. Without it a paused guild logs that warning every minute.
  * @returns {number} How many rows are overdue in total, capped tick or not.
  */
-export function dueCount(nowIso) {
+export function dueCount(nowIso, skipGuildIds) {
+  const skip = excludeGuilds(skipGuildIds);
   return getDb()
-    .prepare('SELECT COUNT(*) AS count FROM moderation_queue WHERE due_at <= ?')
-    .get(nowIso).count;
+    .prepare(`SELECT COUNT(*) AS count FROM moderation_queue WHERE due_at <= ?${skip.sql}`)
+    .get(nowIso, ...skip.params).count;
 }
 
 /**
