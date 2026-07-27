@@ -233,3 +233,18 @@ export function depth(guildId) {
     ? db.prepare('SELECT COUNT(*) AS count FROM moderation_queue WHERE guild_id = ?').get(guildId).count
     : db.prepare('SELECT COUNT(*) AS count FROM moderation_queue').get().count;
 }
+
+/**
+ * The worst-off row in the queue, process-wide, for the operator metrics.
+ * `depth` alone cannot show a row that keeps failing to enforce: the queue looks
+ * the same whether a row is waiting out its grace period or has been retrying a
+ * missing permission for an hour. A rising number here is the latter.
+ *
+ * @returns {number} Highest failed-attempt count on any pending row; 0 when the
+ *   queue is empty.
+ */
+export function maxAttempts() {
+  return getDb()
+    .prepare('SELECT COALESCE(MAX(attempts), 0) AS count FROM moderation_queue')
+    .get().count;
+}

@@ -377,6 +377,65 @@ test('a paused guild counts as parked, not as enforcement running late', async (
   }
 });
 
+test('the series that do not come from the queue report the repositories, not their own SQL', async () => {
+  const { bumpAttempts, remove } = await import('../src/db/queue.js');
+  const { appendTurns } = await import('../src/db/history.js');
+  const { recordUsage } = await import('../src/db/usage.js');
+  const messageId = 'b30000000000000003';
+
+  enqueue({
+    messageId,
+    guildId: TEST_GUILD,
+    channelId: 'b40000000000000001',
+    userId: APPELLANT,
+    categories: ['harassment'],
+    warnedAt: new Date().toISOString(),
+    dueAt: new Date(Date.now() + 600_000).toISOString(),
+    scoldMessageId: null,
+  });
+  bumpAttempts(messageId);
+  bumpAttempts(messageId);
+
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId: APPELLANT,
+    messageId,
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+  });
+  appendTurns([
+    { channelId: 'b40000000000000009', guildId: TEST_GUILD, userId: APPELLANT, username: 'x', role: 'user', content: 'hallo' },
+  ]);
+  recordUsage({
+    guildId: TEST_GUILD,
+    model: 'test-model',
+    purpose: 'chat',
+    usage: { prompt_tokens: 7, completion_tokens: 5, total_tokens: 12 },
+  });
+
+  const sample = (text, name, labels = '') =>
+    Number(new RegExp(`^${name}${labels} (\\d+)$`, 'm').exec(text)?.[1]);
+
+  try {
+    const text = renderMetrics({ lastTickAt: new Date().toISOString(), running: false });
+
+    // Two bumps on a row nobody else touched: the gauge is a MAX, so it reports
+    // that row rather than a sum over the queue.
+    assert.equal(sample(text, 'mai_queue_attempts_max'), 2);
+    assert.ok(sample(text, 'mai_violations', `\\{action="${ACTION_DELETED}"\\}`) >= 1);
+    assert.ok(sample(text, 'mai_chat_history_rows') >= 1);
+    assert.ok(sample(text, 'mai_guilds_configured') >= 1);
+
+    // Tokens and calls are two series off one breakdown, so the pair has to stay
+    // labelled identically: reading the wrong column would still render.
+    const labels = '\\{purpose="chat",model="test-model"\\}';
+    assert.equal(sample(text, 'mai_tokens_month', labels), 12);
+    assert.equal(sample(text, 'mai_calls_month', labels), 1);
+  } finally {
+    remove(messageId);
+  }
+});
+
 test('metrics are off without a token, and gated by it when set', async () => {
   const { createServer } = await import('../src/http/server.js');
 

@@ -3,8 +3,11 @@
  *
  * One process, one writer, a few hundred rows: the builtin `node:sqlite`
  * module covers it with zero dependencies. All SQL in the app lives behind this
- * directory (`queue.js`, `history.js`); nothing else imports `node:sqlite`, so
- * swapping the engine stays a one-layer change.
+ * directory (`queue.js`, `history.js`, `settings.js`, `violations.js`,
+ * `usage.js`); nothing outside it prepares a statement or imports `node:sqlite`,
+ * so swapping the engine stays a one-layer change. A reader that wants a number
+ * the repositories do not expose yet gets a function here, not its own query:
+ * `/metrics` had a private copy of "overdue" that drifted from the enforcer's.
  *
  * The database file must sit on a writable volume: the container rootfs is
  * read-only and /tmp is a tmpfs that does not survive a restart.

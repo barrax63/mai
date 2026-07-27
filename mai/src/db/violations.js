@@ -115,6 +115,26 @@ export function totalsFor(guildId, userId) {
 }
 
 /**
+ * The whole retained record grouped by outcome, process-wide, for the operator
+ * metrics. Grouped rather than a fixed set of columns for the same reason
+ * `totalsFor` is: a new action would otherwise be silently missing.
+ *
+ * Deliberately not scoped to a guild. `totalsFor` is the per-member, per-guild
+ * view a moderator gets; this one feeds a metrics series, which must never carry
+ * a guild label (see http/metrics.js).
+ *
+ * @returns {Record<string, number>} Action slug to count. Empty when there are none.
+ */
+export function countsByAction() {
+  return Object.fromEntries(
+    getDb()
+      .prepare('SELECT action, COUNT(*) AS count FROM violations GROUP BY action')
+      .all()
+      .map((row) => [row.action, row.count]),
+  );
+}
+
+/**
  * Marks the enforced deletions of one incident as overturned, because staff
  * granted an appeal against it.
  *

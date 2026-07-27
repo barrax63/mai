@@ -14,12 +14,18 @@
  * Labels stay low-cardinality on purpose: `purpose`, `model` and `action` are
  * small fixed sets. Never label by guild, user or channel: that turns a metrics
  * series into a per-member activity record, and it is unbounded besides.
+ *
+ * Every number below comes from a repository function in `src/db/`, like every
+ * other reader in the codebase. This module used to prepare its own statements,
+ * which is how a second definition of "overdue" got to exist next to the
+ * enforcer's and drift from it.
  */
 import { config, isGuildAllowed } from '../config.js';
-import { getDb } from '../db/index.js';
-import { depth, dueCount } from '../db/queue.js';
-import { pausedGuildIds } from '../db/settings.js';
-import { monthKey } from '../db/usage.js';
+import { stats as historyStats } from '../db/history.js';
+import { depth, dueCount, maxAttempts } from '../db/queue.js';
+import { configuredGuildCount, pausedGuildIds } from '../db/settings.js';
+import { breakdownFor, monthKey } from '../db/usage.js';
+import { countsByAction } from '../db/violations.js';
 
 /** Prometheus wants an escaped label value. */
 const escape = (value) => String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/\n/g, ' ');
@@ -47,13 +53,14 @@ function metric(name, help, type, samples) {
  * @returns {string} Prometheus exposition text.
  */
 export function renderMetrics(enforcer) {
-  const db = getDb();
-  const one = (sql, ...params) => db.prepare(sql).get(...params) ?? {};
-  const all = (sql, ...params) => db.prepare(sql).all(...params);
-
   // The same list the enforcer skips, filtered the same way: a guild that is
   // paused *and* no longer allowlisted has its rows dropped rather than parked.
   const paused = pausedGuildIds().filter((guildId) => isGuildAllowed(guildId));
+
+  // One breakdown, two series: it already carries both counters per group, so
+  // asking for tokens and calls separately would be the same scan twice.
+  const month = breakdownFor(monthKey());
+  const label = (row) => ({ purpose: row.purpose, model: row.model });
 
   const tickAgeSeconds = enforcer.lastTickAt
     ? (Date.now() - new Date(enforcer.lastTickAt).getTime()) / 1000
@@ -65,7 +72,7 @@ export function renderMetrics(enforcer) {
       'mai_queue_depth',
       'Flagged messages waiting out their grace period.',
       'gauge',
-      [{ value: one('SELECT COUNT(*) AS c FROM moderation_queue').c ?? 0 }],
+      [{ value: depth() }],
     ),
     // Split, because these two say opposite things about the same rows. A
     // paused guild's rows sit past due_at forever *by design*, so counting them
@@ -89,48 +96,34 @@ export function renderMetrics(enforcer) {
       'mai_queue_attempts_max',
       'Highest failed-enforcement attempt count on any row. Rising means a stuck row.',
       'gauge',
-      [{ value: one('SELECT COALESCE(MAX(attempts), 0) AS c FROM moderation_queue').c ?? 0 }],
+      [{ value: maxAttempts() }],
     ),
     ...metric(
       'mai_violations',
       'Strike records currently retained, by outcome.',
       'gauge',
-      all('SELECT action, COUNT(*) AS c FROM violations GROUP BY action').map((row) => ({
-        labels: { action: row.action },
-        value: row.c,
+      Object.entries(countsByAction()).map(([action, count]) => ({
+        labels: { action },
+        value: count,
       })),
     ),
     ...metric(
       'mai_chat_history_rows',
       'Stored chat turns (encrypted at rest, pruned by retention).',
       'gauge',
-      [{ value: one('SELECT COUNT(*) AS c FROM chat_history').c ?? 0 }],
+      [{ value: historyStats().rows }],
     ),
     ...metric(
       'mai_tokens_month',
       'OpenAI tokens used this calendar month (UTC), by purpose and model.',
       'gauge',
-      all(
-        `SELECT purpose, model, SUM(total_tokens) AS tokens FROM usage_daily
-         WHERE day LIKE ? GROUP BY purpose, model`,
-        `${monthKey()}%`,
-      ).map((row) => ({
-        labels: { purpose: row.purpose, model: row.model },
-        value: row.tokens ?? 0,
-      })),
+      month.map((row) => ({ labels: label(row), value: row.totalTokens ?? 0 })),
     ),
     ...metric(
       'mai_calls_month',
       'OpenAI calls this calendar month (UTC), by purpose and model.',
       'gauge',
-      all(
-        `SELECT purpose, model, SUM(calls) AS calls FROM usage_daily
-         WHERE day LIKE ? GROUP BY purpose, model`,
-        `${monthKey()}%`,
-      ).map((row) => ({
-        labels: { purpose: row.purpose, model: row.model },
-        value: row.calls ?? 0,
-      })),
+      month.map((row) => ({ labels: label(row), value: row.calls ?? 0 })),
     ),
     ...metric(
       'mai_token_budget',
@@ -154,7 +147,7 @@ export function renderMetrics(enforcer) {
       'mai_guilds_configured',
       'Guilds that have changed at least one setting from the default.',
       'gauge',
-      [{ value: one('SELECT COUNT(*) AS c FROM guild_settings').c ?? 0 }],
+      [{ value: configuredGuildCount() }],
     ),
   ];
 

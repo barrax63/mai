@@ -214,6 +214,17 @@ export function pausedGuildIds() {
 }
 
 /**
+ * How many guilds have changed at least one setting from the process default,
+ * for the operator metrics: a guild only gets a row once it overrode something,
+ * so this is a count of configured servers, not of servers Mai is in.
+ *
+ * @returns {number}
+ */
+export function configuredGuildCount() {
+  return getDb().prepare('SELECT COUNT(*) AS count FROM guild_settings').get().count;
+}
+
+/**
  * Applies a patch of public setting names. A value of `null` clears the
  * override (back to inherited).
  *
