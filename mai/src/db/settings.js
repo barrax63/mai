@@ -8,8 +8,34 @@
  * Reads are single-row primary-key lookups on SQLite, so they happen inline
  * (per flagged message, per queue row) without a cache.
  */
-import { config, parseTimeoutLadder } from '../config.js';
+import { config, parseCategoryList, parseThreshold, parseTimeoutLadder } from '../config.js';
 import { getDb } from './index.js';
+
+/** Discord snowflakes, as stored in the comma-separated channel columns. */
+const SNOWFLAKE = /^\d{5,25}$/;
+
+/**
+ * @param {unknown} value Comma-separated channel ids.
+ * @returns {string} Normalized, deduplicated, comma-separated.
+ */
+export function parseChannelList(value, label = 'exempt-channels') {
+  const ids = String(value ?? '')
+    .split(',')
+    .map((id) => id.trim())
+    .filter(Boolean);
+
+  const bad = ids.filter((id) => !SNOWFLAKE.test(id));
+  if (bad.length > 0) throw new RangeError(`${label} must be channel ids, got: ${bad.join(', ')}`);
+  if (ids.length > 50) throw new RangeError(`${label} accepts at most 50 channels`);
+
+  return [...new Set(ids)].join(',');
+}
+
+const splitList = (value) =>
+  String(value ?? '')
+    .split(',')
+    .map((entry) => entry.trim())
+    .filter(Boolean);
 
 /**
  * Public setting names (as used by `/mod config`) mapped to their column and
@@ -67,6 +93,18 @@ export const SETTINGS = Object.freeze({
     column: 'enabled',
     parse: (value) => (value === null ? null : toFlag(value, 'enabled')),
   },
+  'exempt-channels': {
+    column: 'exempt_channels',
+    parse: (value) => (value === null ? null : parseChannelList(value)),
+  },
+  threshold: {
+    column: 'moderation_threshold',
+    parse: (value) => (value === null ? null : parseThreshold(value, 'threshold')),
+  },
+  categories: {
+    column: 'moderation_categories',
+    parse: (value) => (value === null ? null : parseCategoryList(value, 'categories').join(',')),
+  },
   'strike-window': {
     column: 'strike_window_days',
     parse: (value) => {
@@ -115,6 +153,14 @@ export function effectiveSettings(guildId) {
       ? row.timeout_ladder.split(',').map(Number)
       : config.moderation.timeoutLadder,
     strikeWindowDays: row?.strike_window_days ?? config.moderation.strikeWindowDays,
+    // Channels the delete/scold pipeline ignores entirely. Chat and reactions
+    // are unaffected — this is about moderation only.
+    exemptChannels: splitList(row?.exempt_channels),
+    // How hard this guild judges. 0 = defer to the provider's own `flagged`.
+    threshold: row?.moderation_threshold ?? config.moderation.threshold,
+    categories: row?.moderation_categories
+      ? splitList(row.moderation_categories)
+      : config.moderation.categories,
     inherited: {
       enabled: row?.enabled == null,
       escalation: row?.escalation_enabled == null,
@@ -123,6 +169,9 @@ export function effectiveSettings(guildId) {
       grace: row?.grace_period_minutes === null || row?.grace_period_minutes === undefined,
       'timeout-ladder': !row?.timeout_ladder,
       'strike-window': row?.strike_window_days === null || row?.strike_window_days === undefined,
+      'exempt-channels': !row?.exempt_channels,
+      threshold: row?.moderation_threshold === null || row?.moderation_threshold === undefined,
+      categories: !row?.moderation_categories,
     },
   };
 }

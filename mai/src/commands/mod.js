@@ -22,7 +22,7 @@ import { ladderFor, strikeWindowStart } from '../moderation/escalation.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
-import { LOG_FORGIVEN, postModerationLog } from '../moderation/log.js';
+import { LOG_CONFIG, LOG_FORGIVEN, postModerationLog } from '../moderation/log.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
 import { ephemeralResponse } from '../interactions/respond.js';
 
@@ -182,11 +182,15 @@ function powerResponse(interaction, enabled) {
     );
   }
 
-  updateSettings(interaction.guild_id, { enabled }, interaction.member?.user?.id);
+  const actorId = interaction.member?.user?.id;
+  updateSettings(interaction.guild_id, { enabled }, actorId);
   logger.info(
-    { guildId: interaction.guild_id, enabled, byUserId: interaction.member?.user?.id },
+    { guildId: interaction.guild_id, enabled, byUserId: actorId },
     enabled ? 'Mai was switched on for a guild' : 'Mai was switched off for a guild',
   );
+  // Posted even for `off`: the log channel is exactly where the rest of the
+  // team should find out that Mai stopped moderating.
+  announceConfigChange(interaction.guild_id, actorId, describeChanges({ enabled }));
 
   return ephemeralResponse(enabled ? content.commands.power.on : content.commands.power.off);
 }
@@ -317,7 +321,8 @@ function forgiveResponse(interaction) {
 function configView(guildId) {
   const settings = effectiveSettings(guildId);
   const inherited = (key) => (settings.inherited[key] ? ` ${content.commands.config.inherited}` : '');
-  const { unset, systemChannel } = content.commands.config;
+  const { unset, systemChannel, thresholdOff, allCategories, noExemptChannels } =
+    content.commands.config;
   const yesNo = (value) => (value ? content.commands.config.on : content.commands.config.off);
 
   return ephemeralResponse(
@@ -337,9 +342,58 @@ function configView(guildId) {
       strikeWindowSource: inherited('strike-window'),
       grace: settings.gracePeriodMinutes,
       graceSource: inherited('grace'),
+      // 0 means the provider's own `flagged` decides and no score is compared.
+      threshold: settings.threshold > 0 ? settings.threshold : thresholdOff,
+      thresholdSource: inherited('threshold'),
+      categories: settings.categories.length ? settings.categories.join(', ') : allCategories,
+      categoriesSource: inherited('categories'),
+      exemptChannels: settings.exemptChannels.length
+        ? settings.exemptChannels.map((id) => `<#${id}>`).join(' ')
+        : noExemptChannels,
+      exemptChannelsSource: inherited('exempt-channels'),
     }),
   );
 }
+
+/**
+ * Announces a settings change in the guild's own log channel.
+ *
+ * Staff change the rules on each other: a raised threshold, an exempted
+ * channel, a pause. Without this the only trace is `updated_by` in a database
+ * nobody can read from Discord, so the next moderator sees Mai behaving
+ * differently with no way to find out why. Detached and best effort — the
+ * interaction has ~3 s and a settings change must not fail on a log channel.
+ *
+ * @param {string} guildId
+ * @param {string|undefined} actorId
+ * @param {string} changes Already-formatted summary.
+ */
+function announceConfigChange(guildId, actorId, changes) {
+  void postModerationLog(getGatewayClient(), {
+    type: LOG_CONFIG,
+    guildId,
+    actorId,
+    changes,
+  });
+}
+
+/**
+ * Renders a settings patch for the log entry. Every value here is metadata —
+ * ids, numbers, booleans, category slugs — so it may go into a Discord channel.
+ *
+ * @param {Record<string, unknown>} patch
+ * @returns {string}
+ */
+const describeChanges = (patch) =>
+  Object.entries(patch)
+    .map(([name, value]) => {
+      if (value === null) return `\`${name}\` → ${content.commands.config.inherited}`;
+      const rendered = name.endsWith('channel') || name.endsWith('channels')
+        ? String(value).split(',').filter(Boolean).map((id) => `<#${id}>`).join(' ')
+        : `\`${value}\``;
+      return `\`${name}\` → ${rendered || content.moderation.log.none}`;
+    })
+    .join('\n');
 
 /**
  * `/mod config set [log-channel] [welcome-channel] [grace]` — any subset.
@@ -368,10 +422,10 @@ function configSet(interaction, guildId) {
     throw error;
   }
 
-  logger.info(
-    { guildId, changed: Object.keys(patch), byUserId: interaction.member?.user?.id },
-    'Updated guild settings',
-  );
+  const actorId = interaction.member?.user?.id;
+  logger.info({ guildId, changed: Object.keys(patch), byUserId: actorId }, 'Updated guild settings');
+  announceConfigChange(guildId, actorId, describeChanges(patch));
+
   return configView(guildId);
 }
 
@@ -393,10 +447,14 @@ function configReset(interaction, guildId) {
     throw error;
   }
 
-  logger.info(
-    { guildId, reset: name ?? 'all', byUserId: interaction.member?.user?.id },
-    'Reset guild settings',
+  const actorId = interaction.member?.user?.id;
+  logger.info({ guildId, reset: name ?? 'all', byUserId: actorId }, 'Reset guild settings');
+  announceConfigChange(
+    guildId,
+    actorId,
+    describeChanges(Object.fromEntries((name ? [name] : Object.keys(SETTINGS)).map((key) => [key, null]))),
   );
+
   return configView(guildId);
 }
 
@@ -411,6 +469,59 @@ function configResponse(interaction) {
   if (name === 'set') return configSet(interaction, interaction.guild_id);
   if (name === 'reset') return configReset(interaction, interaction.guild_id);
   return configView(interaction.guild_id);
+}
+
+/**
+ * `/mod exempt add|remove|list` — channels the delete/scold pipeline ignores.
+ *
+ * The underlying setting is a comma-separated list, which is unusable through
+ * `/mod config set` (nobody types channel ids). These subcommands edit the same
+ * value with a real channel picker; `/mod config view` and
+ * `/mod config reset exempt-channels` keep working on it.
+ *
+ * @param {object} interaction
+ */
+function exemptResponse(interaction) {
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+  const { name, options } = resolveSubcommand(interaction);
+  const guildId = interaction.guild_id;
+  const current = effectiveSettings(guildId).exemptChannels;
+  const { exempt } = content.commands;
+
+  if (name === 'list') {
+    const lines = current.map((channelId) => fill(exempt.line, { channelId })).join('\n');
+    return ephemeralResponse(fill(exempt.body, { channels: lines || exempt.empty }));
+  }
+
+  const channelId = String(optionValue(options, 'channel') ?? '');
+  if (!channelId) return ephemeralResponse(content.commands.error);
+
+  const adding = name === 'add';
+  if (adding && current.includes(channelId)) {
+    return ephemeralResponse(fill(exempt.alreadyAdded, { channelId }));
+  }
+  if (!adding && !current.includes(channelId)) {
+    return ephemeralResponse(fill(exempt.notExempt, { channelId }));
+  }
+
+  const next = adding
+    ? [...current, channelId]
+    : current.filter((id) => id !== channelId);
+
+  const actorId = interaction.member?.user?.id;
+  try {
+    // null clears the override entirely, which is what an empty list means.
+    updateSettings(guildId, { 'exempt-channels': next.length ? next.join(',') : null }, actorId);
+  } catch (error) {
+    if (error instanceof RangeError) return ephemeralResponse(exempt.limit);
+    throw error;
+  }
+
+  logger.info({ guildId, channelId, exempt: adding, byUserId: actorId }, 'Updated exempt channels');
+  announceConfigChange(guildId, actorId, describeChanges({ 'exempt-channels': next.join(',') }));
+
+  return ephemeralResponse(fill(adding ? exempt.added : exempt.removed, { channelId }));
 }
 
 const settingChoices = Object.keys(SETTINGS).map((name) => ({ name, value: name }));
@@ -475,6 +586,44 @@ export const mod = {
         type: 1, // SUB_COMMAND
       },
       {
+        name: 'exempt',
+        description: 'Channels Mai does not moderate (chat and reactions keep working)',
+        type: 2, // SUB_COMMAND_GROUP
+        options: [
+          {
+            name: 'add',
+            description: 'Stop moderating a channel',
+            type: 1,
+            options: [
+              {
+                name: 'channel',
+                description: 'The channel to leave alone',
+                type: 7, // CHANNEL
+                required: true,
+              },
+            ],
+          },
+          {
+            name: 'remove',
+            description: 'Moderate a channel again',
+            type: 1,
+            options: [
+              {
+                name: 'channel',
+                description: 'The channel to moderate again',
+                type: 7,
+                required: true,
+              },
+            ],
+          },
+          {
+            name: 'list',
+            description: 'Which channels are currently exempt',
+            type: 1,
+          },
+        ],
+      },
+      {
         name: 'config',
         description: 'Per-server settings',
         type: 2, // SUB_COMMAND_GROUP
@@ -530,6 +679,18 @@ export const mod = {
                 description: 'Mai active in this server — the same switch as /mod off',
                 type: 5, // BOOLEAN
               },
+              {
+                name: 'threshold',
+                description: 'Min. score 0-1 that counts as a violation (0 = let the provider decide)',
+                type: 10, // NUMBER
+                min_value: 0,
+                max_value: 1,
+              },
+              {
+                name: 'categories',
+                description: 'Only these categories count, comma-separated (empty = all)',
+                type: 3, // STRING
+              },
             ],
           },
           {
@@ -565,6 +726,7 @@ export const mod = {
 
     const { group, name } = resolveSubcommand(interaction);
     if (group === 'config') return configResponse(interaction);
+    if (group === 'exempt') return exemptResponse(interaction);
     if (name === 'on') return powerResponse(interaction, true);
     if (name === 'off') return powerResponse(interaction, false);
     if (name === 'forgive') return forgiveResponse(interaction);

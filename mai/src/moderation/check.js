@@ -46,7 +46,31 @@ function isModeratable(message) {
     return false;
   }
 
+  if (isExemptChannel(message.guildId, message.channelId, message.channel?.parentId)) {
+    logger.debug(
+      { messageId: message.id, channelId: message.channelId },
+      'Skipping moderation: channel is exempt',
+    );
+    return false;
+  }
+
   return true;
+}
+
+/**
+ * Whether staff have declared this channel off-limits to the delete/scold
+ * pipeline (`/mod exempt add`). A thread is covered by its parent, so exempting
+ * a vent channel does not leave every thread inside it moderated.
+ *
+ * @param {string} guildId
+ * @param {string} channelId
+ * @param {string | null | undefined} parentId
+ * @returns {boolean}
+ */
+export function isExemptChannel(guildId, channelId, parentId) {
+  const { exemptChannels } = effectiveSettings(guildId);
+  if (exemptChannels.length === 0) return false;
+  return exemptChannels.includes(channelId) || (Boolean(parentId) && exemptChannels.includes(parentId));
 }
 
 /**
@@ -71,8 +95,14 @@ async function classifySafely(message) {
     contentType: attachment.contentType,
   }));
 
+  // The guild's own line on what counts, not just the provider's default.
+  const { threshold, categories } = effectiveSettings(message.guildId);
+
   try {
-    return await classify(message.content, attachments, { guildId: message.guildId });
+    return await classify(message.content, attachments, {
+      guildId: message.guildId,
+      policy: { threshold, categories },
+    });
   } catch (error) {
     logger.error(
       { messageId: message.id, err: error },

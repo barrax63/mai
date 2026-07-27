@@ -29,7 +29,9 @@ Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) i
 
 Every action can also be mirrored into a staff channel as an embed — metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)).
 
-Staff inspect and override with `/mod status`, `/mod forgive <user>` and `/mod config` (log channel, welcome channel, grace period — per server); everything they see and do is scoped to their own server. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
+How hard Mai judges is per server too: `/mod config set threshold` decides violations on the classifier's own scores instead of its English-tuned default, and `/mod exempt add` leaves a channel alone entirely (chat and reactions keep working there).
+
+Staff inspect and override with `/mod status`, `/mod forgive <user>` and `/mod config` (log channel, welcome channel, grace period, threshold, categories — per server); everything they see and do is scoped to their own server, and every change is announced in the server's own log channel. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
 
 ## Mai — the bot persona
 

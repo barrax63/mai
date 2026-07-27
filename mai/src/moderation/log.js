@@ -28,6 +28,10 @@ export const LOG_STUCK = 'stuck';
 export const LOG_ABANDONED = 'abandoned';
 export const LOG_TIMEOUT = 'timeout';
 export const LOG_TIMEOUT_FAILED = 'timeoutFailed';
+/** A `/mod config` or `/mod exempt` run — staff changing the rules on each other. */
+export const LOG_CONFIG = 'config';
+export const LOG_APPEAL_GRANTED = 'appealGranted';
+export const LOG_APPEAL_DENIED = 'appealDenied';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
@@ -41,6 +45,9 @@ const COLORS = {
   [LOG_ABANDONED]: 0x7f8c8d,
   [LOG_TIMEOUT]: 0xc0392b,
   [LOG_TIMEOUT_FAILED]: 0xe67e22,
+  [LOG_CONFIG]: 0x34495e,
+  [LOG_APPEAL_GRANTED]: 0x27ae60,
+  [LOG_APPEAL_DENIED]: 0x2c3e50,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -120,6 +127,24 @@ function fieldsFor(event) {
 
     case LOG_APPEALED:
       return [user, { name: labels.appeal, value: event.reason ?? none, inline: false }];
+
+    case LOG_APPEAL_GRANTED:
+    case LOG_APPEAL_DENIED:
+      return [
+        user,
+        { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
+        ...(event.resolution
+          ? [{ name: labels.resolution, value: event.resolution, inline: false }]
+          : []),
+      ];
+
+    case LOG_CONFIG:
+      // Setting names and their new values — all of them ids, numbers, booleans
+      // and category slugs, so this stays inside the metadata-only rule.
+      return [
+        { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
+        { name: labels.changes, value: event.changes || none, inline: false },
+      ];
 
     case LOG_TIMEOUT:
     case LOG_TIMEOUT_FAILED:

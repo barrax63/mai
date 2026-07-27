@@ -65,6 +65,59 @@ export function parseTimeoutLadder(raw, label = 'timeout ladder') {
   return steps;
 }
 
+/**
+ * Parses a comma-separated category allowlist. Exported so
+ * `/mod config set categories` validates identically.
+ *
+ * Slugs are checked for *shape* only, not against a fixed list: the categories
+ * come from whatever `OPENAI_BASE_URL` points at, and hard-coding OpenAI's set
+ * would reject a valid one from another provider. The cost is that a typo
+ * silently never matches — which `/mod config view` makes visible.
+ *
+ * @param {string} raw
+ * @param {string} [label] Used in the error message.
+ * @returns {string[]} Empty = every category counts.
+ */
+export function parseCategoryList(raw, label = 'categories') {
+  const slugs = String(raw ?? '')
+    .split(',')
+    .map((slug) => slug.trim().toLowerCase())
+    .filter(Boolean);
+
+  const bad = slugs.filter((slug) => !/^[a-z0-9][a-z0-9/_-]*$/.test(slug));
+  if (bad.length > 0) {
+    throw new RangeError(`${label} contains invalid category slugs: ${bad.join(', ')}`);
+  }
+  if (slugs.length > 30) {
+    throw new RangeError(`${label} accepts at most 30 categories`);
+  }
+  return [...new Set(slugs)];
+}
+
+/**
+ * Parses a 0-1 score threshold. Exported so `/mod config set threshold`
+ * validates identically.
+ *
+ * @param {unknown} raw
+ * @param {string} [label]
+ * @returns {number} 0 = fall back to the provider's own `flagged` boolean.
+ */
+export function parseThreshold(raw, label = 'threshold') {
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new RangeError(`${label} must be a number between 0 and 1`);
+  }
+  return value;
+}
+
+const ratio = (name, fallback) => {
+  try {
+    return parseThreshold(optional(name, fallback), name);
+  } catch (error) {
+    throw new Error(`Environment variable ${error.message}`);
+  }
+};
+
 const ladder = (name, fallback) => {
   try {
     return parseTimeoutLadder(optional(name, fallback), name);
@@ -135,6 +188,10 @@ export const config = Object.freeze({
     // Discord's own payloads are a few KB; this only stops someone streaming
     // megabytes at the signature check.
     maxBodyBytes: int('INTERACTIONS_MAX_BODY_BYTES', '65536', { min: 1024 }),
+    // Bearer token for GET /metrics. The whole server is public through the
+    // tunnel and the metrics are process-wide, so an empty token disables the
+    // endpoint entirely rather than exposing every guild's counts.
+    metricsToken: optional('METRICS_TOKEN', ''),
   },
   openai: {
     // Required as soon as moderation or chat is on; both call the API.
@@ -157,6 +214,11 @@ export const config = Object.freeze({
     gracePeriodMinutes: int('MODERATION_GRACE_PERIOD_MINUTES', '10', { min: 1 }),
     // How often the enforcer looks for due rows (also prunes chat history).
     tickMs: int('MODERATION_TICK_MS', '60000', { min: 1000 }),
+    // Most rows one tick will work through. Rows are processed one at a time
+    // (several Discord calls each), so an unbounded backlog after an outage
+    // could take longer than the interval and be skipped by the overlap guard
+    // forever. The remainder is simply picked up by the next tick.
+    maxRowsPerTick: int('MODERATION_MAX_ROWS_PER_TICK', '100', { min: 1 }),
     // Also send image attachments to the moderation endpoint (multimodal).
     classifyImages: bool('MODERATION_CLASSIFY_IMAGES', 'false'),
     // Hand out timeouts at all. Off still records strikes, so the record stays
@@ -168,6 +230,13 @@ export const config = Object.freeze({
     timeoutLadder: ladder('MODERATION_TIMEOUT_LADDER', '0,10,60,1440'),
     // How far back strikes count towards escalation.
     strikeWindowDays: int('MODERATION_STRIKE_WINDOW_DAYS', '30', { min: 1 }),
+    // Minimum category score (0-1) that counts as a violation. 0 = trust the
+    // provider's own `flagged` boolean. Worth raising off 0 for non-English
+    // servers: the same insult scores far lower in German than in English, so
+    // the provider's own line lets most of it through.
+    threshold: ratio('MODERATION_THRESHOLD', '0'),
+    // Comma-separated category slugs that count at all. Empty = all of them.
+    categories: parseCategoryList(optional('MODERATION_CATEGORIES', '') ?? '', 'MODERATION_CATEGORIES'),
     // How long the strike record is kept at all.
     violationRetentionDays: int('VIOLATION_RETENTION_DAYS', '90', { min: 1 }),
   },

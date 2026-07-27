@@ -89,12 +89,28 @@ export function updateCategories(messageId, categories) {
  * Rows whose grace period has expired, oldest first.
  *
  * @param {string} nowIso
+ * @param {number} [limit] Most rows to return. Oldest-first ordering makes the
+ *   remainder the *newest* overdue rows, so a capped tick still drains the
+ *   backlog in the order it built up.
  */
-export function dueRows(nowIso) {
+export function dueRows(nowIso, limit) {
+  const db = getDb();
+  return (limit
+    ? db.prepare('SELECT * FROM moderation_queue WHERE due_at <= ? ORDER BY due_at ASC LIMIT ?')
+        .all(nowIso, limit)
+    : db.prepare('SELECT * FROM moderation_queue WHERE due_at <= ? ORDER BY due_at ASC')
+        .all(nowIso)
+  ).map(toRow);
+}
+
+/**
+ * @param {string} nowIso
+ * @returns {number} How many rows are overdue in total, capped tick or not.
+ */
+export function dueCount(nowIso) {
   return getDb()
-    .prepare('SELECT * FROM moderation_queue WHERE due_at <= ? ORDER BY due_at ASC')
-    .all(nowIso)
-    .map(toRow);
+    .prepare('SELECT COUNT(*) AS count FROM moderation_queue WHERE due_at <= ?')
+    .get(nowIso).count;
 }
 
 /**

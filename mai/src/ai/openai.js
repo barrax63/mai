@@ -160,7 +160,9 @@ export async function createChatCompletion({ messages, tools, guildId }) {
 /**
  * @param {string | Array<object>} input Text, or a multimodal content array.
  * @param {{ guildId?: string | null }} [options] Accounting context.
- * @returns {Promise<{ flagged: boolean, categories: Record<string, boolean> }>}
+ * @returns {Promise<{ flagged: boolean, categories: Record<string, boolean>,
+ *   scores: Record<string, number> }>} `scores` is the raw `category_scores`;
+ *   a guild with its own threshold judges on those instead of the booleans.
  */
 export async function createModeration(input, { guildId } = {}) {
   const result = await postJson('/moderations', {
@@ -176,5 +178,9 @@ export async function createModeration(input, { guildId } = {}) {
   if (!first) {
     throw new OpenAiError('Moderation response contained no result', { code: 'bad_response' });
   }
-  return { flagged: Boolean(first.flagged), categories: first.categories ?? {} };
+  return {
+    flagged: Boolean(first.flagged),
+    categories: first.categories ?? {},
+    scores: first.category_scores ?? {},
+  };
 }

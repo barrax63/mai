@@ -9,6 +9,7 @@
  * The button only exists when the guild has a log channel — otherwise an appeal
  * would go nowhere.
  */
+import { PermissionFlagsBits } from 'discord.js';
 import { content, fill } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
 import { getGatewayClient } from '../gateway/client.js';
@@ -18,6 +19,7 @@ import {
   modalResponse,
   PARAGRAPH_INPUT,
   textInput,
+  updateResponse,
 } from '../interactions/respond.js';
 import { logger } from '../logger.js';
 import { LOG_APPEALED, postModerationLog } from './log.js';
@@ -26,6 +28,18 @@ import { createRateLimiter } from '../rate-limit.js';
 const ACTION_ROW = 1;
 const BUTTON = 2;
 const STYLE_SECONDARY = 2;
+const STYLE_SUCCESS = 3;
+
+/** Same check as `/mod`: the UI hides these buttons, code decides. */
+const mayModerate = (interaction) => {
+  const raw = interaction.member?.permissions;
+  if (!raw) return false;
+  try {
+    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
+  } catch {
+    return false;
+  }
+};
 
 const APPEAL_INPUT = 'text';
 const APPEAL_MAX_LENGTH = 1000;
@@ -85,18 +99,151 @@ export const appealButtons = {
   },
 };
 
+/**
+ * Buttons under a fresh appeal, so staff can answer it where the rest of the
+ * team can see the answer.
+ *
+ * The appealing member's id rides in the `custom_id` — the log entry lives in a
+ * guild channel, and by the time somebody clicks, the DM that produced the
+ * appeal is long gone.
+ *
+ * @param {string} userId
+ */
+const decisionButtons = (userId) => [
+  {
+    type: ACTION_ROW,
+    components: [
+      {
+        type: BUTTON,
+        style: STYLE_SUCCESS,
+        label: content.moderation.appeal.grantButton,
+        custom_id: `appeal-grant:${userId}`,
+      },
+      {
+        type: BUTTON,
+        style: STYLE_SECONDARY,
+        label: content.moderation.appeal.denyButton,
+        custom_id: `appeal-deny:${userId}`,
+      },
+    ],
+  },
+];
+
+/**
+ * Tells the member what staff decided. Best effort: closed DMs are normal, and
+ * the decision is already recorded in the channel either way.
+ *
+ * @param {string} userId
+ * @param {string} body
+ * @returns {Promise<boolean>}
+ */
+async function notifyMember(userId, body) {
+  try {
+    const user = await getGatewayClient()?.users?.fetch(userId);
+    if (!user) return false;
+    await user.send({ content: body, allowedMentions: { parse: [] } });
+    return true;
+  } catch (error) {
+    logger.info({ userId, err: error }, 'Could not deliver an appeal decision');
+    return false;
+  }
+}
+
+/**
+ * Records the decision in the log entry itself — title, colour, a resolution
+ * field, buttons removed — so every moderator sees it, not just the clicker.
+ * Same reasoning as the report buttons.
+ *
+ * @param {object} interaction
+ * @param {{ title: string, color: number, resolution: string }} decision
+ */
+function resolveAppeal(interaction, decision) {
+  const embed = interaction.message?.embeds?.[0] ?? {};
+  const fields = [
+    // A second click replaces the resolution instead of stacking another one.
+    ...(embed.fields ?? []).filter(
+      (field) => field.name !== content.moderation.log.fields.resolution,
+    ),
+    { name: content.moderation.log.fields.resolution, value: decision.resolution, inline: false },
+  ];
+
+  return updateResponse(null, {
+    components: [],
+    embeds: [{ ...embed, title: decision.title, color: decision.color, fields }],
+  });
+}
+
+const GRANTED_COLOR = 0x27ae60;
+const DENIED_COLOR = 0x2c3e50;
+
+/**
+ * Staff answering an appeal.
+ *
+ * The decision is deliberately **not** wired to the strike record. An appeal
+ * carries only the guild and the member, not which of their strikes it is
+ * about, so "granted" could only clear *all* of them — wiping four correct
+ * strikes because the fifth was wrong. Staff who mean that run
+ * `/mod forgive <user> strikes:true`, which says so.
+ */
+export const appealDecisions = {
+  async 'appeal-grant'(interaction, [userId]) {
+    return decide(interaction, userId, true);
+  },
+
+  async 'appeal-deny'(interaction, [userId]) {
+    return decide(interaction, userId, false);
+  },
+};
+
+/**
+ * @param {object} interaction
+ * @param {string} userId The appealing member.
+ * @param {boolean} granted
+ */
+async function decide(interaction, userId, granted) {
+  if (!mayModerate(interaction)) return ephemeralResponse(content.commands.forbidden);
+
+  const staff = actor(interaction);
+  const { appeal } = content.moderation;
+
+  const delivered = await notifyMember(userId, granted ? appeal.grantedDm : appeal.deniedDm);
+
+  logger.info(
+    { guildId: interaction.guild_id, userId, granted, delivered, byUserId: staff.id },
+    'Appeal decided',
+  );
+
+  return resolveAppeal(interaction, {
+    title: granted ? content.moderation.log.titles.appealGranted : content.moderation.log.titles.appealDenied,
+    color: granted ? GRANTED_COLOR : DENIED_COLOR,
+    resolution: `${fill(granted ? appeal.granted : appeal.denied, { userId: staff.id })}`
+      + ` — ${delivered ? appeal.decisionSent : appeal.decisionNotSent}`,
+  });
+}
+
+// Fetching the member and sending a DM are two Discord round trips, which can
+// outlast the ~3 s interaction budget. Deferring the *update* acknowledges the
+// click and edits the entry afterwards — but only for staff, since after a
+// defer the response is public and a refusal would overwrite the entry.
+appealDecisions['appeal-grant'].deferred = (interaction) => mayModerate(interaction);
+appealDecisions['appeal-deny'].deferred = (interaction) => mayModerate(interaction);
+
 export const appealModals = {
   async 'appeal-submit'(interaction, [guildId]) {
     const member = actor(interaction);
     const text = modalValue(interaction, APPEAL_INPUT);
     if (!text) return ephemeralResponse(content.moderation.appeal.empty);
 
-    const posted = await postModerationLog(getGatewayClient(), {
-      type: LOG_APPEALED,
-      guildId,
-      userId: member.id,
-      reason: text,
-    });
+    const posted = await postModerationLog(
+      getGatewayClient(),
+      {
+        type: LOG_APPEALED,
+        guildId,
+        userId: member.id,
+        reason: text,
+      },
+      { components: decisionButtons(member.id) },
+    );
 
     // Metadata at info, the statement itself only at debug — same rule as
     // everywhere else.

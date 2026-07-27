@@ -11,11 +11,16 @@
  */
 import { forgetComponents } from '../commands/mai.js';
 import { reportComponents, reportModals } from '../commands/report.js';
-import { appealButtons, appealModals } from '../moderation/appeal.js';
+import { appealButtons, appealDecisions, appealModals } from '../moderation/appeal.js';
 
 /** @type {Map<string, (interaction: object, args: string[]) => object | Promise<object>>} */
 export const componentHandlers = new Map(
-  Object.entries({ ...forgetComponents, ...reportComponents, ...appealButtons }),
+  Object.entries({
+    ...forgetComponents,
+    ...reportComponents,
+    ...appealButtons,
+    ...appealDecisions,
+  }),
 );
 
 /** @type {Map<string, (interaction: object, args: string[]) => object | Promise<object>>} */

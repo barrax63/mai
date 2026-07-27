@@ -94,6 +94,9 @@ moderation:
       abandoned: '⚫ Löschung aufgegeben'
       timeout: '🔇 Timeout verhängt'
       timeoutFailed: '🟠 Timeout fehlgeschlagen'
+      config: '⚙️ Einstellung geändert'
+      appealGranted: '🟩 Einspruch stattgegeben'
+      appealDenied: '⬛ Einspruch abgelehnt'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -110,6 +113,8 @@ moderation:
       until: 'Bis'
       resolution: 'Bearbeitet'
       appeal: 'Einspruch'
+      # Which settings a /mod config run touched, and their new values.
+      changes: 'Geändert'
     jump: 'Zur Nachricht'
     none: '—'
     footer: 'Nur Metadaten — Mai speichert keine Nachrichteninhalte.'
@@ -124,6 +129,18 @@ moderation:
     empty: 'Ohne Text kann ich nichts weitergeben.'
     busy: '*gähnt* Immer mit der Ruhe. Später nochmal.'
     failed: 'Das hat nicht geklappt — melde dich direkt bei einem Admin.'
+    # Entscheidung des Teams: Buttons unter dem Log-Eintrag, damit jede*r
+    # Moderator*in sieht, was entschieden wurde.
+    grantButton: 'Stattgeben'
+    denyButton: 'Ablehnen'
+    granted: 'Stattgegeben von <@{userId}>'
+    denied: 'Abgelehnt von <@{userId}>'
+    # DM an das Mitglied. Der Eintrag in der Akte bleibt bestehen — den löscht
+    # das Team bei Bedarf mit /mod forgive <user> strikes:true.
+    grantedDm: '*schnurrt leise* Dein Einspruch war erfolgreich. Das Team hat mir gesagt, dass ich mich geirrt habe.'
+    deniedDm: '*schaut dich lange an* Dein Einspruch wurde geprüft und abgelehnt. Die Verwarnung bleibt.'
+    decisionSent: 'Entscheidung ist raus.'
+    decisionNotSent: 'Entscheidung notiert — die DM kam nicht an (DMs zu?).'
 
   # DM sent after the grace period expired and messages were deleted.
   # One DM per user per tick, listing every message removed in that tick.
@@ -278,6 +295,9 @@ commands:
       **Schonfrist:** {grace} Minuten{graceSource}
       **Timeout-Leiter:** {ladder} Minuten pro Verstoß{ladderSource}
       **Verstoß-Fenster:** {strikeWindow} Tage{strikeWindowSource}
+      **Schwelle:** {threshold}{thresholdSource}
+      **Kategorien:** {categories}{categoriesSource}
+      **Ausgenommene Kanäle:** {exemptChannels}{exemptChannelsSource}
     inherited: '_(Standard)_'
     on: 'ja'
     off: 'nein'
@@ -285,9 +305,31 @@ commands:
     unset: '_aus_'
     # … while no welcome channel just falls back to the guild's system channel.
     systemChannel: '_System-Kanal_'
+    # threshold 0 = the provider's own flagged decides, no score comparison.
+    thresholdOff: '_Anbieter entscheidet_'
+    # Empty category allowlist = every category the provider reports counts.
+    allCategories: '_alle_'
+    # No channel is exempt from moderation.
+    noExemptChannels: '_keine_'
     nothing: 'Nichts angegeben — nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'
     guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'
+
+  # /mod exempt — Kanäle von der Moderation ausnehmen (Chat und Reaktionen
+  # bleiben davon unberührt).
+  exempt:
+    added: '*schnüffelt kurz* Gut, in <#{channelId}> schau ich nicht mehr hin.'
+    alreadyAdded: 'In <#{channelId}> schau ich sowieso schon weg.'
+    removed: '*spitzt die Ohren* <#{channelId}> wird wieder moderiert.'
+    notExempt: '<#{channelId}> war gar nicht ausgenommen.'
+    body: |
+      # 🙈 Ausgenommene Kanäle
+      Hier moderiert Mai nicht (Chat und Reaktionen laufen weiter):
+
+      {channels}
+    line: '• <#{channelId}>'
+    empty: '_Keine — Mai moderiert überall, wo sie mitlesen darf._'
+    limit: 'Das sind mir zu viele Kanäle.'
 
 welcome:
   # {member} is replaced by the new member's mention.

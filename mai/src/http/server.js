@@ -10,6 +10,7 @@
  *   GET  /              Static landing page for visitors hitting the public
  *                       tunnel URL in a browser (served from ./public).
  */
+import { timingSafeEqual } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import express from 'express';
 import { verifyKeyMiddleware } from 'discord-interactions';
@@ -19,6 +20,7 @@ import { pingDatabase } from '../db/index.js';
 import { routeInteraction } from '../interactions/router.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
 import { createRateLimiter } from '../rate-limit.js';
+import { renderMetrics } from './metrics.js';
 
 const interactionsLimiter = createRateLimiter({
   max: config.http.rateLimitMax,
@@ -129,6 +131,35 @@ export function createServer() {
         running: enforcer.running,
       },
     });
+  });
+
+  // Operator-only, and off unless a token is configured: this endpoint reports
+  // process-wide numbers across every guild, and the server is public through
+  // the tunnel. Compared with a timing-safe equality so the token cannot be
+  // guessed byte by byte.
+  app.get('/metrics', (req, res) => {
+    const expected = config.http.metricsToken;
+    if (!expected) {
+      res.status(404).end();
+      return;
+    }
+
+    // The scheme is required, not stripped-if-present: accepting a bare token
+    // would also accept it from any other auth scheme's payload.
+    const offered = /^Bearer +(.+)$/i.exec(req.get('authorization') ?? '')?.[1] ?? '';
+    const a = Buffer.from(offered);
+    const b = Buffer.from(expected);
+    if (a.length !== b.length || !timingSafeEqual(a, b)) {
+      res.status(401).end();
+      return;
+    }
+
+    try {
+      res.type('text/plain; version=0.0.4').send(renderMetrics(getEnforcerStatus()));
+    } catch (error) {
+      logger.error({ err: error }, 'Rendering metrics failed');
+      res.status(500).end();
+    }
   });
 
   // verifyKeyMiddleware validates the Ed25519 request signature and rejects

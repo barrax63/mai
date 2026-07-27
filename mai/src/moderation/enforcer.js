@@ -14,7 +14,7 @@
  */
 import { config, isGuildAllowed } from '../config.js';
 import { pruneOlderThan } from '../db/history.js';
-import { bumpAttempts, dueRows, remove } from '../db/queue.js';
+import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
 import { isGuildActive } from '../db/settings.js';
 import {
   ACTION_DELETED,
@@ -24,6 +24,7 @@ import {
 } from '../db/violations.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
+import { isExemptChannel } from './check.js';
 import { deleteMessageById } from './cleanup.js';
 import { applyTimeout, decideEscalation } from './escalation.js';
 import {
@@ -113,6 +114,18 @@ async function processRow(client, row) {
     logger.info(
       { messageId: row.messageId, guildId: row.guildId },
       'Dropping queue row: guild no longer in allowlist',
+    );
+    return { enforced: null, keepRow: false };
+  }
+
+  // Staff declared this channel off-limits after the message was flagged.
+  // Dropped rather than paused: an exemption is a statement about *scope* —
+  // "Mai does not moderate here" — so leaving her to delete a message in it
+  // later would contradict the setting they just made.
+  if (isExemptChannel(row.guildId, row.channelId)) {
+    logger.info(
+      { messageId: row.messageId, channelId: row.channelId },
+      'Dropping queue row: channel is now exempt',
     );
     return { enforced: null, keepRow: false };
   }
@@ -305,7 +318,18 @@ export async function runTick(client) {
   const now = new Date();
   const enforced = [];
 
-  for (const row of dueRows(now.toISOString())) {
+  // Rows stay serial on purpose: each one is several Discord calls, and running
+  // them in parallel only trades a shorter tick for a harder rate limit. The cap
+  // is what keeps a backlog from outlasting the interval.
+  const overdue = dueCount(now.toISOString());
+  if (overdue > config.moderation.maxRowsPerTick) {
+    logger.warn(
+      { overdue, limit: config.moderation.maxRowsPerTick },
+      'More overdue rows than one tick handles, the rest follow next tick',
+    );
+  }
+
+  for (const row of dueRows(now.toISOString(), config.moderation.maxRowsPerTick)) {
     try {
       const { enforced: record, keepRow } = await processRow(client, row);
       if (!keepRow) remove(row.messageId);

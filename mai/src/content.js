@@ -86,6 +86,7 @@ function loadContent() {
   const forgive = section(commands, 'forgive');
   const configSection = section(commands, 'config');
   const reportSection = section(commands, 'report');
+  const exemptSection = section(commands, 'exempt');
   const spend = section(commands, 'spend');
   const history = section(commands, 'history');
   const historyActions = section(history, 'actions');
@@ -140,6 +141,9 @@ function loadContent() {
           abandoned: str(logTitles, ['moderation', 'log', 'titles', 'abandoned']),
           timeout: str(logTitles, ['moderation', 'log', 'titles', 'timeout']),
           timeoutFailed: str(logTitles, ['moderation', 'log', 'titles', 'timeoutFailed']),
+          config: str(logTitles, ['moderation', 'log', 'titles', 'config']),
+          appealGranted: str(logTitles, ['moderation', 'log', 'titles', 'appealGranted']),
+          appealDenied: str(logTitles, ['moderation', 'log', 'titles', 'appealDenied']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -157,6 +161,7 @@ function loadContent() {
           until: str(logFields, ['moderation', 'log', 'fields', 'until']),
           resolution: str(logFields, ['moderation', 'log', 'fields', 'resolution']),
           appeal: str(logFields, ['moderation', 'log', 'fields', 'appeal']),
+          changes: str(logFields, ['moderation', 'log', 'fields', 'changes']),
         }),
         jump: str(log, ['moderation', 'log', 'jump']),
         none: str(log, ['moderation', 'log', 'none']),
@@ -171,6 +176,15 @@ function loadContent() {
         empty: str(appeal, ['moderation', 'appeal', 'empty']),
         busy: str(appeal, ['moderation', 'appeal', 'busy']),
         failed: str(appeal, ['moderation', 'appeal', 'failed']),
+        // The staff decision, and what the member is told about it.
+        grantButton: str(appeal, ['moderation', 'appeal', 'grantButton']),
+        denyButton: str(appeal, ['moderation', 'appeal', 'denyButton']),
+        granted: str(appeal, ['moderation', 'appeal', 'granted']),
+        denied: str(appeal, ['moderation', 'appeal', 'denied']),
+        grantedDm: str(appeal, ['moderation', 'appeal', 'grantedDm']),
+        deniedDm: str(appeal, ['moderation', 'appeal', 'deniedDm']),
+        decisionSent: str(appeal, ['moderation', 'appeal', 'decisionSent']),
+        decisionNotSent: str(appeal, ['moderation', 'appeal', 'decisionNotSent']),
       }),
       warningDm: Object.freeze({
         maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
@@ -276,9 +290,22 @@ function loadContent() {
         off: str(configSection, ['commands', 'config', 'off']),
         unset: str(configSection, ['commands', 'config', 'unset']),
         systemChannel: str(configSection, ['commands', 'config', 'systemChannel']),
+        thresholdOff: str(configSection, ['commands', 'config', 'thresholdOff']),
+        allCategories: str(configSection, ['commands', 'config', 'allCategories']),
+        noExemptChannels: str(configSection, ['commands', 'config', 'noExemptChannels']),
         nothing: str(configSection, ['commands', 'config', 'nothing']),
         invalid: str(configSection, ['commands', 'config', 'invalid']),
         guildOnly: str(configSection, ['commands', 'config', 'guildOnly']),
+      }),
+      exempt: Object.freeze({
+        added: str(exemptSection, ['commands', 'exempt', 'added']),
+        alreadyAdded: str(exemptSection, ['commands', 'exempt', 'alreadyAdded']),
+        removed: str(exemptSection, ['commands', 'exempt', 'removed']),
+        notExempt: str(exemptSection, ['commands', 'exempt', 'notExempt']),
+        body: str(exemptSection, ['commands', 'exempt', 'body']),
+        line: str(exemptSection, ['commands', 'exempt', 'line']),
+        empty: str(exemptSection, ['commands', 'exempt', 'empty']),
+        limit: str(exemptSection, ['commands', 'exempt', 'limit']),
       }),
     }),
     welcome: Object.freeze({
@@ -290,7 +317,12 @@ function loadContent() {
         const emoji = str(trigger, [...path, 'emoji']);
         const chance = num(trigger, [...path, 'chance'], { min: 0, max: 1 });
         const source = str(trigger, [...path, 'pattern']);
-        const flags = typeof trigger.flags === 'string' ? trigger.flags : '';
+        // `g` and `y` are stripped on purpose: the trigger is used with
+        // `.test()`, and either flag makes that stateful through `lastIndex` —
+        // the same message would match, then not match, then match again. A
+        // reaction rule that fires every other time is a bug nobody would look
+        // for in a YAML file.
+        const flags = (typeof trigger.flags === 'string' ? trigger.flags : '').replace(/[gy]/g, '');
         let pattern;
         try {
           pattern = new RegExp(source, flags);

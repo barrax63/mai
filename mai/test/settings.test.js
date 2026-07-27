@@ -31,6 +31,9 @@ test('a guild without a row inherits every default', () => {
     grace: true,
     'timeout-ladder': true,
     'strike-window': true,
+    'exempt-channels': true,
+    threshold: true,
+    categories: true,
   });
 });
 
@@ -135,6 +138,9 @@ test('reset without a name clears everything', () => {
     grace: true,
     'timeout-ladder': true,
     'strike-window': true,
+    'exempt-channels': true,
+    threshold: true,
+    categories: true,
   });
 });
 

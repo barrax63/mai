@@ -34,6 +34,8 @@ Every non-bot guild message with text content is classified when it is posted **
 
 - **Guild allowlist** via `DISCORD_GUILD_IDS` (comma-separated IDs; empty = all guilds). This is the **whole-bot** gate, enforced once in `onMessageCreate` and in the interactions endpoint — in an un-listed guild Mai does nothing (no moderation, no chat, no reactions, no welcome, no slash-command response). Direct messages are never moderated (a bot cannot delete a DM) and are allowed only from users who share a listed guild with the bot (see Chat below).
 - **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
+- **Where the line sits is per server.** The endpoint answers twice — a `flagged` boolean and a `category_scores` map — and `MODERATION_THRESHOLD` (`/mod config set threshold`) decides which one counts. At `0` the provider decides, as before. Above `0`, a category counts when it scores at least that much and the provider's own boolean is ignored entirely (otherwise raising the threshold could never make anything pass). This exists for a measured reason: omni-moderation scores the same insult **0.88 in English and 0.20 in German**, so on a German-speaking server its default line lets most abuse through. `MODERATION_CATEGORIES` (`/mod config set categories`) narrows things the other way — only the listed categories count at all.
+- **Exempt channels** (`/mod exempt add|remove|list`): a vent channel, an NSFW channel, a staff channel. Moderation only — chat and reactions keep working there, which is usually the point. Exempting a channel covers its threads, and any pending queue rows in it are dropped on the next tick rather than enforced later: "Mai does not moderate here" should not be followed by her deleting something there ten minutes on.
 - **Edits** ([src/gateway/events/message-update.js](src/gateway/events/message-update.js)) run through the same classifier via `recheckMessage`, because otherwise "post something harmless, then edit it" walks straight past the check. The verdict cuts both ways, since the message may already have a queue row:
   - clean before, a violation now → flagged like any new message, with a fresh grace period;
   - a violation before and still one → the categories are refreshed, the deadline is **not** — editing one slur into another must not buy more time — and the message is not scolded a second time;
@@ -76,7 +78,8 @@ Every non-bot guild message with text content is classified when it is posted **
 | `/mod status` | Manage Messages | Open violations and chat-memory size **for this server**, plus last moderation tick, configured models and uptime (ephemeral) |
 | `/mod forgive <user> [strikes]` | Manage Messages | Drops that member's open violations **in this server** and cleans up the scold replies; `strikes:true` also wipes their strike record, resetting the ladder |
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
-| `/mod config set [log-channel] [welcome-channel] [grace]` | Manage Messages | Sets any subset for this server |
+| `/mod config set [log-channel] [welcome-channel] [grace] [threshold] [categories] …` | Manage Messages | Sets any subset for this server |
+| `/mod exempt add\|remove\|list [channel]` | Manage Messages | Channels Mai does not moderate; chat and reactions keep working there |
 | `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
 | `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month **for this server**, per purpose and model. The budget's figures are process-wide, so staff only learn whether it is exhausted |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
@@ -109,6 +112,18 @@ ephemeral and a stranger's refusal must not overwrite the entry.
 DM carries an *Einspruch einlegen* button. It opens a modal, and the member's
 statement is posted into that guild's log channel. Rate limit: 3 per member per
 hour.
+
+That entry carries **Stattgeben** / **Ablehnen** buttons, both Manage
+Messages-only and checked server-side. Either way the decision is written back
+into the entry — same pattern as a report — *and* DMed to the member, because an
+appeal that disappears into a staff channel is not an appeals process. A closed
+DM is recorded as such rather than failing the click.
+
+The decision deliberately does **not** touch the strike record. An appeal
+carries only the guild and the member, not which of their strikes it is about,
+so "granted" could only clear *all* of them — wiping four correct strikes
+because the fifth was wrong. Staff who mean that run
+`/mod forgive <user> strikes:true`, which says so.
 
 Reports and appeals are the only paths where member-written text reaches the log
 channel, and only because that member typed it and pressed submit. The reported
@@ -266,6 +281,20 @@ safety net: once the month's tokens are used up, chat degrades to reactions —
 Mai answers a mention with the busy emoji instead of a reply. **Moderation is
 never gated by the budget**; safety is not a budget item, and the moderation
 endpoint reports no tokens anyway.
+
+**Metrics** ([src/http/metrics.js](src/http/metrics.js)): `GET /metrics` in
+Prometheus text format — queue depth, overdue rows, the highest failed-attempt
+count on any row, strike records by outcome, chat-history size, this month's
+tokens and calls by purpose and model, and the age of the last enforcer tick.
+
+It is **off unless `METRICS_TOKEN` is set** (404, so an unconfigured endpoint
+does not advertise itself), and then wants that token as `Authorization: Bearer
+…`, compared with a timing-safe equality. The whole HTTP server is public
+through the tunnel and these numbers span every guild Mai serves, so this is
+operator data in the same sense `/mod spend` is. Labels are deliberately
+low-cardinality — `purpose`, `model`, `action` — and never a guild, user or
+channel: that would turn a metrics series into a per-member activity record, and
+it is unbounded besides.
 
 **Error alerts**: with `ALERT_CHANNEL_ID` set, every `error` and `fatal` log line
 is mirrored into that channel. It is wired into pino as a hook
