@@ -2,7 +2,7 @@
  * Token accounting.
  *
  * Mai spends the OpenAI budget directly now, and the API already returns what
- * each call cost — this keeps a running total so `/mod spend` can answer "how
+ * each call cost, this keeps a running total so `/mod spend` can answer "how
  * much?" and the monthly cap can stop a runaway before the invoice does.
  *
  * Counters only: no prompts, no replies, nothing that identifies a member.

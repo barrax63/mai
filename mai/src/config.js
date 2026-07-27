@@ -2,7 +2,7 @@
  * Central configuration. Reads and validates environment variables once at
  * startup so the rest of the app can rely on a well-formed config object.
  *
- * Operational knobs only — everything Mai *says* (persona, prompts, scold
+ * Operational knobs only: everything Mai *says* (persona, prompts, scold
  * lines, welcome messages, reaction triggers) lives in the YAML content file
  * loaded by `content.js`.
  */
@@ -72,7 +72,7 @@ export function parseTimeoutLadder(raw, label = 'timeout ladder') {
  * Slugs are checked for *shape* only, not against a fixed list: the categories
  * come from whatever `OPENAI_BASE_URL` points at, and hard-coding OpenAI's set
  * would reject a valid one from another provider. The cost is that a typo
- * silently never matches — which `/mod config view` makes visible.
+ * silently never matches, which `/mod config view` makes visible.
  *
  * @param {string} raw
  * @param {string} [label] Used in the error message.
@@ -161,7 +161,7 @@ export const config = Object.freeze({
         .map((id) => id.trim())
         .filter(Boolean),
     ),
-    // Welcome messages need the privileged "Server Members Intent" — keep the
+    // Welcome messages need the privileged "Server Members Intent": keep the
     // GuildMembers intent out of the login unless it is enabled in the
     // Developer Portal, otherwise the gateway connection is refused.
     welcomeEnabled: bool('DISCORD_WELCOME_ENABLED', 'false'),
@@ -205,7 +205,7 @@ export const config = Object.freeze({
     // Retries are safe here: an API call has no side effects of its own.
     maxRetries: int('OPENAI_MAX_RETRIES', '2'),
     // Tokens per calendar month (UTC) before chat degrades to reactions.
-    // 0 = no limit. Moderation is never gated — safety is not a budget item.
+    // 0 = no limit. Moderation is never gated: safety is not a budget item.
     monthlyTokenBudget: int('OPENAI_MONTHLY_TOKEN_BUDGET', '0'),
   },
   moderation: {
@@ -262,7 +262,7 @@ export const config = Object.freeze({
     maxConcurrent: int('CHAT_MAX_CONCURRENT', '3', { min: 1 }),
   },
   db: {
-    // Must be on a writable volume — the container rootfs is read-only.
+    // Must be on a writable volume: the container rootfs is read-only.
     path: optional('DATABASE_PATH', '/data/mai.sqlite'),
   },
   alerts: {
@@ -285,13 +285,13 @@ export const config = Object.freeze({
 
 /**
  * Whether Mai should act in a given guild. This is the single authority for the
- * DISCORD_GUILD_IDS allowlist — every entry point (message handler, chat,
+ * DISCORD_GUILD_IDS allowlist: every entry point (message handler, chat,
  * moderation, welcome, slash commands) must go through here so an
  * un-whitelisted server gets no behavior at all.
  *
  * Empty allowlist = every guild is allowed (opt-out). A null/undefined guildId
  * is a direct message: this returns true (a DM has no guild to match), but DMs
- * carry their own membership gate — see `isDmAuthorInAllowedGuild` in
+ * carry their own membership gate: see `isDmAuthorInAllowedGuild` in
  * gateway/events/mai-chat.js, which requires the DM author to share a
  * whitelisted guild before Mai answers.
  *
@@ -302,8 +302,8 @@ export const config = Object.freeze({
  * Whether this user operates the bot itself (`OPERATOR_USER_IDS`).
  *
  * Distinct from Manage Messages, which makes someone staff *in one guild*.
- * Mai serves several servers from one process, so the process-wide figures —
- * total queue depth, total chat memory, the whole month's token spend — are
+ * Mai serves several servers from one process, so the process-wide figures
+ * (total queue depth, total chat memory, the whole month's token spend) are
  * other servers' data as far as a guild moderator is concerned. Only an
  * operator sees them.
  *

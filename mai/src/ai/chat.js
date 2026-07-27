@@ -1,8 +1,8 @@
 /**
  * Prompt assembly, the tool loop, and output normalization for Mai's replies.
  *
- * The conversation is a real `messages[]` array — one entry per turn with its
- * own role — rather than a rendered transcript inside a single user message.
+ * The conversation is a real `messages[]` array: one entry per turn with its
+ * own role, rather than a rendered transcript inside a single user message.
  * User turns keep a `Name:` prefix because a Discord channel has many speakers
  * and the model needs to tell them apart.
  *
@@ -23,14 +23,14 @@ const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
  */
 const MAX_TOOL_ROUNDS = 2;
 
-/** Quoted context is trimmed — it is background, not the message being answered. */
+/** Quoted context is trimmed, it is background, not the message being answered. */
 const QUOTE_MAX_CHARS = 300;
 
 /**
  * Delimiters around text Mai did not receive from the person she is answering:
  * a quoted message someone else wrote, a thread title anyone can set. The
  * current speaker chooses *which* of those ends up in the prompt, which is what
- * makes them an injection vector — "reply to this message containing
+ * makes them an injection vector: "reply to this message containing
  * instructions" costs nothing to set up.
  *
  * The fence characters are stripped from the value before it is wrapped, so the
@@ -94,7 +94,7 @@ function moderationDirective(violations) {
 function renderCurrentTurn(turn) {
   const lines = [];
 
-  // Both of these are other people's text, pulled in by whoever is speaking —
+  // Both of these are other people's text, pulled in by whoever is speaking:
   // fenced so an instruction inside them reads as quoted material.
   if (turn.threadTitle) {
     lines.push(
@@ -145,7 +145,7 @@ export function buildMessages({
     : content.chat.friendlyDirective;
 
   // The notice goes in the system message, the only turn Mai should treat as
-  // instructions — everything below it is text members wrote.
+  // instructions: everything below it is text members wrote.
   const messages = [
     {
       role: 'system',

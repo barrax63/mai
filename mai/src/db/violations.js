@@ -3,7 +3,7 @@
  *
  * The queue forgets a violation the moment it is enforced, which is what made a
  * repeat offender indistinguishable from a first-timer. This is the memory the
- * escalation ladder counts against — metadata only, and pruned after
+ * escalation ladder counts against: metadata only, and pruned after
  * VIOLATION_RETENTION_DAYS.
  */
 import { getDb } from './index.js';
@@ -47,7 +47,7 @@ export function recordViolation(entry) {
 /**
  * Strikes that count towards escalation: enforced deletions in this guild since
  * the cutoff. A message the author removed during the grace period is on the
- * record but deliberately does not escalate — the grace period did its job.
+ * record but deliberately does not escalate: the grace period did its job.
  *
  * @param {string} guildId
  * @param {string} userId
@@ -121,7 +121,7 @@ export function totalsFor(guildId, userId) {
  * The rows are **kept, not deleted**: a record that quietly loses entries is
  * worse than one showing that Mai was wrong and it was corrected. Since
  * `strikeCount` only counts `ACTION_DELETED`, changing the action is what makes
- * the escalation ladder forget it — no separate flag to keep in sync.
+ * the escalation ladder forget it: no separate flag to keep in sync.
  *
  * Scoped by time because that is what an appeal actually names: the warning DM
  * covers one enforcement pass, so `sinceIso` is that pass's start. Appealing one

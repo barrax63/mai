@@ -47,7 +47,7 @@ test('history becomes real chat roles, not a rendered transcript', () => {
   assert.ok(messages[0].content.endsWith(content.chat.prompt.untrustedNotice));
   // User turns keep a speaker prefix: a channel has many of them.
   assert.equal(messages[1].content, 'noah: Miau Mai, hast du Fisch?');
-  // Her own turns do not — she is the assistant role.
+  // Her own turns do not: she is the assistant role.
   assert.equal(messages[2].content, '*schnurrt* Immer.');
   assert.equal(messages[3].content, 'noah: und jetzt?');
 });
@@ -107,7 +107,7 @@ test('what a message replies to, and its thread, reach the prompt', () => {
   const turn = messages.at(-1).content;
   assert.ok(turn.includes('[Im Thread: ⟪Katzenfakten⟫]'), turn);
   assert.ok(turn.includes('[Antwort auf kim: "⟪Katzen können nicht schwimmen⟫"]'), turn);
-  // The speaker's own message is not fenced — it is the thing being answered.
+  // The speaker's own message is not fenced, it is the thing being answered.
   assert.ok(turn.endsWith('noah: stimmt das?'), turn);
 });
 

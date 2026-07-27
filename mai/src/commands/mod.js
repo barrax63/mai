@@ -1,5 +1,5 @@
 /**
- * `/mod` — the staff commands: what Mai currently has queued, and a pardon.
+ * `/mod`: the staff commands. What Mai currently has queued, and a pardon.
  *
  * Discord hides the command from members without Manage Messages
  * (`default_member_permissions`), but the check is repeated in code: that field
@@ -31,7 +31,7 @@ import { ephemeralResponse } from '../interactions/respond.js';
  * @returns {boolean}
  */
 function mayModerate(interaction) {
-  // Absent in DMs — there is nothing to moderate there anyway.
+  // Absent in DMs, there is nothing to moderate there anyway.
   const raw = interaction.member?.permissions;
   if (!raw) return false;
   try {
@@ -56,7 +56,7 @@ function formatUptime(seconds) {
 
 /**
  * The scope a caller may see. Manage Messages makes someone staff in *their*
- * guild, not an auditor of every other server Mai runs in — so the counters are
+ * guild, not an auditor of every other server Mai runs in, so the counters are
  * filtered to the calling guild unless the caller operates the bot itself.
  *
  * @param {object} interaction
@@ -104,7 +104,7 @@ function statusResponse(interaction) {
 const formatNumber = (value) => new Intl.NumberFormat('de-DE').format(value ?? 0);
 
 /**
- * `/mod spend` — what Mai has cost this month, from the usage the API already
+ * `/mod spend`: what Mai has cost this month, from the usage the API already
  * reports back. Tokens, not currency: pricing changes and is per model.
  */
 function spendResponse(interaction) {
@@ -125,8 +125,8 @@ function spendResponse(interaction) {
     .join('\n');
 
   // The budget is a property of the process, so its numbers belong to whoever
-  // pays the bill. A guild's staff still gets told when it is exhausted — that
-  // is why Mai stopped talking to them — just not what the figures are.
+  // pays the bill. A guild's staff still gets told when it is exhausted (that
+  // is why Mai stopped talking to them), just not what the figures are.
   const { spend } = content.commands;
   let budgetLine = spend.budgetOff;
   if (budget > 0) {
@@ -165,7 +165,7 @@ const nextConsequence = (minutes, escalationEnabled) => {
 };
 
 /**
- * `/mod on` and `/mod off` — the kill switch. Deliberately its own subcommand
+ * `/mod on` and `/mod off`: the kill switch. Deliberately its own subcommand
  * rather than only a config flag: switching Mai off is the thing an admin wants
  * to do quickly, and `/mod` keeps answering while she is off.
  *
@@ -196,7 +196,7 @@ function powerResponse(interaction, enabled) {
 }
 
 /**
- * `/mod history <user>` — the strike record this guild has on a member, and
+ * `/mod history <user>`: the strike record this guild has on a member, and
  * what the next enforced deletion would cost them.
  *
  * @param {object} interaction
@@ -232,7 +232,7 @@ function historyResponse(interaction) {
     .join('\n');
 
   // Built from whatever outcomes the record actually holds, so the parts always
-  // add up to the total — a fixed list of buckets silently stopped matching
+  // add up to the total: a fixed list of buckets silently stopped matching
   // every time a new outcome was added.
   const breakdown = Object.entries(totals.byAction)
     .sort(([, a], [, b]) => b - a)
@@ -322,7 +322,7 @@ function forgiveResponse(interaction) {
 }
 
 /**
- * `/mod config view` — the effective settings of this guild, marking which ones
+ * `/mod config view`: the effective settings of this guild, marking which ones
  * are inherited from the process defaults.
  *
  * @param {string} guildId
@@ -370,7 +370,7 @@ function configView(guildId) {
  * Staff change the rules on each other: a raised threshold, an exempted
  * channel, a pause. Without this the only trace is `updated_by` in a database
  * nobody can read from Discord, so the next moderator sees Mai behaving
- * differently with no way to find out why. Detached and best effort — the
+ * differently with no way to find out why. Detached and best effort: the
  * interaction has ~3 s and a settings change must not fail on a log channel.
  *
  * @param {string} guildId
@@ -387,8 +387,8 @@ function announceConfigChange(guildId, actorId, changes) {
 }
 
 /**
- * Renders a settings patch for the log entry. Every value here is metadata —
- * ids, numbers, booleans, category slugs — so it may go into a Discord channel.
+ * Renders a settings patch for the log entry. Every value here is metadata:
+ * ids, numbers, booleans, category slugs, so it may go into a Discord channel.
  *
  * @param {Record<string, unknown>} patch
  * @returns {string}
@@ -405,7 +405,7 @@ const describeChanges = (patch) =>
     .join('\n');
 
 /**
- * `/mod config set [log-channel] [welcome-channel] [grace]` — any subset.
+ * `/mod config set [log-channel] [welcome-channel] [grace]`: any subset.
  *
  * @param {object} interaction
  * @param {string} guildId
@@ -439,7 +439,7 @@ function configSet(interaction, guildId) {
 }
 
 /**
- * `/mod config reset <setting>` — back to the inherited default.
+ * `/mod config reset <setting>`: back to the inherited default.
  *
  * @param {object} interaction
  * @param {string} guildId
@@ -481,7 +481,7 @@ function configResponse(interaction) {
 }
 
 /**
- * `/mod exempt add|remove|list` — channels the delete/scold pipeline ignores.
+ * `/mod exempt add|remove|list`: channels the delete/scold pipeline ignores.
  *
  * The underlying setting is a comma-separated list, which is unusable through
  * `/mod config set` (nobody types channel ids). These subcommands edit the same

@@ -3,7 +3,7 @@
  *
  * Two places need this: the enforcer, when a queue row resolves, and the edit
  * re-check, when a flagged message was edited into something clean. Both are
- * best effort by design — a manually removed scold reply or a missing permission
+ * best effort by design: a manually removed scold reply or a missing permission
  * must never block the queue from moving on.
  */
 import { Routes } from 'discord.js';
@@ -14,7 +14,7 @@ import { logger } from '../logger.js';
  * Message ids Mai is deleting herself.
  *
  * `messageDelete` cannot tell us *who* deleted a message, and the gateway event
- * for Mai's own enforcement arrives while the queue row is still there — which
+ * for Mai's own enforcement arrives while the queue row is still there, which
  * would otherwise be recorded as "the author removed it", the exact opposite of
  * what happened. Ids are marked just before the delete and expire on their own,
  * so a failed delete cannot leak an entry forever.
@@ -66,7 +66,7 @@ export async function deleteMessageById(client, channelId, messageId) {
 }
 
 /**
- * Removes the warning reaction Mai put on a flagged message — hers only.
+ * Removes the warning reaction Mai put on a flagged message: hers only.
  *
  * The cached reaction is used when it is there, but Discord's MESSAGE_UPDATE
  * payload does not reliably carry `reactions`, so the REST route is the

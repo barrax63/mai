@@ -1,18 +1,18 @@
 /**
  * Prometheus text-format metrics.
  *
- * Everything here is already in the database — queue depth, the strike record,
- * token spend, the enforcer's heartbeat — but only reachable through `/mod` one
+ * Everything here is already in the database: queue depth, the strike record,
+ * token spend, the enforcer's heartbeat, but only reachable through `/mod` one
  * guild at a time, which is no use for a graph.
  *
  * **This endpoint is process-wide and therefore operator-only.** The HTTP server
  * is exposed to the public internet through the tunnel, so `/metrics` is off
  * unless `METRICS_TOKEN` is set, and then requires it as a bearer token. Without
- * that gate it would hand every guild's counts to anyone who found the URL —
+ * that gate it would hand every guild's counts to anyone who found the URL:
  * the same cross-guild leak that `/mod status` was fixed for.
  *
  * Labels stay low-cardinality on purpose: `purpose`, `model` and `action` are
- * small fixed sets. Never label by guild, user or channel — that turns a metrics
+ * small fixed sets. Never label by guild, user or channel: that turns a metrics
  * series into a per-member activity record, and it is unbounded besides.
  */
 import { config } from '../config.js';

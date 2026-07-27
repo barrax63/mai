@@ -1,7 +1,7 @@
 /**
  * Reacting to a deletion instead of waiting for the deadline.
  *
- * The enforcer already handled "the author removed it" — but only when the
+ * The enforcer already handled "the author removed it", but only when the
  * grace period expired, so someone who fixed their mistake in ten seconds still
  * saw a scold reply under a message that no longer existed, and nothing in the
  * log, for up to the whole grace period.
@@ -124,7 +124,7 @@ test('a deletion of something Mai never flagged is ignored', async () => {
   assert.equal(record.posted.length, 0);
 });
 
-test('a paused guild keeps its rows — pausing is not an amnesty', async () => {
+test('a paused guild keeps its rows: pausing is not an amnesty', async () => {
   const messageId = '930000000000000004';
   seed(messageId);
   clearOwnDeletions();

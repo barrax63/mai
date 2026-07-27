@@ -1,6 +1,6 @@
 /**
  * The moderation queue ("privacy queue"): metadata of flagged messages waiting
- * out their grace period. Never message content — the text of a deleted message
+ * out their grace period. Never message content: the text of a deleted message
  * is read live from Discord at enforcement time and is not persisted.
  *
  * A present row also encodes "this user has an open, un-enforced violation",
@@ -140,7 +140,7 @@ export function remove(messageId) {
 }
 
 /**
- * Open violations of a user across **all** guilds — Mai is one persona, so a
+ * Open violations of a user across **all** guilds: Mai is one persona, so a
  * strike anywhere makes her mad at that user everywhere, DMs included.
  *
  * @param {string} userId

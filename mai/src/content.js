@@ -321,7 +321,7 @@ function loadContent() {
         const chance = num(trigger, [...path, 'chance'], { min: 0, max: 1 });
         const source = str(trigger, [...path, 'pattern']);
         // `g` and `y` are stripped on purpose: the trigger is used with
-        // `.test()`, and either flag makes that stateful through `lastIndex` —
+        // `.test()`, and either flag makes that stateful through `lastIndex`:
         // the same message would match, then not match, then match again. A
         // reaction rule that fires every other time is a bug nobody would look
         // for in a YAML file.

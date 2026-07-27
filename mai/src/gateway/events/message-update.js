@@ -3,7 +3,7 @@
  *
  * Without it the moderation pipeline has a hole the size of the edit button:
  * post something harmless, let it pass, then edit it into what you actually
- * wanted to say. So an edit is classified exactly like a new message — and the
+ * wanted to say. So an edit is classified exactly like a new message, and the
  * verdict cuts both ways, because fixing a flagged message has to be worth
  * something: `recheckMessage` takes the reaction, the scold reply and the queue
  * row back off a message that is clean again.
@@ -12,7 +12,7 @@
  * her answer: a chat trigger is something you send, not something you retrofit
  * into a message she already saw.
  *
- * Direct messages are skipped for the same reason `onMessageCreate` skips them —
+ * Direct messages are skipped for the same reason `onMessageCreate` skips them:
  * a bot cannot delete a user's DM, so there is nothing to enforce.
  */
 import { isGuildAllowed } from '../../config.js';
@@ -71,7 +71,7 @@ export async function onMessageUpdate(oldMessage, newMessage) {
   }
 
   // The kill switch (/mod off). A message flagged before the pause keeps its
-  // row — pausing is not an amnesty — so an edit made while Mai is off is
+  // row (pausing is not an amnesty) so an edit made while Mai is off is
   // re-judged when the guild switches her back on.
   if (!isGuildActive(message.guildId)) {
     logger.debug(

@@ -1,7 +1,7 @@
 /**
  * SQLite connection and schema migrations.
  *
- * One process, one writer, a few hundred rows — the builtin `node:sqlite`
+ * One process, one writer, a few hundred rows: the builtin `node:sqlite`
  * module covers it with zero dependencies. All SQL in the app lives behind this
  * directory (`queue.js`, `history.js`); nothing else imports `node:sqlite`, so
  * swapping the engine stays a one-layer change.
@@ -23,7 +23,7 @@ let db = null;
 
 /**
  * Opens the database, applies pending migrations and returns the handle.
- * Failures here are fatal by design — a broken queue must not run silently.
+ * Failures here are fatal by design: a broken queue must not run silently.
  *
  * @returns {DatabaseSync}
  */

@@ -1,5 +1,5 @@
 /**
- * "Nachricht melden" — the message context-menu report.
+ * "Nachricht melden": the message context-menu report.
  *
  * Right-click a message -> Apps -> the entry below -> a modal asks why -> the
  * report lands in the guild's moderation log with Approve / Dismiss buttons for
@@ -81,7 +81,7 @@ const reviewButtons = (channelId, messageId) => [
  * The decision has to be legible at a glance to the *other* moderators, not just
  * to whoever clicked: the title and the colour change, the buttons go away so
  * nobody re-decides it, and a field names who did what. Editing the entry in
- * place is what makes it visible to all — an ephemeral reply would only tell the
+ * place is what makes it visible to all: an ephemeral reply would only tell the
  * clicker.
  *
  * @param {object} interaction
@@ -119,7 +119,7 @@ export const reportComponents = {
       // The channel id travels in the custom_id, and Manage Messages was only
       // checked against the guild the click came from. Discord will not let a
       // member invent a custom_id today, but this handler deletes through the
-      // bot's own client, which reaches every guild Mai is in — so the target
+      // bot's own client, which reaches every guild Mai is in, so the target
       // is proven to be in the clicker's guild rather than assumed. Same rule
       // as forgetComponents: an id from the client names a target, it does not
       // authorize one.
@@ -141,7 +141,7 @@ export const reportComponents = {
         deleted = true;
       }
     } catch (error) {
-      // Already gone, or Mai lacks the permission — both are worth showing in
+      // Already gone, or Mai lacks the permission: both are worth showing in
       // the entry rather than failing the click.
       logger.warn(
         { channelId, messageId, err: error },
@@ -192,7 +192,7 @@ reportComponents['report-approve'].deferred = (interaction) => mayModerate(inter
 
 export const reportModals = {
   /**
-   * The reason modal was submitted — publish the report.
+   * The reason modal was submitted: publish the report.
    */
   async report(interaction, [channelId, messageId, authorId]) {
     const reporter = actor(interaction);

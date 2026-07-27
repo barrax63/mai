@@ -34,7 +34,7 @@ function stubGateway({ deleteFails = false, channelGuildId = TEST_GUILD } = {}) 
     channels: {
       fetch: async (id) => ({
         id,
-        // Which guild the channel is in — `report-approve` proves the target
+        // Which guild the channel is in: `report-approve` proves the target
         // sits in the clicker's guild before deleting through it.
         guildId: channelGuildId,
         isTextBased: () => true,
@@ -200,7 +200,7 @@ test('approving deletes the message and edits the entry for everyone', async () 
 
 test('approval refuses a target channel outside the clicking guild', async () => {
   // The channel id rides in the custom_id, but Manage Messages was only checked
-  // against the guild the click came from — so a target elsewhere must not be
+  // against the guild the click came from, so a target elsewhere must not be
   // deleted through the bot's client, which can reach every guild Mai is in.
   const { deleted } = stubGateway({ channelGuildId: '999999999999999999' });
   const { edits } = await clickApprove(

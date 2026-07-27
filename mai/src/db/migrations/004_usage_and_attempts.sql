@@ -1,6 +1,6 @@
 -- Token accounting. One row per day, guild, model and purpose; counters are
 -- incremented in place, so the table stays small (a handful of rows per day).
--- No message data — only how much was spent and on what.
+-- No message data, only how much was spent and on what.
 CREATE TABLE usage_daily (
   day               TEXT NOT NULL,               -- YYYY-MM-DD, UTC
   guild_id          TEXT NOT NULL DEFAULT '',    -- '' = direct messages

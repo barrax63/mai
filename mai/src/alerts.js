@@ -12,7 +12,7 @@
  */
 import { config } from './config.js';
 
-/** Only these keys are forwarded — the rest of a log record may carry content. */
+/** Only these keys are forwarded: the rest of a log record may carry content. */
 const SAFE_KEYS = [
   'messageId',
   'guildId',
@@ -57,7 +57,7 @@ function describeContext(record) {
 
   const error = record.err ?? record.error;
   if (error) {
-    // The name and the machine-readable codes only — never `error.message`.
+    // The name and the machine-readable codes only: never `error.message`.
     // The alert channel is a Discord channel, so it is permanent storage
     // readable by everyone with access, and an exception message is free text:
     // a config parse error quotes the config, a database error can quote a
@@ -107,7 +107,7 @@ function takeSlot() {
 export function alert(level, record, message) {
   // Nothing in this module may log: that would feed itself. The `catch` below
   // is silent for the same reason, which is also why no re-entrancy guard is
-  // needed — and a guard here would drop concurrent alerts, not recursive ones.
+  // needed, and a guard here would drop concurrent alerts, not recursive ones.
   if (!config.alerts.channelId) return;
   if (!takeSlot()) return;
 

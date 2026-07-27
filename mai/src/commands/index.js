@@ -2,13 +2,13 @@
  * Command registry.
  *
  * A command module exports `{ definition, execute }` and may add:
- *   deferred     boolean | (interaction) => boolean — answer with a placeholder
+ *   deferred     boolean | (interaction) => boolean: answer with a placeholder
  *                first and edit it when `execute` resolves (anything slower than
  *                Discord's ~3 s budget: model calls, Discord REST round trips)
- *   ephemeral    boolean | (interaction) => boolean — only for deferred
+ *   ephemeral    boolean | (interaction) => boolean, only for deferred
  *                commands; fixes the visibility of the placeholder, which the
  *                later edit cannot change
- *   autocomplete (interaction) => choices[] — for options with autocomplete
+ *   autocomplete (interaction) => choices[]: for options with autocomplete
  *
  * To add a command:
  *   1. Create a file in this directory exporting the object above.

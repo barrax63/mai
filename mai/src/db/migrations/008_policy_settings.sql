@@ -4,7 +4,7 @@
 -- this table.
 
 -- Comma-separated channel IDs Mai does not moderate at all (a vent channel, an
--- NSFW channel, a staff channel). Chat and reactions are unaffected — this is
+-- NSFW channel, a staff channel). Chat and reactions are unaffected, this is
 -- about the delete/scold pipeline only. A thread is covered by exempting its
 -- parent channel.
 ALTER TABLE guild_settings ADD COLUMN exempt_channels TEXT;

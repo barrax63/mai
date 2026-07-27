@@ -2,7 +2,7 @@
  * Per-guild settings, layered over the process defaults from `.env`.
  *
  * `effectiveSettings(guildId)` is the only thing callers need: it returns the
- * merged view plus, per key, whether the value is inherited — which is what
+ * merged view plus, per key, whether the value is inherited, which is what
  * `/mod config view` shows.
  *
  * Reads are single-row primary-key lookups on SQLite, so they happen inline
@@ -43,7 +43,7 @@ const splitList = (value) =>
  * entry here, a column in a migration, and an option to the command.
  */
 /**
- * SQLite has no boolean type, and node:sqlite refuses a JS boolean outright —
+ * SQLite has no boolean type, and node:sqlite refuses a JS boolean outright:
  * flags are stored as 1/0 with NULL meaning "inherit".
  *
  * @param {unknown} value
@@ -154,7 +154,7 @@ export function effectiveSettings(guildId) {
       : config.moderation.timeoutLadder,
     strikeWindowDays: row?.strike_window_days ?? config.moderation.strikeWindowDays,
     // Channels the delete/scold pipeline ignores entirely. Chat and reactions
-    // are unaffected — this is about moderation only.
+    // are unaffected, this is about moderation only.
     exemptChannels: splitList(row?.exempt_channels),
     // How hard this guild judges. 0 = defer to the provider's own `flagged`.
     threshold: row?.moderation_threshold ?? config.moderation.threshold,

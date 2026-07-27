@@ -2,7 +2,7 @@
  * Registries for the interaction kinds that are not slash commands.
  *
  * A component's or modal's `custom_id` is `<name>:<arg>:<arg>…`. The part before
- * the first colon selects the handler, the rest is passed along — that is how a
+ * the first colon selects the handler, the rest is passed along; that is how a
  * button or modal carries state (a message id, a guild id) without a
  * server-side session. Never trust those arguments as authorization: check the
  * clicker's own id or permissions in the handler.

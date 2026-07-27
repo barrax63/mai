@@ -150,7 +150,7 @@ test('the record breakdown always adds up to its own total', async () => {
   const summed = Object.values(totals.byAction).reduce((sum, count) => sum + count, 0);
 
   // The regression: `edited` and `overturned` counted towards the total but
-  // belonged to no bucket, so /mod history printed "Gesamt: 2 — 0 gelöscht,
+  // belonged to no bucket, so /mod history printed "Gesamt: 2: 0 gelöscht,
   // 1 selbst entfernt".
   assert.equal(summed, totals.total, JSON.stringify(totals));
   assert.equal(totals.total, 4);
@@ -212,7 +212,7 @@ test('granting an appeal tells the member and the whole team', async () => {
 
   assert.equal(sent[0].type, InteractionResponseType.DEFERRED_UPDATE_MESSAGE);
 
-  // The member hears back — the gap was that an appeal vanished into the log.
+  // The member hears back: the gap was that an appeal vanished into the log.
   assert.equal(dms.length, 1);
   assert.equal(dms[0].userId, APPELLANT);
   assert.equal(dms[0].content, content.moderation.appeal.grantedDm);
@@ -293,7 +293,7 @@ test('a settings change is announced in the guild log', async () => {
   );
 });
 
-test('switching Mai off is announced too — that is when it matters most', async () => {
+test('switching Mai off is announced too, and that is when it matters most', async () => {
   const { posted } = stubGateway();
 
   await routeInteraction(

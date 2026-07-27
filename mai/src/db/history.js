@@ -2,7 +2,7 @@
  * Mai's short-term chat memory, keyed by channel (a DM channel is stable per
  * user, so DMs work without a guild id).
  *
- * This is the only place message content is persisted — a deliberate exception
+ * This is the only place message content is persisted: a deliberate exception
  * to the no-content rule, limited to messages deliberately addressed to Mai.
  * `username` and `content` are encrypted (db/crypto.js) and every row is pruned
  * after CHAT_HISTORY_MAX_AGE_HOURS.
@@ -69,7 +69,7 @@ export function recentTurns(channelId, limit) {
         sentAt: row.sent_at,
       });
     } catch (error) {
-      // No content in the log line — just the row id and the reason.
+      // No content in the log line: just the row id and the reason.
       logger.warn({ rowId: row.id, err: error }, 'Dropping undecryptable history row');
     }
   }
@@ -90,7 +90,7 @@ export function pruneOlderThan(cutoffIso) {
  * Wipes what Mai remembers about one user (`/mai forget`).
  *
  * In a DM channel the whole conversation belongs to that user, so every row of
- * those channels goes — including Mai's own answers, which may quote them. In a
+ * those channels goes, including Mai's own answers, which may quote them. In a
  * guild channel only their own turns are removed: Mai's replies were posted
  * publicly in Discord anyway, and other members' turns are not theirs to delete.
  *
@@ -118,11 +118,11 @@ export function deleteForUser(userId) {
 
 /**
  * @param {string} [guildId] Omit for the process-wide total (operators only).
- *   Scoped, direct messages are excluded — they have no guild to belong to.
+ *   Scoped, direct messages are excluded, they have no guild to belong to.
  * @returns {{ rows: number, channels: number }}
  */
 export function stats(guildId) {
-  // `rows` is a SQLite keyword — alias around it.
+  // `rows` is a SQLite keyword: alias around it.
   const columns = 'COUNT(*) AS row_count, COUNT(DISTINCT channel_id) AS channel_count';
   const db = getDb();
   const row = guildId

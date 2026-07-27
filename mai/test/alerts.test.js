@@ -1,5 +1,5 @@
 /**
- * Error alerting. `setup-alerts.js` must come first — it configures the channel
+ * Error alerting. `setup-alerts.js` must come first, it configures the channel
  * and a log level that actually emits errors, before config.js is loaded.
  */
 import './setup-alerts.js';
@@ -74,7 +74,7 @@ test('info and warn stay out of the channel', async () => {
   assert.equal(sent.length, 0);
 });
 
-test('only whitelisted keys are forwarded — a record may carry content', async () => {
+test('only whitelisted keys are forwarded: a record may carry content', async () => {
   const sent = captureAlerts();
 
   logger.error(
@@ -100,7 +100,7 @@ test('a burst is throttled instead of flooding the channel', async () => {
   await settle();
 
   // The window (5 alerts / 5 minutes) is shared with the tests above, so the
-  // exact number depends on what they used — the invariant is that a failing
+  // exact number depends on what they used: the invariant is that a failing
   // subsystem cannot turn the alert channel into the outage.
   assert.ok(sent.length < burst, `all ${burst} got through`);
   assert.ok(sent.length <= 5, `${sent.length} exceeds the window allowance`);

@@ -1,5 +1,5 @@
 /**
- * `/mai` — the commands every member can use.
+ * `/mai`: the commands every member can use.
  *
  * `ask` runs a model call, so it declares `deferred`: the router answers Discord
  * with a placeholder first and edits it when the reply is ready. `forget` is the
@@ -34,7 +34,7 @@ const askedQuestion = (interaction) =>
 
 /**
  * A public question to Mai. Unlike a mention this is stateless: no channel
- * history goes into the prompt and the exchange is not written to her memory —
+ * history goes into the prompt and the exchange is not written to her memory:
  * one question, one answer.
  *
  * @param {object} interaction
@@ -44,7 +44,7 @@ async function ask(interaction) {
   const question = askedQuestion(interaction);
 
   // This subcommand is deferred, and a deferred response cannot turn ephemeral
-  // afterwards (the edit ignores `flags`) — so every refusal below is a public,
+  // afterwards (the edit ignores `flags`), so every refusal below is a public,
   // in-character message rather than a private notice.
   if (!config.chat.enabled) return messageResponse(content.commands.ask.disabled);
   if (!question) return messageResponse(content.commands.ask.empty);
@@ -52,7 +52,7 @@ async function ask(interaction) {
   if (!consumeRateLimit(user.id)) return messageResponse(content.commands.ask.busy);
 
   // The answer quotes the question back into the channel, so this command makes
-  // Mai republish a member's text under her own name — the one path where a
+  // Mai republish a member's text under her own name: the one path where a
   // slash command posts publicly without the message pipeline ever seeing it.
   // Screened before the model call so a refusal costs no tokens, and screened
   // fail-closed (see moderation/screen.js).
@@ -130,7 +130,7 @@ function forget(interaction) {
  * Button handlers for the wipe. Registered in interactions/registry.js.
  *
  * The ephemeral message is only visible to its owner, but the custom_id is
- * checked anyway — never trust a client-supplied id to name someone else.
+ * checked anyway: never trust a client-supplied id to name someone else.
  */
 export const forgetComponents = {
   forget(interaction, [ownerId]) {

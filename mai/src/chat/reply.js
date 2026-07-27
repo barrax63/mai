@@ -2,8 +2,8 @@
  * Mai's chat turn.
  *
  * Reads her short-term memory for the channel, checks whether the author has an
- * open violation (which flips her tone), asks the model — which may call tools
- * along the way — and remembers the exchange. Discord I/O stays in the gateway
+ * open violation (which flips her tone), asks the model, which may call tools
+ * along the way, and remembers the exchange. Discord I/O stays in the gateway
  * handler, which also resolves the reply and thread context.
  */
 import { buildMessages, generateReply } from '../ai/chat.js';

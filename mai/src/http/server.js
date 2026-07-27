@@ -35,8 +35,8 @@ const interactionsLimiter = createRateLimiter({
  * Everything arrives from the cloudflared container, so `req.ip` is the same
  * value for every caller and would make a per-client limit meaningless.
  * Cloudflare sets `CF-Connecting-IP` to the real client. That header is
- * spoofable in general — here it is not reachable to spoof, because the port is
- * published only on the internal `edge` network and cloudflared overwrites it —
+ * spoofable in general: here it is not reachable to spoof, because the port is
+ * published only on the internal `edge` network and cloudflared overwrites it,
  * and a forged one only ever splits an attacker's own budget into more buckets,
  * never borrows someone else's.
  *
@@ -50,7 +50,7 @@ const clientKey = (req) => {
   if (forwarded) return forwarded;
 
   // Without the header every caller lands in the same bucket, which turns a
-  // per-client limit into a global one — survivable, but the operator should
+  // per-client limit into a global one: survivable, but the operator should
   // know their limit is now shared across all traffic. Said once, not per
   // request: this is a deployment fact, not an event.
   if (!warnedAboutSharedBucket) {

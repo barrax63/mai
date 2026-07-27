@@ -3,7 +3,7 @@
  * pings, slash commands, autocomplete, component clicks and modal submits.
  *
  * The caller passes a `send` callback that writes the HTTP response. It is
- * called exactly once, immediately — anything slower than Discord's ~3 s budget
+ * called exactly once, immediately: anything slower than Discord's ~3 s budget
  * answers with a deferred placeholder first and edits it afterwards, so handlers
  * never have to think about the deadline: they declare `deferred` and return
  * their final response whenever they are done.
@@ -115,7 +115,7 @@ function refuseForeignGuild(interaction, send, logContext) {
 }
 
 /**
- * The kill switch (`/mod off`). `/mod` itself stays reachable — otherwise the
+ * The kill switch (`/mod off`). `/mod` itself stays reachable, otherwise the
  * only way back on would be editing the database.
  *
  * @returns {boolean} Whether the interaction was refused.

@@ -1,5 +1,5 @@
 /**
- * Moderation for a single message: classify, react, scold, enqueue — and, when
+ * Moderation for a single message: classify, react, scold, enqueue, and, when
  * an edit changes the verdict, take all of it back again.
  *
  * `checkMessage` is called inline from the gateway handler, so the verdict is
@@ -8,7 +8,7 @@
  * for an edited message, where the verdict can go either way.
  *
  * Fails open. If classification is unavailable (API down, key revoked), the
- * message passes — Mai stays a chatting cat instead of a broken moderator. The
+ * message passes: Mai stays a chatting cat instead of a broken moderator. The
  * one exception is a message that is *already* queued: without a verdict there
  * is no evidence the edit fixed anything, so the row stands.
  */
@@ -37,7 +37,7 @@ function isModeratable(message) {
   // to enforce there.
   if (!message.guildId) return false;
 
-  // Defense in depth — the gateway handlers already gate un-whitelisted guilds.
+  // Defense in depth: the gateway handlers already gate un-whitelisted guilds.
   if (!isGuildAllowed(message.guildId)) {
     logger.debug(
       { messageId: message.id, guildId: message.guildId },
@@ -87,7 +87,7 @@ const hasClassifiableContent = (message) =>
 /**
  * @param {import('discord.js').Message} message
  * @returns {Promise<{ flagged: boolean, categories: string[] } | null>} null when
- *   classification was unavailable — the caller decides what that means.
+ *   classification was unavailable: the caller decides what that means.
  */
 async function classifySafely(message) {
   const attachments = message.attachments.map((attachment) => ({
@@ -193,7 +193,7 @@ async function flagMessage(message, categories) {
 
 /**
  * The author edited the violation out of a flagged message. Everything the flag
- * put there comes back off — warning reaction, scold reply, queue row — and the
+ * put there comes back off (warning reaction, scold reply, queue row) and the
  * guild's log gets a closing entry, so a `flagged` entry never just evaporates
  * with no explanation.
  *
@@ -243,7 +243,7 @@ async function clearFlag(message, row) {
 }
 
 /**
- * The author removed a flagged message themselves — the grace period doing
+ * The author removed a flagged message themselves: the grace period doing
  * exactly what it is for. Shared by the enforcer (which finds it gone at the
  * deadline) and the `messageDelete` handler (which sees it happen).
  *
@@ -345,8 +345,8 @@ export async function recheckMessage(message) {
   if (!row) return flagMessage(message, verdict.categories);
 
   // Still a violation, only a different one. The deadline deliberately stays
-  // where it was — editing one slur into another must not buy a fresh grace
-  // period — and re-scolding a message that is already scolded is just noise.
+  // where it was: editing one slur into another must not buy a fresh grace
+  // period, and re-scolding a message that is already scolded is just noise.
   updateCategories(message.id, verdict.categories);
 
   logger.info(

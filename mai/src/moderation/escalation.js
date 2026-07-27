@@ -6,7 +6,7 @@
  * Discord timeout, per guild (`/mod config set timeout-ladder`), with the last
  * step repeating for everything above it.
  *
- * The ceiling is a timeout, deliberately. Mai never kicks or bans on her own —
+ * The ceiling is a timeout, deliberately. Mai never kicks or bans on her own:
  * an automated permanent action on a false positive is not recoverable, and
  * staff have `/mod history` plus the log to act on the ones that matter.
  */
@@ -55,7 +55,7 @@ export function decideEscalation(guildId, userId) {
 /**
  * Applies the timeout. Failure is expected and survivable: Mai may lack Moderate
  * Members, sit below the member in the role hierarchy, or the target may be an
- * admin or the owner — Discord refuses all of those.
+ * admin or the owner: Discord refuses all of those.
  *
  * @param {import('discord.js').Client} client
  * @param {{ guildId: string, userId: string, minutes: number, reason: string }} request
@@ -72,7 +72,7 @@ export async function applyTimeout(client, { guildId, userId, minutes, reason })
     // is a permanent property of the target, not a fault in the deployment, so
     // it is reported without the `error` level that would page the operator
     // every single time such a member trips the ladder. The log-channel entry
-    // still goes out — staff should know the ladder had no effect.
+    // still goes out: staff should know the ladder had no effect.
     if (member.permissions?.has?.(PermissionFlagsBits.Administrator) || guild.ownerId === userId) {
       logger.info(
         { guildId, userId, minutes },

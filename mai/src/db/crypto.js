@@ -3,7 +3,7 @@
  *
  * The `chat_history` table is the one place Mai stores message content, so it
  * is encrypted at rest with AES-256-GCM (key: CHAT_HISTORY_KEY, 32 bytes
- * base64). `channel_id` and the timestamps stay plaintext — they are the lookup
+ * base64). `channel_id` and the timestamps stay plaintext: they are the lookup
  * and pruning keys, and are metadata under the project's logging/privacy rule.
  *
  * Stored format: `v1:<iv-b64>:<tag-b64>:<ciphertext-b64>`, a fresh random IV per

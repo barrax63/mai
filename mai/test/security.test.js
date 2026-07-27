@@ -3,7 +3,7 @@
  * pipeline itself:
  *
  *   - `/mai ask` republishes a member's text under Mai's name, so the question
- *     is classified first — and fails closed, unlike the message pipeline.
+ *     is classified first, and fails closed, unlike the message pipeline.
  *   - what Mai says herself is deliberately *not* classified: the persona is
  *     built to insult repeat offenders, and a filter would eat exactly that.
  *   - a pardon and the operational counters stop at the guild border.
@@ -84,7 +84,7 @@ test('screenInput fails closed when the classifier is unreachable', async () => 
 test('Mai is never classified on the way out', async () => {
   // Her persona escalates into outright insults at the top of the ladder
   // ("Beleidigungen erwünscht"), which a classifier scores as harassment
-  // 0.89-0.98 — screening her output would replace the angry cat with a canned
+  // 0.89-0.98: screening her output would replace the angry cat with a canned
   // line exactly when she is supposed to be angry. The guard against a
   // prompt-injected model is the prompt, not a filter on the way out.
   const { generateReply } = await import('../src/ai/chat.js');
@@ -229,7 +229,7 @@ test('the DM membership gate asks Discord once per member, then remembers', asyn
   assert.equal(await isDmAuthorInAllowedGuild(member), true);
   assert.equal(fetched.length, 1, 'the second DM costs no Discord round trip');
 
-  // A refusal is cached too — otherwise a stranger's spam is a free REST call
+  // A refusal is cached too, otherwise a stranger's spam is a free REST call
   // per message, made before any chat rate limit applies.
   const stranger = dm('940000000000000002', false);
   assert.equal(await isDmAuthorInAllowedGuild(stranger), false);

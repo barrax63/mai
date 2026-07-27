@@ -17,7 +17,7 @@ export async function maybeReactAsCat(message) {
   for (const trigger of content.reactions) {
     if (!trigger.pattern.test(message.content)) continue;
 
-    // Matched but stayed aloof — no fallthrough to weaker triggers.
+    // Matched but stayed aloof: no fallthrough to weaker triggers.
     if (Math.random() > trigger.chance) return;
 
     try {
@@ -27,7 +27,7 @@ export async function maybeReactAsCat(message) {
         'Reacted to trigger word',
       );
     } catch (error) {
-      // Missing Add Reactions permission or deleted message — not worth noise.
+      // Missing Add Reactions permission or deleted message, not worth noise.
       logger.debug(
         { messageId: message.id, err: error },
         'Reaction failed',

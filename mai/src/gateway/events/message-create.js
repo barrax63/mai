@@ -21,7 +21,7 @@ export async function onMessageCreate(message) {
   // Ignore bots (including ourselves) and system messages.
   if (message.author?.bot || message.system) return;
 
-  // Allowlist gate. An un-whitelisted server gets NO behavior — no moderation,
+  // Allowlist gate. An un-whitelisted server gets NO behavior: no moderation,
   // no cat reactions, no chat. A DM has no guildId: it is allowed only when its
   // author shares a whitelisted guild with the bot, so members of
   // non-whitelisted guilds (or strangers) cannot DM Mai.
@@ -76,7 +76,7 @@ export async function onMessageCreate(message) {
   }
 
   // Addressed to Mai in a guild: await the moderation verdict first. A flagged
-  // message gets the scold reply instead of a chat answer — the chat pipeline
+  // message gets the scold reply instead of a chat answer: the chat pipeline
   // (and its history table) never sees it. Fails open: no verdict (moderation
   // disabled, API error) or not flagged -> normal chat.
   //

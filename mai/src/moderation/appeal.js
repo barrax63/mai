@@ -6,7 +6,7 @@
  * a member's text is deliberately forwarded to staff, and it happens only
  * because they typed it and pressed submit.
  *
- * The button only exists when the guild has a log channel — otherwise an appeal
+ * The button only exists when the guild has a log channel, otherwise an appeal
  * would go nowhere.
  */
 import { PermissionFlagsBits } from 'discord.js';
@@ -57,7 +57,7 @@ const actor = (interaction) => interaction.member?.user ?? interaction.user ?? {
  * @param {string} guildId
  * @param {string} [sinceIso] Start of the enforcement pass this DM is about.
  *   Carried all the way to the decision buttons, because granting an appeal has
- *   to know *which* strikes it overturns — the record may hold older, correct
+ *   to know *which* strikes it overturns: the record may hold older, correct
  *   ones that this appeal says nothing about.
  * @returns {object[]}
  */
@@ -75,7 +75,7 @@ export function appealComponents(guildId, sinceIso) {
           type: BUTTON,
           style: STYLE_SECONDARY,
           label: content.moderation.appeal.button,
-          // A DM has no guild context — carry it in the id.
+          // A DM has no guild context: carry it in the id.
           custom_id: `appeal:${guildId}:${since}`,
         },
       ],
@@ -114,7 +114,7 @@ export const appealButtons = {
  * Buttons under a fresh appeal, so staff can answer it where the rest of the
  * team can see the answer.
  *
- * The appealing member's id rides in the `custom_id` — the log entry lives in a
+ * The appealing member's id rides in the `custom_id`: the log entry lives in a
  * guild channel, and by the time somebody clicks, the DM that produced the
  * appeal is long gone.
  *
@@ -161,8 +161,8 @@ async function notifyMember(userId, body) {
 }
 
 /**
- * Records the decision in the log entry itself — title, colour, a resolution
- * field, buttons removed — so every moderator sees it, not just the clicker.
+ * Records the decision in the log entry itself: title, colour, a resolution
+ * field, buttons removed, so every moderator sees it, not just the clicker.
  * Same reasoning as the report buttons.
  *
  * @param {object} interaction
@@ -195,7 +195,7 @@ const DENIED_COLOR = 0x2c3e50;
  * (it shows a mistake was made and corrected) while taking them out of
  * `strikeCount` and therefore out of the escalation ladder.
  *
- * Scoped to the incident the appeal names — the enforcement pass that produced
+ * Scoped to the incident the appeal names: the enforcement pass that produced
  * the warning DM, carried through the `custom_id` since the DM itself is long
  * gone by then. Appealing one incident must not clear four earlier, correct
  * strikes; staff who mean *that* run `/mod forgive <user> strikes:true`.
@@ -248,7 +248,7 @@ async function decide(interaction, userId, since, granted) {
 
 // Fetching the member and sending a DM are two Discord round trips, which can
 // outlast the ~3 s interaction budget. Deferring the *update* acknowledges the
-// click and edits the entry afterwards — but only for staff, since after a
+// click and edits the entry afterwards, but only for staff, since after a
 // defer the response is public and a refusal would overwrite the entry.
 appealDecisions['appeal-grant'].deferred = (interaction) => mayModerate(interaction);
 appealDecisions['appeal-deny'].deferred = (interaction) => mayModerate(interaction);
@@ -273,7 +273,7 @@ export const appealModals = {
       { components: decisionButtons(member.id, since ?? 0) },
     );
 
-    // Metadata at info, the statement itself only at debug — same rule as
+    // Metadata at info, the statement itself only at debug: same rule as
     // everywhere else.
     logger.info({ guildId, userId: member.id, length: text.length, posted }, 'Appeal submitted');
     logger.debug({ userId: member.id, appeal: text }, 'Appeal text');

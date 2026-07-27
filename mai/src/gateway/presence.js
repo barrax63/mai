@@ -1,7 +1,7 @@
 /**
  * Rotating custom status for Mai. A random status is set on gateway ready and
  * replaced every PRESENCE_ROTATE_HOURS (immediate repeats avoided; 0 disables
- * rotation). Presence is gateway-side only — no Discord API rate limit
+ * rotation). Presence is gateway-side only: no Discord API rate limit
  * concerns at this frequency.
  */
 import { ActivityType } from 'discord.js';

@@ -107,7 +107,7 @@ async function reportFailure(client, row, error) {
  */
 async function processRow(client, row) {
   // A guild dropped from the allowlist gets no behavior at all, including
-  // pending enforcement — forget the row instead of acting in it.
+  // pending enforcement: forget the row instead of acting in it.
   if (!isGuildAllowed(row.guildId)) {
     logger.info(
       { messageId: row.messageId, guildId: row.guildId },
@@ -117,8 +117,8 @@ async function processRow(client, row) {
   }
 
   // Staff declared this channel off-limits after the message was flagged.
-  // Dropped rather than paused: an exemption is a statement about *scope* —
-  // "Mai does not moderate here" — so leaving her to delete a message in it
+  // Dropped rather than paused: an exemption is a statement about *scope*:
+  // "Mai does not moderate here", so leaving her to delete a message in it
   // later would contradict the setting they just made.
   if (isExemptChannel(row.guildId, row.channelId)) {
     logger.info(
@@ -160,13 +160,13 @@ async function processRow(client, row) {
     return reportFailure(client, row, error);
   }
 
-  // Capture before deleting — this content is only ever used for the DM and is
+  // Capture before deleting, this content is only ever used for the DM and is
   // never persisted. cleanContent resolves <@id>/<#id>/<@&id> to readable names.
   const record = {
     userId: row.userId,
     guildId: row.guildId,
     content: message.cleanContent ?? message.content ?? '',
-    // Count only — the attachments themselves are never fetched or stored.
+    // Count only: the attachments themselves are never fetched or stored.
     attachments: message.attachments?.size ?? 0,
     timestamp: message.createdAt,
     categories: row.categories,

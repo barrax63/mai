@@ -1,7 +1,7 @@
 /**
  * Sliding-window rate limiting, per key (usually a user id).
  *
- * Used wherever a member can make Mai spend something — model tokens for chat,
+ * Used wherever a member can make Mai spend something: model tokens for chat,
  * staff attention for reports and appeals. Buckets live in memory: a restart
  * forgives everyone, which is the right trade for limits this small.
  */
@@ -11,7 +11,7 @@ const SWEEP_AT_SIZE = 1000;
 
 /**
  * @param {{ max: number, windowMs: number, name: string, level?: 'info' | 'debug' }} options
- *   `level` is the level a refusal is logged at. Per-user limiters use `info` —
+ *   `level` is the level a refusal is logged at. Per-user limiters use `info`:
  *   a member hitting one is worth seeing. A limiter in front of a public HTTP
  *   endpoint must use `debug`: there, a refusal *per request* is exactly what a
  *   flood produces, and an info line each would turn the flood into a second

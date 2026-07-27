@@ -6,7 +6,7 @@
  * metadata only.
  *
  * **No tool takes arguments from the model.** Who is asking and where comes from
- * the interaction context the caller passes in, never from the completion — a
+ * the interaction context the caller passes in, never from the completion: a
  * model that could pass a user id could read another member's record.
  */
 import { config } from '../config.js';
@@ -49,7 +49,7 @@ export const toolDefinitions = Object.freeze([
 
 /**
  * Models render a bare ISO string as a date and drop the time, which is the one
- * part "wann ist das vorbei?" is actually about — so hand them both.
+ * part "wann ist das vorbei?" is actually about, so hand them both.
  *
  * @param {string | null} iso
  * @returns {string | null}
@@ -79,7 +79,7 @@ const handlers = {
       next_deletion_at: nextDueAt ?? null,
       next_deletion_local: localTime(nextDueAt),
       timezone: config.timezone,
-      // Enforced strikes on this server inside the escalation window — what
+      // Enforced strikes on this server inside the escalation window: what
       // decides whether the next one comes with a timeout.
       ...(guildId
         ? { strikes_in_window: strikeCount(guildId, userId, strikeWindowStart(guildId)) }

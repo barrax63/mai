@@ -27,7 +27,7 @@ const IMAGE_TYPES = /^image\/(png|jpeg|jpg|gif|webp)$/i;
 
 /**
  * Image attachments Mai may look at. Discord CDN links are what the API fetches,
- * so nothing is downloaded here — and nothing is stored either.
+ * so nothing is downloaded here, and nothing is stored either.
  *
  * @param {import('discord.js').Message} message
  * @returns {string[]}
@@ -92,7 +92,7 @@ const dmGateLimiter = createRateLimiter({ max: 3, windowMs: 60_000, name: 'dm-ga
 /**
  * Whether a direct-message author is allowed to talk to Mai: they must share at
  * least one whitelisted guild with the bot. A DM has no guildId, so the plain
- * allowlist cannot apply — this walks the whitelisted guilds and checks
+ * allowlist cannot apply, this walks the whitelisted guilds and checks
  * membership. Empty allowlist = every guild allowed, so DMs are open too.
  *
  * A single-member fetch by ID uses the REST API and does NOT need the
@@ -114,7 +114,7 @@ export async function isDmAuthorInAllowedGuild(message) {
   if (cached && cached.expiresAt > Date.now()) return cached.allowed;
 
   // Undecided and out of budget: refuse without asking Discord. Failing closed
-  // is right here — the fallback is "no DM", not "unmoderated DM".
+  // is right here: the fallback is "no DM", not "unmoderated DM".
   if (!dmGateLimiter.consume(userId)) {
     logger.debug({ authorId: userId }, 'DM membership check rate-limited, refusing');
     return false;
@@ -129,7 +129,7 @@ export async function isDmAuthorInAllowedGuild(message) {
       allowed = true;
       break;
     } catch {
-      // Unknown Member (not in this guild) or a transient fetch error — try
+      // Unknown Member (not in this guild) or a transient fetch error: try
       // the next whitelisted guild.
     }
   }
@@ -156,7 +156,7 @@ export async function isMaiChatTrigger(message) {
   const botId = message.client.user?.id;
   if (!botId) return false;
 
-  // A direct message is always addressed to Mai — no mention needed. Whether
+  // A direct message is always addressed to Mai: no mention needed. Whether
   // the author may DM at all (shared whitelisted guild) is enforced by the
   // caller (onMessageCreate) before this runs.
   if (!message.guildId) return true;

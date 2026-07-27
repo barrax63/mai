@@ -1,9 +1,9 @@
 /**
- * Welcomes new members in Mai's voice — in the channel configured with
+ * Welcomes new members in Mai's voice: in the channel configured with
  * `/mod config set welcome-channel`, or the guild's system channel.
  *
  * Requires the privileged "Server Members Intent" (Developer Portal -> Bot)
- * and DISCORD_WELCOME_ENABLED=true — the GuildMembers gateway intent is only
+ * and DISCORD_WELCOME_ENABLED=true: the GuildMembers gateway intent is only
  * requested when the flag is set (see gateway/client.js).
  */
 import { PermissionFlagsBits } from 'discord.js';

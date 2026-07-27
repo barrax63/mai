@@ -1,8 +1,8 @@
 /**
  * Moderation of edited messages: the hole the edit button used to be.
  *
- * Covers both directions — a harmless message edited into a violation, and a
- * flagged message edited back into something harmless — plus the update events
+ * Covers both directions: a harmless message edited into a violation, and a
+ * flagged message edited back into something harmless: plus the update events
  * that are not edits at all and must never reach the classifier.
  */
 import './setup-moderation.js';
@@ -188,7 +188,7 @@ test('a flagged message edited clean loses reaction, scold reply and queue row',
   assert.equal(verdict.action, 'cleared');
   assert.equal(findRow(messageId), null, 'the queue row is gone');
 
-  // No cached reaction on this message, so the removal takes the REST route —
+  // No cached reaction on this message, so the removal takes the REST route,
   // and it targets Mai's own reaction only.
   assert.equal(record.reactionRoutes.length, 1);
   assert.match(record.reactionRoutes[0], /\/@me$/);

@@ -9,7 +9,7 @@
  * in with a privileged intent that is not enabled in the portal fails.
  *
  * Direct messages arrive via the (non-privileged) DirectMessages intent plus
- * the Partials.Channel below — without the partial, discord.js drops events
+ * the Partials.Channel below: without the partial, discord.js drops events
  * for the uncached DM channel.
  */
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
@@ -101,7 +101,7 @@ export function createGatewayClient() {
     });
   });
 
-  // Edits go through moderation too — the same intents cover MESSAGE_UPDATE, so
+  // Edits go through moderation too: the same intents cover MESSAGE_UPDATE, so
   // this needs no extra Developer Portal toggle.
   client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
     onMessageUpdate(oldMessage, newMessage).catch((error) => {

@@ -2,7 +2,7 @@
  * The moderation log: an embed per action in a staff channel, so what Mai does
  * is visible without reading container logs.
  *
- * **Metadata only.** No message content ever goes here — a Discord channel is
+ * **Metadata only.** No message content ever goes here: a Discord channel is
  * permanent storage readable by everyone with access, which would undo the
  * project's no-content rule. The log carries ids, category slugs, timestamps
  * and (while the message still exists) a jump link; the offender's own warning
@@ -28,7 +28,7 @@ export const LOG_STUCK = 'stuck';
 export const LOG_ABANDONED = 'abandoned';
 export const LOG_TIMEOUT = 'timeout';
 export const LOG_TIMEOUT_FAILED = 'timeoutFailed';
-/** A `/mod config` or `/mod exempt` run — staff changing the rules on each other. */
+/** A `/mod config` or `/mod exempt` run: staff changing the rules on each other. */
 export const LOG_CONFIG = 'config';
 export const LOG_APPEAL_GRANTED = 'appealGranted';
 export const LOG_APPEAL_DENIED = 'appealDenied';
@@ -57,8 +57,8 @@ const MESSAGE_ALIVE = new Set([LOG_FLAGGED, LOG_REPORTED, LOG_CLEARED, LOG_STUCK
 
 /**
  * Every entry about a message renders it the same way, in the same position:
- * the id in a code span — copyable, and the only thing that still works once the
- * message is gone — plus a jump link while there is something to jump to.
+ * the id in a code span: copyable, and the only thing that still works once the
+ * message is gone: plus a jump link while there is something to jump to.
  *
  * Consistency is the point. Following one incident across
  * *markiert → gelöscht → Einspruch* should not mean hunting for the id in a
@@ -161,7 +161,7 @@ function fieldsFor(event) {
       ];
 
     case LOG_CONFIG:
-      // Setting names and their new values — all of them ids, numbers, booleans
+      // Setting names and their new values: all of them ids, numbers, booleans
       // and category slugs, so this stays inside the metadata-only rule.
       return [
         { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
@@ -206,7 +206,7 @@ export function buildLogEmbed(event) {
     color: COLORS[event.type] ?? 0x95a5a6,
     fields: fieldsFor(event).filter(Boolean),
     // No footer. The "metadata only" disclaimer was on every single entry and
-    // told staff nothing they act on — the rule it described is enforced in
+    // told staff nothing they act on: the rule it described is enforced in
     // code, not by saying so. The timestamp stays: when something happened is
     // the one thing a log entry always needs.
     timestamp: new Date().toISOString(),

@@ -1,8 +1,8 @@
 /**
  * Content classification: is this message a policy violation?
  *
- * The endpoint answers twice over — a `categories` map of booleans and a
- * `category_scores` map of numbers — and which of the two decides is a per-guild
+ * The endpoint answers twice over: a `categories` map of booleans and a
+ * `category_scores` map of numbers, and which of the two decides is a per-guild
  * choice (`policy`). Category slugs are metadata, never message content, so they
  * may be logged and stored; scores are metadata too but are only ever logged at
  * debug, because a score is a fact about the text.
@@ -20,8 +20,8 @@ const IMAGE_TYPES = /^image\/(png|jpeg|jpg|gif|webp)$/i;
  *
  *   - `threshold` above 0 replaces the provider's own `flagged` boolean with
  *     "any category scoring at least this much". That boolean is tuned for
- *     English — the same insult measures 0.88 in English and 0.20 in German
- *     against omni-moderation-latest — so a server that is not English-speaking
+ *     English: the same insult measures 0.88 in English and 0.20 in German
+ *     against omni-moderation-latest, so a server that is not English-speaking
  *     needs to be able to draw its own line.
  *   - `categories`, when non-empty, is an allowlist: everything outside it is
  *     ignored, so a server can drop a category without switching moderation off.
@@ -48,7 +48,7 @@ export function applyPolicy(verdict, policy = {}) {
   }
 
   // With a threshold the guild has taken the decision over from the provider,
-  // so its `flagged` no longer gets a vote — otherwise raising the threshold
+  // so its `flagged` no longer gets a vote, otherwise raising the threshold
   // could never make anything pass.
   const flagged = threshold > 0
     ? hits.length > 0

@@ -134,7 +134,7 @@ function account(entry) {
  *   Full message array including the system message; `tools` enables function
  *   calling for this call; `guildId` is for accounting only.
  * @returns {Promise<{ message: object, usage?: object }>} The assistant message
- *   verbatim — it may carry `tool_calls` instead of `content`, and it has to go
+ *   verbatim, it may carry `tool_calls` instead of `content`, and it has to go
  *   back into the next request unchanged.
  */
 export async function createChatCompletion({ messages, tools, guildId }) {

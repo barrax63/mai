@@ -1,7 +1,7 @@
 /**
  * The per-guild moderation policy: how hard Mai judges, and where she looks.
  *
- * Both exist because the provider's defaults are not universal — its `flagged`
+ * Both exist because the provider's defaults are not universal: its `flagged`
  * boolean is tuned for English, and no bot should be moderating a vent channel
  * just because it can read it.
  */

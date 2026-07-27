@@ -5,7 +5,7 @@
  * that takes longer (a model call, a Discord REST round trip) must answer with a
  * *deferred* response first and then edit that placeholder through the webhook
  * endpoints below. Those calls authenticate with the interaction token from the
- * payload — no bot token, no application id from config needed.
+ * payload: no bot token, no application id from config needed.
  */
 import { InteractionResponseType } from 'discord-interactions';
 import { logger } from '../logger.js';
@@ -33,13 +33,13 @@ export const messageResponse = (content, { ephemeral = false, components } = {})
   },
 });
 
-/** Same, but always ephemeral — the default for anything operational. */
+/** Same, but always ephemeral: the default for anything operational. */
 export const ephemeralResponse = (content, options = {}) =>
   messageResponse(content, { ...options, ephemeral: true });
 
 /**
  * Replaces the message a component belongs to (button click). Passing an empty
- * `components` array — the default — removes the buttons, which is how a
+ * `components` array (the default) removes the buttons, which is how a
  * one-shot action marks itself as done.
  *
  * @param {string | null} content
@@ -80,7 +80,7 @@ export const autocompleteResponse = (choices) => ({
 });
 
 /**
- * A modal is the one response that cannot be deferred — Discord opens it
+ * A modal is the one response that cannot be deferred: Discord opens it
  * immediately, so its handler must stay synchronous work only.
  *
  * @param {{ customId: string, title: string, components: object[] }} modal

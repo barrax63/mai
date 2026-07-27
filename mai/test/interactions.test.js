@@ -72,7 +72,7 @@ test('defers a slow command and edits the placeholder afterwards', async () => {
 
   const res = collector();
   try {
-    // CHAT_ENABLED=false, so /mai ask short-circuits without touching OpenAI —
+    // CHAT_ENABLED=false, so /mai ask short-circuits without touching OpenAI:
     // the deferral path itself is what this exercises.
     await routeInteraction(
       command('mai', [{ name: 'ask', options: [{ name: 'frage', value: 'Wo ist der Fisch?' }] }]),

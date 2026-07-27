@@ -8,7 +8,7 @@
  *     interleave their history reads and writes.
  *
  * The first two fail closed: the caller reacts with the "busy" emoji instead of
- * replying — a cat that cannot be bothered right now.
+ * replying: a cat that cannot be bothered right now.
  */
 import { config } from '../config.js';
 import { budgetState } from '../db/usage.js';
@@ -51,7 +51,7 @@ export function releaseSlot() {
 
 /**
  * Whether this month's token budget still allows a chat reply. Moderation is
- * never gated by this — safety is not a budget item, and the moderation
+ * never gated by this: safety is not a budget item, and the moderation
  * endpoint costs nothing anyway.
  *
  * @returns {boolean}

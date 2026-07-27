@@ -13,8 +13,8 @@
  * There is deliberately **no outbound screen on Mai's own replies.** Her persona
  * escalates with a member's open violations and at the top of that ladder she is
  * instructed to insult them outright ("Beleidigungen erwünscht" in
- * `chat.flagged.tones`). A classifier scores exactly that as harassment — the
- * tones measured 0.89–0.98 — so screening her output would replace the angry cat
+ * `chat.flagged.tones`). A classifier scores exactly that as harassment: the
+ * tones measured 0.89–0.98, so screening her output would replace the angry cat
  * with a canned line almost every time she is supposed to be angry. The
  * behaviour is the feature, and the guard against a prompt-injected model is the
  * prompt itself: see `fenced()` and `prompt.untrustedNotice` in `ai/chat.js`.

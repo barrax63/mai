@@ -1,6 +1,6 @@
 /**
  * Failure paths of the deferred command flow, with chat switched on so the
- * OpenAI client is really exercised — against a stubbed fetch, never the network.
+ * OpenAI client is really exercised: against a stubbed fetch, never the network.
  */
 import './setup-chat.js';
 import { interaction, openTestDatabase, stubFetch } from './setup.js';
