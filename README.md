@@ -25,10 +25,11 @@ Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) i
 - **Flagged** → warning reaction, a scold reply, and a queue row with a grace period.
 - **After the grace period** → messages the author did not delete themselves are removed and the author gets a warning DM. The scold reply is cleaned up either way.
 - **Edited** → re-classified, so the edit button is not a way past the check. The verdict cuts both ways: an edit that fixes a flagged message takes the warning reaction, the scold reply and the queue row back off it. Editing one violation into another refreshes the categories but keeps the original deadline.
+- **Mai's own replies** → classified before posting. She is the one account the pipeline above never sees, so this is what stops a prompt-injected model from saying anything through her.
 
 Every action can also be mirrored into a staff channel as an embed — metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)).
 
-Operators inspect and override with `/mod status`, `/mod forgive <user>` and `/mod config` (log channel, welcome channel, grace period — per server). Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
+Staff inspect and override with `/mod status`, `/mod forgive <user>` and `/mod config` (log channel, welcome channel, grace period — per server); everything they see and do is scoped to their own server. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
 
 ## Mai — the bot persona
 

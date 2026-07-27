@@ -117,12 +117,17 @@ export function deleteForUser(userId) {
 }
 
 /**
+ * @param {string} [guildId] Omit for the process-wide total (operators only).
+ *   Scoped, direct messages are excluded — they have no guild to belong to.
  * @returns {{ rows: number, channels: number }}
  */
-export function stats() {
+export function stats(guildId) {
   // `rows` is a SQLite keyword — alias around it.
-  const row = getDb()
-    .prepare('SELECT COUNT(*) AS row_count, COUNT(DISTINCT channel_id) AS channel_count FROM chat_history')
-    .get();
+  const columns = 'COUNT(*) AS row_count, COUNT(DISTINCT channel_id) AS channel_count';
+  const db = getDb();
+  const row = guildId
+    ? db.prepare(`SELECT ${columns} FROM chat_history WHERE guild_id = ?`).get(guildId)
+    : db.prepare(`SELECT ${columns} FROM chat_history`).get();
+
   return { rows: row.row_count, channels: row.channel_count };
 }

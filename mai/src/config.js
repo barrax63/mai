@@ -112,9 +112,29 @@ export const config = Object.freeze({
     // GuildMembers intent out of the login unless it is enabled in the
     // Developer Portal, otherwise the gateway connection is refused.
     welcomeEnabled: bool('DISCORD_WELCOME_ENABLED', 'false'),
+    // Whoever runs the bot itself, as opposed to whoever moderates a server
+    // that uses it. Only these ids see process-wide numbers in `/mod status`
+    // and `/mod spend`; everyone else sees their own guild. Empty = nobody, so
+    // the cross-guild view is off unless it is deliberately switched on.
+    operatorIds: new Set(
+      (optional('OPERATOR_USER_IDS', '') ?? '')
+        .split(',')
+        .map((id) => id.trim())
+        .filter(Boolean),
+    ),
   },
   http: {
     port: int('PORT', '3000', { min: 1 }),
+    // `/interactions` is reachable from the public internet through the tunnel,
+    // and every request costs an Ed25519 verification before anything can
+    // reject it. These two caps sit in front of that work. Real traffic is a
+    // handful of interactions a minute, so the defaults are far above normal
+    // use and only bite on a flood.
+    rateLimitMax: int('INTERACTIONS_RATE_LIMIT_MAX', '120', { min: 1 }),
+    rateLimitWindowMs: int('INTERACTIONS_RATE_LIMIT_WINDOW_MS', '60000', { min: 1000 }),
+    // Discord's own payloads are a few KB; this only stops someone streaming
+    // megabytes at the signature check.
+    maxBodyBytes: int('INTERACTIONS_MAX_BODY_BYTES', '65536', { min: 1024 }),
   },
   openai: {
     // Required as soon as moderation or chat is on; both call the API.
@@ -166,6 +186,10 @@ export const config = Object.freeze({
     // Function calling: lets her look up her own moderation queue and server
     // facts instead of inventing them.
     toolsEnabled: bool('CHAT_TOOLS_ENABLED', 'true'),
+    // Run Mai's own replies through the classifier before posting. She is the
+    // one account nothing else moderates, so this is what catches a
+    // prompt-injected model. Needs MODERATION_ENABLED.
+    screenReplies: bool('CHAT_SCREEN_REPLIES', 'true'),
     // Per-user token bucket: at most `rateLimitMax` replies per window.
     rateLimitMax: int('CHAT_RATE_LIMIT_MAX', '5', { min: 1 }),
     rateLimitWindowMs: int('CHAT_RATE_LIMIT_WINDOW_MS', '60000', { min: 1000 }),
@@ -209,6 +233,23 @@ export const config = Object.freeze({
  * @param {string|null|undefined} guildId
  * @returns {boolean}
  */
+/**
+ * Whether this user operates the bot itself (`OPERATOR_USER_IDS`).
+ *
+ * Distinct from Manage Messages, which makes someone staff *in one guild*.
+ * Mai serves several servers from one process, so the process-wide figures —
+ * total queue depth, total chat memory, the whole month's token spend — are
+ * other servers' data as far as a guild moderator is concerned. Only an
+ * operator sees them.
+ *
+ * @param {string|null|undefined} userId
+ * @returns {boolean}
+ */
+export function isOperator(userId) {
+  if (!userId) return false;
+  return config.discord.operatorIds.has(userId);
+}
+
 export function isGuildAllowed(guildId) {
   const { guildIds } = config.discord;
   if (guildIds.size === 0) return true;

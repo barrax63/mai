@@ -29,6 +29,7 @@ test('fill substitutes known placeholders and leaves unknown ones visible', () =
 
 test('fill is used by every command template that has placeholders', () => {
   const rendered = fill(content.commands.status.body, {
+    scope: '',
     queueDepth: 1,
     historyRows: 2,
     historyChannels: 3,
@@ -37,6 +38,21 @@ test('fill is used by every command template that has placeholders', () => {
     uptime: '1m',
   });
   assert.equal(/\{[a-z]/i.test(rendered), false, `unsubstituted placeholder in: ${rendered}`);
+});
+
+test('the spend template renders in both scopes', () => {
+  for (const scope of ['', ` ${content.commands.status.allGuilds}`]) {
+    const rendered = fill(content.commands.spend.body, {
+      scope,
+      todayCalls: 1,
+      todayTokens: 2,
+      monthCalls: 3,
+      monthTokens: 4,
+      budget: content.commands.spend.budgetHidden,
+      breakdown: content.commands.spend.nothing,
+    });
+    assert.equal(/\{[a-z]/i.test(rendered), false, `unsubstituted placeholder in: ${rendered}`);
+  }
 });
 
 test('pick returns a member of the list', () => {

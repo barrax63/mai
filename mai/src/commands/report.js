@@ -114,8 +114,28 @@ export const reportComponents = {
     let deleted = false;
     try {
       const channel = await getGatewayClient()?.channels?.fetch(channelId);
-      await channel?.messages?.delete(messageId);
-      deleted = true;
+
+      // The channel id travels in the custom_id, and Manage Messages was only
+      // checked against the guild the click came from. Discord will not let a
+      // member invent a custom_id today, but this handler deletes through the
+      // bot's own client, which reaches every guild Mai is in — so the target
+      // is proven to be in the clicker's guild rather than assumed. Same rule
+      // as forgetComponents: an id from the client names a target, it does not
+      // authorize one.
+      if (channel && channel.guildId !== interaction.guild_id) {
+        // Deliberately not an ephemeral refusal: for staff this handler is
+        // deferred, and a deferred response replaces the log entry itself. This
+        // falls through as a failed deletion so the outcome lands *in* the
+        // entry instead of overwriting it. `error` level, because reaching this
+        // means a forged component or a bug, never normal use.
+        logger.error(
+          { channelId, messageId, guildId: interaction.guild_id, byUserId: staff.id },
+          'Report approval targeted a channel outside the clicking guild',
+        );
+      } else {
+        await channel?.messages?.delete(messageId);
+        deleted = true;
+      }
     } catch (error) {
       // Already gone, or Mai lacks the permission — both are worth showing in
       // the entry rather than failing the click.

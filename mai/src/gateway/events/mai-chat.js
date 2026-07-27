@@ -17,6 +17,7 @@ import {
 import { config, isGuildAllowed } from '../../config.js';
 import { content } from '../../content.js';
 import { logger } from '../../logger.js';
+import { createRateLimiter } from '../../rate-limit.js';
 
 // Discord's typing indicator expires after ~10 s; refresh while the model call
 // is still running.
@@ -76,13 +77,28 @@ const threadTitle = (message) =>
   (message.channel?.isThread?.() ? message.channel.name : null) ?? null;
 
 /**
+ * Decided membership, cached so the gate is not a free REST call for anyone who
+ * can find the bot. A negative answer is held longer than a positive one: the
+ * cost of a stale "no" is that somebody who just joined waits a few minutes,
+ * while the cost of re-asking is a Discord round trip per guild per message.
+ */
+const DM_GATE_TTL_MS = { allowed: 10 * 60_000, denied: 30 * 60_000 };
+const dmGateCache = new Map();
+
+// Consumed only when the answer is *not* cached, so a stranger cannot make Mai
+// walk every whitelisted guild over and over just by typing.
+const dmGateLimiter = createRateLimiter({ max: 3, windowMs: 60_000, name: 'dm-gate' });
+
+/**
  * Whether a direct-message author is allowed to talk to Mai: they must share at
  * least one whitelisted guild with the bot. A DM has no guildId, so the plain
  * allowlist cannot apply — this walks the whitelisted guilds and checks
  * membership. Empty allowlist = every guild allowed, so DMs are open too.
  *
  * A single-member fetch by ID uses the REST API and does NOT need the
- * privileged GuildMembers intent (bulk fetches would).
+ * privileged GuildMembers intent (bulk fetches would). It is still a network
+ * call per guild, made *before* any chat rate limit applies, which is why the
+ * cache and the limiter above sit in front of it.
  *
  * @param {import('discord.js').Message} message
  * @returns {Promise<boolean>}
@@ -94,18 +110,40 @@ export async function isDmAuthorInAllowedGuild(message) {
   const userId = message.author?.id;
   if (!userId) return false;
 
+  const cached = dmGateCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) return cached.allowed;
+
+  // Undecided and out of budget: refuse without asking Discord. Failing closed
+  // is right here — the fallback is "no DM", not "unmoderated DM".
+  if (!dmGateLimiter.consume(userId)) {
+    logger.debug({ authorId: userId }, 'DM membership check rate-limited, refusing');
+    return false;
+  }
+
+  let allowed = false;
   for (const guildId of guildIds) {
     const guild = message.client.guilds.cache.get(guildId);
     if (!guild) continue; // bot is not in this whitelisted guild
     try {
       await guild.members.fetch(userId);
-      return true;
+      allowed = true;
+      break;
     } catch {
       // Unknown Member (not in this guild) or a transient fetch error — try
       // the next whitelisted guild.
     }
   }
-  return false;
+
+  dmGateCache.set(userId, {
+    allowed,
+    expiresAt: Date.now() + (allowed ? DM_GATE_TTL_MS.allowed : DM_GATE_TTL_MS.denied),
+  });
+  return allowed;
+}
+
+/** Test seam: the cache is process-lifetime state. */
+export function clearDmGateCache() {
+  dmGateCache.clear();
 }
 
 /**

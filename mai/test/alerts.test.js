@@ -41,8 +41,27 @@ test('an error log reaches the alert channel', async () => {
   assert.match(sent[0].content, /\*\*error\*\* — Something broke/);
   assert.match(sent[0].content, /messageId=m1/);
   assert.match(sent[0].content, /guildId=g1/);
-  assert.match(sent[0].content, /err=TypeError: boom/);
+  // The error's *name* identifies it; its message is free text that can quote
+  // config, a database value or a request body, and the alert channel is
+  // permanent Discord storage. It stays in the container log only.
+  assert.match(sent[0].content, /err=TypeError/);
+  assert.equal(sent[0].content.includes('boom'), false, 'no exception message in the channel');
   assert.deepEqual(sent[0].allowedMentions, { parse: [] });
+});
+
+test('machine-readable error codes still reach the channel', async () => {
+  const sent = captureAlerts();
+
+  const error = Object.assign(new Error('upstream said no'), {
+    name: 'OpenAiError',
+    status: 500,
+    code: 'http_error',
+  });
+  logger.error({ err: error }, 'OpenAI is unhappy');
+  await settle();
+
+  assert.match(sent[0].content, /err=OpenAiError status=500 code=http_error/);
+  assert.equal(sent[0].content.includes('upstream said no'), false);
 });
 
 test('info and warn stay out of the channel', async () => {

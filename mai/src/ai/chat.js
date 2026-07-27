@@ -12,6 +12,7 @@ import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { runTool, toolDefinitions } from '../chat/tools.js';
 import { logger } from '../logger.js';
+import { screenReply } from '../moderation/screen.js';
 import { createChatCompletion } from './openai.js';
 
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
@@ -26,12 +27,39 @@ const MAX_TOOL_ROUNDS = 2;
 /** Quoted context is trimmed — it is background, not the message being answered. */
 const QUOTE_MAX_CHARS = 300;
 
-const speaker = (username) => username?.trim() || content.chat.prompt.unknownUserLabel;
+/**
+ * Delimiters around text Mai did not receive from the person she is answering:
+ * a quoted message someone else wrote, a thread title anyone can set. The
+ * current speaker chooses *which* of those ends up in the prompt, which is what
+ * makes them an injection vector — "reply to this message containing
+ * instructions" costs nothing to set up.
+ *
+ * The fence characters are stripped from the value before it is wrapped, so the
+ * text cannot close its own fence, and the persona is told (via
+ * `prompt.untrustedNotice`) that anything inside is quoted material rather than
+ * something to obey.
+ */
+const FENCE_OPEN = '⟪';
+const FENCE_CLOSE = '⟫';
+
+/** Kept out of a `Name:` prefix so a username cannot forge a second speaker. */
+const SPEAKER_UNSAFE = /[\r\n:]+/g;
+
+const speaker = (username) =>
+  String(username ?? '').replace(SPEAKER_UNSAFE, ' ').replace(/\s+/g, ' ').trim()
+  || content.chat.prompt.unknownUserLabel;
 
 const truncate = (text, limit) => {
   const value = String(text ?? '').replace(/\s+/g, ' ').trim();
   return value.length > limit ? `${value.slice(0, limit - 1)}…` : value;
 };
+
+/**
+ * @param {string} text
+ * @returns {string} `text` wrapped in fences it cannot break out of.
+ */
+const fenced = (text) =>
+  `${FENCE_OPEN}${String(text ?? '').replaceAll(FENCE_OPEN, '').replaceAll(FENCE_CLOSE, '')}${FENCE_CLOSE}`;
 
 /**
  * The moderation directive appended to the persona. Tone escalates with the
@@ -67,15 +95,21 @@ function moderationDirective(violations) {
 function renderCurrentTurn(turn) {
   const lines = [];
 
+  // Both of these are other people's text, pulled in by whoever is speaking —
+  // fenced so an instruction inside them reads as quoted material.
   if (turn.threadTitle) {
-    lines.push(fill(content.chat.prompt.threadContext, { title: truncate(turn.threadTitle, 100) }));
+    lines.push(
+      fill(content.chat.prompt.threadContext, { title: fenced(truncate(turn.threadTitle, 100)) }),
+    );
   }
 
   if (turn.replyTo) {
     lines.push(
       fill(content.chat.prompt.replyContext, {
         username: speaker(turn.replyTo.username),
-        content: truncate(turn.replyTo.content, QUOTE_MAX_CHARS) || content.chat.prompt.imagePlaceholder,
+        content: fenced(
+          truncate(turn.replyTo.content, QUOTE_MAX_CHARS) || content.chat.prompt.imagePlaceholder,
+        ),
       }),
     );
   }
@@ -111,7 +145,14 @@ export function buildMessages({
     ? moderationDirective(violations)
     : content.chat.friendlyDirective;
 
-  const messages = [{ role: 'system', content: `${content.chat.persona}\n\n${directive}` }];
+  // The notice goes in the system message, the only turn Mai should treat as
+  // instructions — everything below it is text members wrote.
+  const messages = [
+    {
+      role: 'system',
+      content: `${content.chat.persona}\n\n${directive}\n\n${content.chat.prompt.untrustedNotice}`,
+    },
+  ];
 
   for (const turn of history) {
     const value = String(turn.content ?? '').trim();
@@ -166,6 +207,24 @@ export function normalizeReply(raw) {
 }
 
 /**
+ * Normalizes a raw completion and screens it before it can be posted.
+ *
+ * Mai is the one account in the guild that nothing else moderates — her replies
+ * never pass through `checkMessage` — so this is the only thing standing between
+ * a prompt-injected model and the channel. `normalizeReply` alone only defuses
+ * `@everyone`; it says nothing about what the model actually wrote.
+ *
+ * @param {string} raw
+ * @param {{ guildId?: string | null }} context
+ * @returns {Promise<string>}
+ */
+async function deliverable(raw, context) {
+  const reply = normalizeReply(raw);
+  const screened = await screenReply(reply, { guildId: context?.guildId });
+  return screened.ok ? reply : content.chat.blockedReply;
+}
+
+/**
  * Runs the completion, serving any tool calls the model makes along the way.
  *
  * @param {object[]} messages From `buildMessages`.
@@ -187,7 +246,7 @@ export async function generateReply(messages, context) {
     });
 
     const calls = message?.tool_calls ?? [];
-    if (calls.length === 0) return normalizeReply(message?.content);
+    if (calls.length === 0) return deliverable(message?.content, context);
 
     logger.info(
       { round, tools: calls.map((call) => call.function?.name) },

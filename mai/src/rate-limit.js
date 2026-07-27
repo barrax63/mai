@@ -10,10 +10,15 @@ import { logger } from './logger.js';
 const SWEEP_AT_SIZE = 1000;
 
 /**
- * @param {{ max: number, windowMs: number, name: string }} options
+ * @param {{ max: number, windowMs: number, name: string, level?: 'info' | 'debug' }} options
+ *   `level` is the level a refusal is logged at. Per-user limiters use `info` —
+ *   a member hitting one is worth seeing. A limiter in front of a public HTTP
+ *   endpoint must use `debug`: there, a refusal *per request* is exactly what a
+ *   flood produces, and an info line each would turn the flood into a second
+ *   one in the log (and write a client IP into it on every hit).
  * @returns {{ consume: (key: string) => boolean, size: () => number }}
  */
-export function createRateLimiter({ max, windowMs, name }) {
+export function createRateLimiter({ max, windowMs, name, level = 'info' }) {
   /** key -> timestamps (ms) of recent grants */
   const buckets = new Map();
 
@@ -35,7 +40,7 @@ export function createRateLimiter({ max, windowMs, name }) {
       const stamps = (buckets.get(key) ?? []).filter((stamp) => stamp > cutoff);
       if (stamps.length >= max) {
         buckets.set(key, stamps);
-        logger.info({ limiter: name, key, max, windowMs }, 'Rate limit hit');
+        logger[level]({ limiter: name, key, max, windowMs }, 'Rate limit hit');
         return false;
       }
 

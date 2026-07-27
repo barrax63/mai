@@ -51,38 +51,41 @@ const toTotals = (row) => ({
 
 /**
  * @param {string} prefix A day key (`2026-07-26`) or month key (`2026-07`).
+ * @param {string} [guildId] Omit for the process-wide total (operators only).
  * @returns {typeof EMPTY}
  */
-export function totalsFor(prefix) {
-  const row = getDb()
-    .prepare(
-      `SELECT SUM(calls) AS calls, SUM(prompt_tokens) AS prompt_tokens,
-              SUM(completion_tokens) AS completion_tokens, SUM(total_tokens) AS total_tokens
-       FROM usage_daily WHERE day LIKE ?`,
-    )
-    .get(`${prefix}%`);
+export function totalsFor(prefix, guildId) {
+  const columns = `SUM(calls) AS calls, SUM(prompt_tokens) AS prompt_tokens,
+                   SUM(completion_tokens) AS completion_tokens, SUM(total_tokens) AS total_tokens`;
+  const db = getDb();
+  const row = guildId
+    ? db.prepare(`SELECT ${columns} FROM usage_daily WHERE day LIKE ? AND guild_id = ?`)
+        .get(`${prefix}%`, guildId)
+    : db.prepare(`SELECT ${columns} FROM usage_daily WHERE day LIKE ?`).get(`${prefix}%`);
 
   return row?.calls == null ? { ...EMPTY } : toTotals(row);
 }
 
 /**
  * @param {string} prefix
+ * @param {string} [guildId] Omit for the process-wide breakdown (operators only).
  * @returns {{ purpose: string, model: string, calls: number, totalTokens: number }[]}
  */
-export function breakdownFor(prefix) {
-  return getDb()
-    .prepare(
-      `SELECT purpose, model, SUM(calls) AS calls, SUM(total_tokens) AS total_tokens
-       FROM usage_daily WHERE day LIKE ?
-       GROUP BY purpose, model ORDER BY SUM(total_tokens) DESC`,
-    )
-    .all(`${prefix}%`)
-    .map((row) => ({
-      purpose: row.purpose,
-      model: row.model,
-      calls: row.calls,
-      totalTokens: row.total_tokens,
-    }));
+export function breakdownFor(prefix, guildId) {
+  const columns = 'purpose, model, SUM(calls) AS calls, SUM(total_tokens) AS total_tokens';
+  const tail = 'GROUP BY purpose, model ORDER BY SUM(total_tokens) DESC';
+  const db = getDb();
+  const rows = guildId
+    ? db.prepare(`SELECT ${columns} FROM usage_daily WHERE day LIKE ? AND guild_id = ? ${tail}`)
+        .all(`${prefix}%`, guildId)
+    : db.prepare(`SELECT ${columns} FROM usage_daily WHERE day LIKE ? ${tail}`).all(`${prefix}%`);
+
+  return rows.map((row) => ({
+    purpose: row.purpose,
+    model: row.model,
+    calls: row.calls,
+    totalTokens: row.total_tokens,
+  }));
 }
 
 /**

@@ -145,28 +145,38 @@ export function openViolations(userId, limit = 20) {
 }
 
 /**
- * Drops every open violation of a user (the `/mai forgive` command). Returns the
+ * Drops a user's open violations **in one guild** (`/mod forgive`). Returns the
  * removed rows so their scold replies can be cleaned up.
  *
+ * Scoped deliberately, unlike `openViolations`: reading a member's own record
+ * across guilds is Mai having one memory, but *pardoning* is an exercise of
+ * authority, and a moderator's authority stops at their own server. Without the
+ * guild filter, staff in one guild could clear pending enforcement in another.
+ *
+ * @param {string} guildId
  * @param {string} userId
  * @returns {ReturnType<typeof toRow>[]}
  */
-export function forgiveUser(userId) {
+export function forgiveUser(guildId, userId) {
   const db = getDb();
   const rows = db
-    .prepare('SELECT * FROM moderation_queue WHERE user_id = ?')
-    .all(userId)
+    .prepare('SELECT * FROM moderation_queue WHERE guild_id = ? AND user_id = ?')
+    .all(guildId, userId)
     .map(toRow);
 
   if (rows.length > 0) {
-    db.prepare('DELETE FROM moderation_queue WHERE user_id = ?').run(userId);
+    db.prepare('DELETE FROM moderation_queue WHERE guild_id = ? AND user_id = ?').run(guildId, userId);
   }
   return rows;
 }
 
 /**
- * @returns {number} Total open violations across all users.
+ * @param {string} [guildId] Omit for the process-wide total (operators only).
+ * @returns {number} Open violations.
  */
-export function depth() {
-  return getDb().prepare('SELECT COUNT(*) AS count FROM moderation_queue').get().count;
+export function depth(guildId) {
+  const db = getDb();
+  return guildId
+    ? db.prepare('SELECT COUNT(*) AS count FROM moderation_queue WHERE guild_id = ?').get(guildId).count
+    : db.prepare('SELECT COUNT(*) AS count FROM moderation_queue').get().count;
 }

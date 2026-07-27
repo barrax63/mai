@@ -14,6 +14,7 @@ import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
+import { screenInput } from '../moderation/screen.js';
 import { ephemeralResponse, messageResponse, updateResponse } from '../interactions/respond.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
 
@@ -49,6 +50,21 @@ async function ask(interaction) {
   if (!question) return messageResponse(content.commands.ask.empty);
   if (!withinBudget()) return messageResponse(content.commands.ask.busy);
   if (!consumeRateLimit(user.id)) return messageResponse(content.commands.ask.busy);
+
+  // The answer quotes the question back into the channel, so this command makes
+  // Mai republish a member's text under her own name — the one path where a
+  // slash command posts publicly without the message pipeline ever seeing it.
+  // Screened before the model call so a refusal costs no tokens, and screened
+  // fail-closed (see moderation/screen.js).
+  const screened = await screenInput(question, { guildId: interaction.guild_id });
+  if (!screened.ok) {
+    logger.info(
+      { userId: user.id, guildId: interaction.guild_id, categories: screened.categories },
+      'Refused /mai ask: flagged question',
+    );
+    return messageResponse(content.commands.ask.refused);
+  }
+
   if (!acquireSlot()) return messageResponse(content.commands.ask.busy);
 
   try {

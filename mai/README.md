@@ -43,7 +43,8 @@ Every non-bot guild message with text content is classified when it is posted **
   Discord also fires `messageUpdate` for link previews resolving, pins and flag changes; those are filtered out by `edited_timestamp` plus a content comparison, so they never cost a classification call. Edits are moderation-only — retrofitting a mention into a message does not make Mai answer it. No extra intent or Developer Portal toggle is needed.
 - **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the message is looked up. Gone (author deleted it) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, the row dropped, and the author gets one DM per tick listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient) keeps the row for the next tick.
 - **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside `MODERATION_STRIKE_WINDOW_DAYS` picks a Discord timeout from the ladder (`MODERATION_TIMEOUT_LADDER`, default `0,10,60,1440` — nothing, 10 min, 1 h, then 24 h repeating). Escalation runs **once per member per tick**: three messages removed in one sweep is one incident. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design — Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped.
-- **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely.
+- **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely. Two paths deliberately fail **closed** instead, because there is no deletion to fall back on: an already-queued message being re-checked after an edit (see above), and a `/mai ask` question, which Mai would be republishing herself.
+- **Mai's own words are moderated too** ([src/moderation/screen.js](src/moderation/screen.js)) — she is the one account `checkMessage` never sees, so without this a prompt-injected model could say anything through her. Every reply is classified before it is posted (`CHAT_SCREEN_REPLIES`, one moderation call per reply); a flagged one is replaced with `chat.blockedReply`. `/mai ask` additionally screens the *question*, before the completion, because the answer quotes it back into the channel — that command was otherwise a way to publish arbitrary text past moderation under Mai's name.
 - **Image attachments** are only checked when `MODERATION_CLASSIFY_IMAGES=true`. While it is off, a message carrying *only* an image is not classified at all — there is no text to look at — so posting an image is a way around moderation. With it on, image URLs are sent to the moderation endpoint alongside any text (Discord's signed CDN links are fetched by OpenAI; nothing is downloaded or stored by Mai).
 - The queue holds **metadata only** — message text is never persisted. The content quoted in the warning DM is read from Discord at enforcement time.
 
@@ -51,9 +52,10 @@ Every non-bot guild message with text content is classified when it is posted **
 
 - **Chat** ([src/gateway/events/mai-chat.js](src/gateway/events/mai-chat.js), [src/chat/reply.js](src/chat/reply.js)): mentioning the bot, replying to one of its messages, or sending it a direct message makes Mai answer in character (`OPENAI_CHAT_MODEL` via `POST /chat/completions`). A typing indicator runs while the model call is in flight, and all pings inside the reply are suppressed via `allowedMentions` plus `@everyone`/`@here` neutralization.
   - Guild messages addressed to Mai are moderated **first**: a flagged message gets no chat answer — the scold reply takes its place, and the message never reaches the chat pipeline or the history table.
-  - **Direct messages** are always treated as addressed to Mai (no mention needed) and skip moderation, but only from an author who shares at least one `DISCORD_GUILD_IDS` guild with the bot (`isDmAuthorInAllowedGuild`, a per-guild `members.fetch`; empty allowlist = open). A DM has a `null` guild id; history is keyed per channel (a DM channel is stable per user).
+  - **Direct messages** are always treated as addressed to Mai (no mention needed) and skip moderation, but only from an author who shares at least one `DISCORD_GUILD_IDS` guild with the bot (`isDmAuthorInAllowedGuild`, a per-guild `members.fetch`; empty allowlist = open). A DM has a `null` guild id; history is keyed per channel (a DM channel is stable per user). The check runs before any chat rate limit, so its answer is cached per user — 10 minutes for a yes, 30 for a no — with a small per-user limiter behind the cache; otherwise a stranger's DM spam is a free Discord round trip per guild per message.
   - **Memory**: the last `CHAT_HISTORY_TURNS` turns of the channel are sent as a real `messages[]` array — one entry per turn with its own role, user turns prefixed with the speaker's name because a channel has many. Turns are stored in SQLite with `content` and `username` encrypted (AES-256-GCM, `CHAT_HISTORY_KEY`) and pruned after `CHAT_HISTORY_MAX_AGE_HOURS`. This is the only place message content is stored.
   - **Context Discord hides**: what a message replies to (quoted, truncated) and the thread it sits in are resolved and put in front of the current turn. Without them a reply reads as a non-sequitur. Neither is persisted — only what the member wrote themselves.
+  - **Prompt injection**: only the system message carries instructions, and it says so. Text the speaker merely *chose* to pull in — the quoted message, the thread title — is wrapped in `⟪…⟫`, with those characters stripped from the value first so it cannot close its own fence. Speaker labels have newlines and colons removed, so a username cannot forge a second `Name:` turn. The speaker's own message is deliberately not fenced: it is the thing being answered.
   - **Vision** (`CHAT_VISION_ENABLED`): image attachments on messages addressed to her are passed to the model as content parts, at most `CHAT_VISION_MAX_IMAGES` per message. Images are never stored; a picture-only message is remembered as a placeholder.
   - **Tools** (`CHAT_TOOLS_ENABLED`, [src/chat/tools.js](src/chat/tools.js)): `get_my_violations`, `get_server_info` and `get_current_time`. **No tool takes arguments from the model** — who is asking and where comes from the interaction context, so a model cannot read another member's record by naming them. At most two tool rounds, then the last call goes out without tools so she has to answer in words.
   - **Tone**: while the author has an open (un-enforced) violation in the queue — in *any* guild, DMs included — Mai turns aggressive, escalating with the number of open strikes. Enforcement (or `/mai forgive`) makes her friendly again.
@@ -68,14 +70,14 @@ Every non-bot guild message with text content is classified when it is posted **
 | Command | Who | Effect |
 |---------|-----|--------|
 | `/ping` | everyone | Liveness check (ephemeral) |
-| `/mai ask <frage>` | everyone | A public question to Mai, answered in character. Stateless: no channel history in the prompt, nothing written to her memory. Subject to the same rate limit as chat |
+| `/mai ask <frage>` | everyone | A public question to Mai, answered in character. Stateless: no channel history in the prompt, nothing written to her memory. Subject to the same rate limit as chat, and the question is classified before it is quoted back into the channel |
 | `/mai forget` | everyone | Wipes what Mai remembers about you, behind a confirmation button. Removes your own turns everywhere plus the full history of your DM channel with her |
-| `/mod status` | Manage Messages | Open violations, chat-memory size, last moderation tick, configured models, uptime (ephemeral) |
-| `/mod forgive <user> [strikes]` | Manage Messages | Drops that member's open violations and cleans up the scold replies; `strikes:true` also wipes their strike record, resetting the ladder |
+| `/mod status` | Manage Messages | Open violations and chat-memory size **for this server**, plus last moderation tick, configured models and uptime (ephemeral) |
+| `/mod forgive <user> [strikes]` | Manage Messages | Drops that member's open violations **in this server** and cleans up the scold replies; `strikes:true` also wipes their strike record, resetting the ladder |
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
 | `/mod config set [log-channel] [welcome-channel] [grace]` | Manage Messages | Sets any subset for this server |
 | `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
-| `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month, per purpose and model, against the budget |
+| `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month **for this server**, per purpose and model. The budget's figures are process-wide, so staff only learn whether it is exhausted |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
 | `Nachricht melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
 | `/mod off` / `/mod on` | Manage Messages | Kill switch: switches Mai off in this server completely, and back on |
@@ -159,12 +161,39 @@ place their text is quoted back. The embed footer says so, in the channel.
 Posting is best effort: a missing channel, a wrong channel type or a missing
 permission is logged locally and never breaks the moderation pipeline.
 
+### Two authority tiers
+
+Manage Messages makes someone staff **in their own server**. `OPERATOR_USER_IDS`
+is whoever runs the bot. Mai serves several servers out of one database, so
+every counter a command prints is filtered to the calling guild unless the
+caller is an operator — a guild's moderators are not auditors of the other
+servers Mai happens to run in. The same border applies to acting: `/mod forgive`
+only pardons in the server it was run in. The one deliberate exception is Mai's
+*chat* memory of a member's open violations, which stays cross-guild: her having
+one memory of someone is not the same as one server's staff reaching into
+another. Empty `OPERATOR_USER_IDS` means the cross-guild view is off entirely.
+
 ## Interaction handling
 
 Dispatch for everything arriving at `POST /interactions` lives in
 [src/interactions/router.js](src/interactions/router.js): pings, commands,
 autocomplete, component clicks (buttons, select menus) and modal submits. The
 guild allowlist is enforced there, once, for every kind.
+
+The endpoint is reachable from the public internet through the tunnel, and
+verifying an Ed25519 signature is the expensive part of handling a request — so
+two cheap caps run *before* it: a per-client rate limit
+(`INTERACTIONS_RATE_LIMIT_MAX` per window, keyed on `CF-Connecting-IP` since
+every request otherwise carries the cloudflared container's address) and a body
+size cap (`INTERACTIONS_MAX_BODY_BYTES`; a request without a `Content-Length` is
+refused rather than streamed). Refusals are logged at `debug`: at HTTP volume an
+`info` line per refusal would turn a flood into a second flood in the log.
+
+Component `custom_id`s carry state, but an id from the client only ever *names* a
+target — it never authorizes one. A handler acting for a user checks the id
+against the clicker (`/mai forget`), and one acting on a channel checks that the
+channel is in the clicker's guild (`report-approve`, since the bot's client can
+reach every server Mai is in).
 
 Discord expects the HTTP response within ~3 s. A handler that needs longer sets
 `deferred` and the router answers with a placeholder ("Mai is thinking…"), then
@@ -199,9 +228,11 @@ npm test        # node:test, no dependencies, no network
 ```
 
 `test/setup.js` fills the environment before `config.js` is imported and points
-the database at a throwaway file; `test/setup-chat.js` turns chat on for the one
-file that needs it. OpenAI and Discord are reached through a stubbed global
-`fetch`. Tests are not copied into the image — run them on the host.
+the database at a throwaway file; `test/setup-chat.js`, `test/setup-moderation.js`
+and `test/setup-security.js` turn the relevant features on for the files that
+need them, and must be imported *before* `setup.js`. OpenAI and Discord are
+reached through a stubbed global `fetch`. Tests are not copied into the image —
+run them on the host.
 
 ## Configuration
 

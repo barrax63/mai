@@ -6,7 +6,7 @@
  * is a UI default a server admin can widen.
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { config } from '../config.js';
+import { config, isOperator } from '../config.js';
 import { content, fill } from '../content.js';
 import { stats as historyStats } from '../db/history.js';
 import { depth, forgiveUser } from '../db/queue.js';
@@ -54,9 +54,26 @@ function formatUptime(seconds) {
     .join(' ');
 }
 
-function statusResponse() {
+/**
+ * The scope a caller may see. Manage Messages makes someone staff in *their*
+ * guild, not an auditor of every other server Mai runs in — so the counters are
+ * filtered to the calling guild unless the caller operates the bot itself.
+ *
+ * @param {object} interaction
+ * @returns {string | undefined} A guild id to filter by, or undefined for all.
+ */
+const visibleScope = (interaction) =>
+  isOperator(interaction.member?.user?.id ?? interaction.user?.id)
+    ? undefined
+    : interaction.guild_id;
+
+/**
+ * @param {object} interaction
+ */
+function statusResponse(interaction) {
   const enforcer = getEnforcerStatus();
-  const history = historyStats();
+  const scope = visibleScope(interaction);
+  const history = historyStats(scope);
 
   const lastTick = enforcer.lastTickAt
     // Discord renders this as a localized relative timestamp.
@@ -70,7 +87,11 @@ function statusResponse() {
 
   return ephemeralResponse(
     fill(content.commands.status.body, {
-      queueDepth: depth(),
+      // Enforcer health, uptime and the model names stay unscoped: they are
+      // facts about Mai herself, and every guild's staff needs to know whether
+      // she is alive. Only the counters are other servers' data.
+      scope: scope ? '' : ` ${content.commands.status.allGuilds}`,
+      queueDepth: depth(scope),
       historyRows: history.rows,
       historyChannels: history.channels,
       lastTick,
@@ -86,12 +107,13 @@ const formatNumber = (value) => new Intl.NumberFormat('de-DE').format(value ?? 0
  * `/mod spend` — what Mai has cost this month, from the usage the API already
  * reports back. Tokens, not currency: pricing changes and is per model.
  */
-function spendResponse() {
-  const today = totalsFor(dayKey());
-  const month = totalsFor(monthKey());
+function spendResponse(interaction) {
+  const scope = visibleScope(interaction);
+  const today = totalsFor(dayKey(), scope);
+  const month = totalsFor(monthKey(), scope);
   const { used, budget, exceeded } = budgetState();
 
-  const breakdown = breakdownFor(monthKey())
+  const breakdown = breakdownFor(monthKey(), scope)
     .map((row) =>
       fill(content.commands.spend.line, {
         purpose: row.purpose,
@@ -102,16 +124,24 @@ function spendResponse() {
     )
     .join('\n');
 
-  const budgetLine = budget > 0
-    ? fill(exceeded ? content.commands.spend.budgetExceeded : content.commands.spend.budgetOk, {
-        used: formatNumber(used),
-        budget: formatNumber(budget),
-        percent: Math.round((used / budget) * 100),
-      })
-    : content.commands.spend.budgetOff;
+  // The budget is a property of the process, so its numbers belong to whoever
+  // pays the bill. A guild's staff still gets told when it is exhausted — that
+  // is why Mai stopped talking to them — just not what the figures are.
+  const { spend } = content.commands;
+  let budgetLine = spend.budgetOff;
+  if (budget > 0) {
+    budgetLine = scope
+      ? (exceeded ? spend.budgetExceededShared : spend.budgetHidden)
+      : fill(exceeded ? spend.budgetExceeded : spend.budgetOk, {
+          used: formatNumber(used),
+          budget: formatNumber(budget),
+          percent: Math.round((used / budget) * 100),
+        });
+  }
 
   return ephemeralResponse(
     fill(content.commands.spend.body, {
+      scope: scope ? '' : ` ${content.commands.status.allGuilds}`,
       todayCalls: formatNumber(today.calls),
       todayTokens: formatNumber(today.totalTokens),
       monthCalls: formatNumber(month.calls),
@@ -236,25 +266,28 @@ function cleanUpScolds(rows) {
  * @param {object} interaction
  */
 function forgiveResponse(interaction) {
+  // A pardon is an act of authority, and authority stops at the guild border.
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
   const { options } = resolveSubcommand(interaction);
   const userId = optionValue(options, 'user');
   if (!userId) return ephemeralResponse(content.commands.error);
 
-  const rows = forgiveUser(String(userId));
+  const rows = forgiveUser(interaction.guild_id, String(userId));
   cleanUpScolds(rows);
 
   // Optional second step: also wipe the strike record, so the escalation ladder
   // starts from zero for this member in this guild.
-  const clearStrikes = optionValue(options, 'strikes') === true && interaction.guild_id;
+  const clearStrikes = optionValue(options, 'strikes') === true;
   const strikesCleared = clearStrikes ? clearForUser(interaction.guild_id, String(userId)) : 0;
 
   const actorId = interaction.member?.user?.id;
   logger.info(
-    { userId, forgiven: rows.length, strikesCleared, byUserId: actorId },
+    { guildId: interaction.guild_id, userId, forgiven: rows.length, strikesCleared, byUserId: actorId },
     'Forgave open violations',
   );
 
-  if (rows.length > 0 && interaction.guild_id) {
+  if (rows.length > 0) {
     // Detached: the interaction must be answered inside Discord's window.
     void postModerationLog(getGatewayClient(), {
       type: LOG_FORGIVEN,
@@ -536,7 +569,7 @@ export const mod = {
     if (name === 'off') return powerResponse(interaction, false);
     if (name === 'forgive') return forgiveResponse(interaction);
     if (name === 'history') return historyResponse(interaction);
-    if (name === 'spend') return spendResponse();
-    return statusResponse();
+    if (name === 'spend') return spendResponse(interaction);
+    return statusResponse(interaction);
   },
 };

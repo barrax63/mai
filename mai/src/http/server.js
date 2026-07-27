@@ -18,10 +18,77 @@ import { logger } from '../logger.js';
 import { pingDatabase } from '../db/index.js';
 import { routeInteraction } from '../interactions/router.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
+import { createRateLimiter } from '../rate-limit.js';
+
+const interactionsLimiter = createRateLimiter({
+  max: config.http.rateLimitMax,
+  windowMs: config.http.rateLimitWindowMs,
+  name: 'interactions',
+  level: 'debug',
+});
+
+/**
+ * Who to charge a request to.
+ *
+ * Everything arrives from the cloudflared container, so `req.ip` is the same
+ * value for every caller and would make a per-client limit meaningless.
+ * Cloudflare sets `CF-Connecting-IP` to the real client. That header is
+ * spoofable in general — here it is not reachable to spoof, because the port is
+ * published only on the internal `edge` network and cloudflared overwrites it —
+ * and a forged one only ever splits an attacker's own budget into more buckets,
+ * never borrows someone else's.
+ *
+ * @param {import('express').Request} req
+ * @returns {string}
+ */
+let warnedAboutSharedBucket = false;
+
+const clientKey = (req) => {
+  const forwarded = req.get('cf-connecting-ip');
+  if (forwarded) return forwarded;
+
+  // Without the header every caller lands in the same bucket, which turns a
+  // per-client limit into a global one — survivable, but the operator should
+  // know their limit is now shared across all traffic. Said once, not per
+  // request: this is a deployment fact, not an event.
+  if (!warnedAboutSharedBucket) {
+    warnedAboutSharedBucket = true;
+    logger.warn(
+      { limit: config.http.rateLimitMax },
+      'No CF-Connecting-IP on interactions: the rate limit is shared by all callers',
+    );
+  }
+  return req.ip || 'unknown';
+};
+
+/**
+ * Caps the request body before the signature check reads it. Discord sends a
+ * `Content-Length`; anything without one is refused rather than streamed.
+ */
+function limitBody(req, res, next) {
+  const declared = Number.parseInt(req.get('content-length') ?? '', 10);
+  if (!Number.isInteger(declared) || declared > config.http.maxBodyBytes) {
+    logger.debug({ declared, limit: config.http.maxBodyBytes }, 'Refused an oversized interaction body');
+    res.status(413).end();
+    return;
+  }
+  next();
+}
+
+/** Cheap gate in front of the Ed25519 verification. */
+function limitRate(req, res, next) {
+  if (!interactionsLimiter.consume(clientKey(req))) {
+    res.status(429).end();
+    return;
+  }
+  next();
+}
 
 export function createServer() {
   const app = express();
   app.disable('x-powered-by');
+  // cloudflared is the only thing that can reach this, so exactly one hop.
+  app.set('trust proxy', 1);
 
   // Landing page + assets. Static middleware only answers GET/HEAD and never
   // touches the request body, so the raw-body requirement of /interactions
@@ -69,6 +136,10 @@ export function createServer() {
   // may run before it on this route.
   app.post(
     '/interactions',
+    // Both run before verifyKeyMiddleware: the signature check is the expensive
+    // part, so a flood has to be turned away in front of it, not by it.
+    limitRate,
+    limitBody,
     verifyKeyMiddleware(config.discord.publicKey),
     async (req, res) => {
       // All routing lives in interactions/router.js; `send` is called exactly

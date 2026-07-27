@@ -26,7 +26,7 @@ updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL });
  * Captures what Mai posts to Discord, and lets a test drive the gateway client
  * the handlers reach for.
  */
-function stubGateway({ deleteFails = false } = {}) {
+function stubGateway({ deleteFails = false, channelGuildId = TEST_GUILD } = {}) {
   const sent = [];
   const deleted = [];
 
@@ -34,6 +34,9 @@ function stubGateway({ deleteFails = false } = {}) {
     channels: {
       fetch: async (id) => ({
         id,
+        // Which guild the channel is in — `report-approve` proves the target
+        // sits in the clicker's guild before deleting through it.
+        guildId: channelGuildId,
         isTextBased: () => true,
         send: async (payload) => sent.push({ channelId: id, ...payload }),
         messages: {
@@ -193,6 +196,32 @@ test('approving deletes the message and edits the entry for everyone', async () 
   assert.equal(resolution.name, content.moderation.log.fields.resolution);
   assert.match(resolution.value, new RegExp(`Gelöscht von <@${TEST_USER}>`));
   assert.equal(edited.embeds[0].fields[0].value, 'b', 'the original fields survive');
+});
+
+test('approval refuses a target channel outside the clicking guild', async () => {
+  // The channel id rides in the custom_id, but Manage Messages was only checked
+  // against the guild the click came from — so a target elsewhere must not be
+  // deleted through the bot's client, which can reach every guild Mai is in.
+  const { deleted } = stubGateway({ channelGuildId: '999999999999999999' });
+  const { edits } = await clickApprove(
+    interaction({
+      type: InteractionType.MESSAGE_COMPONENT,
+      member: member(TEST_USER, STAFF_PERMISSIONS),
+      message: { embeds: [{ title: 'x', fields: [] }] },
+      data: { custom_id: `report-approve:${CHANNEL}:${MESSAGE}`, component_type: 2 },
+    }),
+  );
+
+  assert.deepEqual(deleted, [], 'nothing was deleted in the other guild');
+
+  // Recorded in the entry rather than answered with a refusal: this handler is
+  // deferred for staff, so an ephemeral reply would overwrite the log entry.
+  const resolution = edits[0].body.embeds[0].fields.at(-1);
+  assert.equal(resolution.name, content.moderation.log.fields.resolution);
+  assert.equal(
+    resolution.value,
+    content.commands.report.approvedFailed.replace('{userId}', TEST_USER),
+  );
 });
 
 test('an undeletable message is recorded as such, not as a failure', async () => {

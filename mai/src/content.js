@@ -101,6 +101,8 @@ function loadContent() {
       persona: str(chat, ['chat', 'persona']).trim(),
       friendlyDirective: str(chat, ['chat', 'friendlyDirective']),
       fallbackReply: str(chat, ['chat', 'fallbackReply']),
+      // Posted instead of a reply the outbound classifier rejected.
+      blockedReply: str(chat, ['chat', 'blockedReply']),
       busyEmoji: str(chat, ['chat', 'busyEmoji']),
       flagged: Object.freeze({
         header: str(flagged, ['chat', 'flagged', 'header']),
@@ -115,6 +117,8 @@ function loadContent() {
         threadContext: str(prompt, ['chat', 'prompt', 'threadContext']),
         assistantLabel: str(prompt, ['chat', 'prompt', 'assistantLabel']),
         unknownUserLabel: str(prompt, ['chat', 'prompt', 'unknownUserLabel']),
+        // Appended to the system message: only that turn carries instructions.
+        untrustedNotice: str(prompt, ['chat', 'prompt', 'untrustedNotice']),
       }),
     }),
     moderation: Object.freeze({
@@ -198,6 +202,8 @@ function loadContent() {
         busy: str(ask, ['commands', 'ask', 'busy']),
         empty: str(ask, ['commands', 'ask', 'empty']),
         disabled: str(ask, ['commands', 'ask', 'disabled']),
+        // The question itself was flagged, so Mai will not repeat it.
+        refused: str(ask, ['commands', 'ask', 'refused']),
       }),
       forget: Object.freeze({
         confirm: str(forget, ['commands', 'forget', 'confirm']),
@@ -209,6 +215,8 @@ function loadContent() {
       status: Object.freeze({
         body: str(status, ['commands', 'status', 'body']),
         never: str(status, ['commands', 'status', 'never']),
+        // Marks a view whose counters span every guild (operators only).
+        allGuilds: str(status, ['commands', 'status', 'allGuilds']),
       }),
       forgive: Object.freeze({
         done: str(forgive, ['commands', 'forgive', 'done']),
@@ -232,6 +240,9 @@ function loadContent() {
         body: str(spend, ['commands', 'spend', 'body']),
         line: str(spend, ['commands', 'spend', 'line']),
         budgetOff: str(spend, ['commands', 'spend', 'budgetOff']),
+        // Shown instead of the figures when the caller is not an operator.
+        budgetHidden: str(spend, ['commands', 'spend', 'budgetHidden']),
+        budgetExceededShared: str(spend, ['commands', 'spend', 'budgetExceededShared']),
         budgetOk: str(spend, ['commands', 'spend', 'budgetOk']),
         budgetExceeded: str(spend, ['commands', 'spend', 'budgetExceeded']),
         nothing: str(spend, ['commands', 'spend', 'nothing']),
