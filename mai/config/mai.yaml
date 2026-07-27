@@ -70,6 +70,12 @@ moderation:
   # Grund im Log-Eintrag, wenn Discord den Timeout grundsätzlich verweigert:
   # Administrator*innen und Server-Inhaber*innen kann niemand stummschalten.
   timeoutImmune: 'Discord erlaubt keinen Timeout für Admins oder Server-Inhaber.'
+  # Grund, der im Discord-Audit-Log neben dem Timeout steht: sichtbar für alle,
+  # die das Audit-Log lesen dürfen. {strikes} = wievielter Verstoß,
+  # {categories} = die Kategorien dieses Vorfalls.
+  timeoutReason: 'Mai: {strikes}. Verstoß ({categories})'
+  # Statt der Kategorienliste, wenn der Vorfall keine benennt.
+  timeoutReasonUnknown: 'Regelverstoß'
   # Timestamp formatting of the warning DM. Empty = fall back to TZ.
   timezone: 'Europe/Berlin'
   # Markdown prefix of the scold reply ('# ' renders it as a headline).
@@ -181,6 +187,9 @@ commands:
   # A button whose handler no longer exists (older deploy) or whose message is
   # too old to act on.
   expired: '*gähnt* Das ist mir zu lange her. Ruf den Befehl nochmal auf.'
+  # /ping: the liveness check. {id} = the interaction id, so a reply can be
+  # matched to a request in the logs.
+  pong: 'Pong! (interaction {id})'
 
   # /mai ask: public question, public answer.
   ask:

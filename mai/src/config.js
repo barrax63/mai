@@ -118,6 +118,18 @@ const ratio = (name, fallback) => {
   }
 };
 
+/** A non-negative number of hours, fractional allowed. 0 = disabled. */
+const hours = (name, fallback) => {
+  const raw = optional(name, fallback);
+  const value = Number.parseFloat(raw);
+  if (!Number.isFinite(value) || value < 0) {
+    throw new Error(
+      `Environment variable ${name} must be a non-negative number of hours, got: ${raw}`,
+    );
+  }
+  return value;
+};
+
 const ladder = (name, fallback) => {
   try {
     return parseTimeoutLadder(optional(name, fallback), name);
@@ -275,9 +287,10 @@ export const config = Object.freeze({
     path: optional('MAI_CONFIG_PATH', fileURLToPath(new URL('../config/mai.yaml', import.meta.url))),
   },
   presence: {
-    // Hours between rotating custom statuses; 0 (or negative) = pick one
-    // status at startup and never rotate.
-    rotateHours: Number.parseFloat(optional('PRESENCE_ROTATE_HOURS', '3')),
+    // Hours between rotating custom statuses; 0 = pick one status at startup
+    // and never rotate. Validated like every other knob: a typo used to become
+    // NaN and silently disable rotation instead of failing at startup.
+    rotateHours: hours('PRESENCE_ROTATE_HOURS', '3'),
   },
   timezone: optional('TZ', 'UTC'),
   logLevel: optional('LOG_LEVEL', 'info'),
@@ -298,6 +311,13 @@ export const config = Object.freeze({
  * @param {string|null|undefined} guildId
  * @returns {boolean}
  */
+export function isGuildAllowed(guildId) {
+  const { guildIds } = config.discord;
+  if (guildIds.size === 0) return true;
+  if (!guildId) return true;
+  return guildIds.has(guildId);
+}
+
 /**
  * Whether this user operates the bot itself (`OPERATOR_USER_IDS`).
  *
@@ -313,11 +333,4 @@ export const config = Object.freeze({
 export function isOperator(userId) {
   if (!userId) return false;
   return config.discord.operatorIds.has(userId);
-}
-
-export function isGuildAllowed(guildId) {
-  const { guildIds } = config.discord;
-  if (guildIds.size === 0) return true;
-  if (!guildId) return true;
-  return guildIds.has(guildId);
 }

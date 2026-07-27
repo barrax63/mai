@@ -183,14 +183,19 @@ test('zero minutes never calls Discord', async () => {
   assert.equal(called, false);
 });
 
-test('a refused timeout is reported, not thrown', async () => {
+test('a refused timeout is reported, not thrown, and without the raw message', async () => {
+  const failure = Object.assign(new Error('Missing Permissions in #geheim-intern'), {
+    name: 'DiscordAPIError',
+    code: 50013,
+  });
+
   const client = {
     guilds: {
       fetch: async () => ({
         members: {
           fetch: async () => ({
             timeout: async () => {
-              throw new Error('Missing Permissions');
+              throw failure;
             },
           }),
         },
@@ -199,8 +204,17 @@ test('a refused timeout is reported, not thrown', async () => {
   };
 
   const result = await applyTimeout(client, { guildId: GUILD, userId: MEMBER, minutes: 10 });
-  assert.equal(result.applied, false);
-  assert.match(result.error, /Missing Permissions/);
+  assert.equal(result.applied, false, 'refused rather than thrown');
+
+  // `error` is shown in the guild's log channel, which is permanent Discord
+  // storage: the name and the code are actionable, the message is free text
+  // that can quote anything the failing call touched.
+  assert.equal(result.error, 'DiscordAPIError code=50013');
+  assert.equal(
+    result.error.includes('geheim-intern'),
+    false,
+    'the raw message must never reach the log channel',
+  );
 });
 
 test('/mod history shows the record and the next consequence', async () => {

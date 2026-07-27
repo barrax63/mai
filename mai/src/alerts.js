@@ -11,6 +11,7 @@
  * it needs at send time is pulled in dynamically.
  */
 import { config } from './config.js';
+import { describeError } from './errors.js';
 
 /** Only these keys are forwarded: the rest of a log record may carry content. */
 const SAFE_KEYS = [
@@ -56,21 +57,9 @@ function describeContext(record) {
   );
 
   const error = record.err ?? record.error;
-  if (error) {
-    // The name and the machine-readable codes only: never `error.message`.
-    // The alert channel is a Discord channel, so it is permanent storage
-    // readable by everyone with access, and an exception message is free text:
-    // a config parse error quotes the config, a database error can quote a
-    // value, a provider error can quote the request. The same reasoning already
-    // keeps content out of the moderation log. The full message stays in the
-    // container log, which is where an operator debugging this already is.
-    const name = error.name ?? error.constructor?.name ?? 'Error';
-    const codes = [
-      error.status !== undefined && `status=${truncate(error.status)}`,
-      error.code !== undefined && `code=${truncate(error.code)}`,
-    ].filter(Boolean);
-    parts.push(`err=${[name, ...codes].join(' ')}`);
-  }
+  // The name and the machine-readable codes only: never `error.message`. See
+  // errors.js for why, and for the moderation log that follows the same rule.
+  if (error) parts.push(`err=${describeError(error)}`);
 
   return parts.join(' ');
 }

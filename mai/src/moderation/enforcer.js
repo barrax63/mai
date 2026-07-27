@@ -13,6 +13,7 @@
  * depends on somebody talking to Mai.
  */
 import { config, isGuildAllowed } from '../config.js';
+import { content, fill } from '../content.js';
 import { pruneOlderThan } from '../db/history.js';
 import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
 import { isGuildActive, pausedGuildIds } from '../db/settings.js';
@@ -21,6 +22,7 @@ import {
   pruneOlderThan as pruneViolations,
   recordViolation,
 } from '../db/violations.js';
+import { describeError } from '../errors.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
 import { isExemptChannel, recordSelfDeletion } from './check.js';
@@ -76,7 +78,9 @@ async function reportFailure(client, row, error) {
     messageId: row.messageId,
     userId: row.userId,
     attempts,
-    reason: error?.message ?? String(error),
+    // Goes into the guild's log channel, so the name and the code only, never
+    // the message (errors.js). The full one is in the container log.
+    reason: describeError(error),
   };
 
   if (attempts >= GIVE_UP_AFTER_ATTEMPTS) {
@@ -265,7 +269,12 @@ async function escalate(client, groups) {
       continue;
     }
 
-    const reason = `Mai: ${strikes}. Verstoß (${group.categories.join(', ') || 'Regelverstoß'})`;
+    // Discord shows this next to the timeout in the audit log, so it is text
+    // Mai says: it lives in the YAML like everything else she says.
+    const reason = fill(content.moderation.timeoutReason, {
+      strikes,
+      categories: group.categories.join(', ') || content.moderation.timeoutReasonUnknown,
+    });
     const outcome = await applyTimeout(client, {
       guildId: group.guildId,
       userId: group.userId,

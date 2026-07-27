@@ -154,6 +154,27 @@ test('posting sends one embed with pings disabled', async () => {
   assert.deepEqual(sent[0].allowedMentions, { parse: [] });
 });
 
+test('a log channel in another guild is refused, not posted to', async () => {
+  updateSettings(GUILD, { 'log-channel': CHANNEL });
+
+  const sent = [];
+  const elsewhere = {
+    channels: {
+      // The bot's client reaches every guild Mai is in, so a stored id naming a
+      // channel in another one would publish this guild's moderation there.
+      fetch: async (id) => ({
+        id,
+        guildId: '999999999999999999',
+        isTextBased: () => true,
+        send: async (payload) => sent.push(payload),
+      }),
+    },
+  };
+
+  assert.equal(await postModerationLog(elsewhere, flagged), false);
+  assert.equal(sent.length, 0, 'nothing crosses the guild border');
+});
+
 test('a broken log channel is survivable', async () => {
   updateSettings(GUILD, { 'log-channel': CHANNEL });
 

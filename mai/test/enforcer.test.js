@@ -17,7 +17,7 @@ import './setup-enforcer.js';
 import { openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { enqueue, findRow, remove } from '../src/db/queue.js';
+import { bumpAttempts, enqueue, findRow, remove } from '../src/db/queue.js';
 import { resetSettings, updateSettings } from '../src/db/settings.js';
 import { clearOwnDeletions } from '../src/moderation/cleanup.js';
 import { runTick } from '../src/moderation/enforcer.js';
@@ -157,6 +157,31 @@ test('a directly exempted channel still drops its rows', async () => {
     assert.equal(findRow(messageId), null);
   } finally {
     resetSettings(TEST_GUILD, 'exempt-channels');
+  }
+});
+
+test('re-flagging a message does not forget how often it has already failed', () => {
+  const messageId = '950000000000000020';
+
+  // Cleaned up even when an assertion throws: the row is seeded overdue, and
+  // the per-tick cap here is 2, so one left behind would be enforced by the
+  // next test's runTick and fail it for reasons of its own.
+  try {
+    seed(messageId);
+    bumpAttempts(messageId);
+    bumpAttempts(messageId);
+    assert.equal(findRow(messageId).attempts, 2);
+
+    // Re-classification of the same message upserts the row. INSERT OR REPLACE
+    // is a delete plus an insert, which silently reset this counter, so a
+    // permanently stuck row could never reach the give-up threshold.
+    seed(messageId, { channelId: '940000000000000200' });
+
+    const row = findRow(messageId);
+    assert.equal(row.attempts, 2, 'the attempt count survives');
+    assert.equal(row.channelId, '940000000000000200', 'while the rest of the row is updated');
+  } finally {
+    remove(messageId);
   }
 });
 

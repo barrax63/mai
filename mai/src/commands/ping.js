@@ -1,3 +1,4 @@
+import { content, fill } from '../content.js';
 import { ephemeralResponse } from '../interactions/respond.js';
 
 /**
@@ -15,6 +16,6 @@ export const ping = {
    * @returns {object} Interaction response body.
    */
   execute(interaction) {
-    return ephemeralResponse(`Pong! (interaction ${interaction.id})`);
+    return ephemeralResponse(fill(content.commands.pong, { id: interaction.id }));
   },
 };

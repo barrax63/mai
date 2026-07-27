@@ -85,6 +85,22 @@ const threadTitle = (message) =>
 const DM_GATE_TTL_MS = { allowed: 10 * 60_000, denied: 30 * 60_000 };
 const dmGateCache = new Map();
 
+/**
+ * Entries expire but nothing ever removes them, so the map grows with every
+ * distinct person who has ever sent Mai a DM and never shrinks. Swept on write
+ * once it is large enough for that to matter, the same shape as the sweep in
+ * rate-limit.js: a periodic timer for this would be a timer that exists solely
+ * to walk a map that is usually tiny.
+ */
+const SWEEP_AT_SIZE = 1000;
+
+function sweepDmGate(now) {
+  if (dmGateCache.size <= SWEEP_AT_SIZE) return;
+  for (const [userId, entry] of dmGateCache) {
+    if (entry.expiresAt <= now) dmGateCache.delete(userId);
+  }
+}
+
 // Consumed only when the answer is *not* cached, so a stranger cannot make Mai
 // walk every whitelisted guild over and over just by typing.
 const dmGateLimiter = createRateLimiter({ max: 3, windowMs: 60_000, name: 'dm-gate' });
@@ -134,9 +150,11 @@ export async function isDmAuthorInAllowedGuild(message) {
     }
   }
 
+  const now = Date.now();
+  sweepDmGate(now);
   dmGateCache.set(userId, {
     allowed,
-    expiresAt: Date.now() + (allowed ? DM_GATE_TTL_MS.allowed : DM_GATE_TTL_MS.denied),
+    expiresAt: now + (allowed ? DM_GATE_TTL_MS.allowed : DM_GATE_TTL_MS.denied),
   });
   return allowed;
 }

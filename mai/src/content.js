@@ -123,6 +123,10 @@ function loadContent() {
     moderation: Object.freeze({
       warningEmoji: str(moderation, ['moderation', 'warningEmoji']),
       timeoutImmune: str(moderation, ['moderation', 'timeoutImmune']),
+      // Shown in Discord's audit log next to the timeout, so it is text Mai
+      // "says" and belongs here rather than in the enforcer.
+      timeoutReason: str(moderation, ['moderation', 'timeoutReason']),
+      timeoutReasonUnknown: str(moderation, ['moderation', 'timeoutReasonUnknown']),
       // Empty timezone = follow the container clock (TZ).
       timezone: typeof moderation.timezone === 'string' && moderation.timezone.trim()
         ? moderation.timezone.trim()
@@ -211,6 +215,7 @@ function loadContent() {
       paused: str(commands, ['commands', 'paused']),
       error: str(commands, ['commands', 'error']),
       expired: str(commands, ['commands', 'expired']),
+      pong: str(commands, ['commands', 'pong']),
       ask: Object.freeze({
         answer: str(ask, ['commands', 'ask', 'answer']),
         busy: str(ask, ['commands', 'ask', 'busy']),

@@ -30,8 +30,13 @@ const toRow = (row) => ({
 });
 
 /**
- * Adds (or replaces) a queue entry. Replacing keeps re-classification of the
- * same message idempotent instead of piling up duplicate rows.
+ * Adds (or updates) a queue entry, so re-classifying the same message stays
+ * idempotent instead of piling up duplicate rows.
+ *
+ * An upsert rather than INSERT OR REPLACE, which is a delete followed by an
+ * insert and therefore silently resets `attempts` to its column default. A row
+ * that is failing to enforce would forget how many times it had already tried
+ * and never reach the give-up threshold.
  *
  * @param {{ messageId: string, guildId: string, channelId: string, userId: string,
  *   categories: string[], warnedAt: string, dueAt: string, scoldMessageId?: string | null }} entry
@@ -39,9 +44,17 @@ const toRow = (row) => ({
 export function enqueue(entry) {
   getDb()
     .prepare(
-      `INSERT OR REPLACE INTO moderation_queue
+      `INSERT INTO moderation_queue
          (message_id, guild_id, channel_id, user_id, categories, warned_at, due_at, scold_message_id)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT (message_id) DO UPDATE SET
+         guild_id = excluded.guild_id,
+         channel_id = excluded.channel_id,
+         user_id = excluded.user_id,
+         categories = excluded.categories,
+         warned_at = excluded.warned_at,
+         due_at = excluded.due_at,
+         scold_message_id = excluded.scold_message_id`,
     )
     .run(
       entry.messageId,

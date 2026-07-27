@@ -12,6 +12,13 @@ import { logger } from '../logger.js';
 const STATUSES = content.presence.statuses;
 
 /**
+ * Node stores a timer delay in a 32-bit int. Anything larger overflows to 1 ms,
+ * so a generous PRESENCE_ROTATE_HOURS would rotate the status in a tight loop
+ * instead of rarely: the exact opposite of what was asked for. ~24.8 days.
+ */
+const MAX_INTERVAL_MS = 2_147_483_647;
+
+/**
  * @param {import('discord.js').Client<true>} client Ready client.
  */
 export function startPresenceRotation(client) {
@@ -40,7 +47,9 @@ export function startPresenceRotation(client) {
   rotate();
 
   const { rotateHours } = config.presence;
-  if (Number.isFinite(rotateHours) && rotateHours > 0) {
-    setInterval(rotate, rotateHours * 60 * 60 * 1000);
+  if (rotateHours > 0) {
+    const timer = setInterval(rotate, Math.min(rotateHours * 60 * 60 * 1000, MAX_INTERVAL_MS));
+    // Rotating a status is never a reason to keep the process alive.
+    timer.unref?.();
   }
 }

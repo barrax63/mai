@@ -12,6 +12,14 @@ import { startServer } from './http/server.js';
 import { startGateway, stopEnforcer } from './gateway/client.js';
 
 async function main() {
+  // Registered before anything can reject: opening the database and connecting
+  // the gateway are the two slowest steps of startup and the likeliest to fail,
+  // and a rejection during them used to go unhandled because the handler was
+  // installed after the awaits.
+  process.on('unhandledRejection', (reason) => {
+    logger.error({ err: reason }, 'Unhandled promise rejection');
+  });
+
   openDatabase();
 
   const server = await startServer();
@@ -44,10 +52,6 @@ async function main() {
 
   process.on('SIGTERM', () => shutdown('SIGTERM'));
   process.on('SIGINT', () => shutdown('SIGINT'));
-
-  process.on('unhandledRejection', (reason) => {
-    logger.error({ err: reason }, 'Unhandled promise rejection');
-  });
 }
 
 main().catch((error) => {

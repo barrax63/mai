@@ -239,6 +239,20 @@ export async function postModerationLog(client, event, { components } = {}) {
       return false;
     }
 
+    // The id comes out of that guild's own settings, and `/mod config set`
+    // takes it from a channel picker that only offers channels of the guild it
+    // was run in. But the fetch goes through the bot's client, which reaches
+    // every guild Mai is in, so a stored id that names a channel elsewhere
+    // would quietly publish one guild's moderation into another's. Proven
+    // rather than assumed, the same rule `report-approve` follows.
+    if (channel.guildId && event.guildId && channel.guildId !== event.guildId) {
+      logger.error(
+        { guildId: event.guildId, channelId: logChannelId, channelGuildId: channel.guildId },
+        'Configured moderation log channel belongs to a different guild, refusing to post',
+      );
+      return false;
+    }
+
     await channel.send({
       embeds: [buildLogEmbed(event)],
       ...(components ? { components } : {}),
