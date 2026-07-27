@@ -101,8 +101,6 @@ function loadContent() {
       persona: str(chat, ['chat', 'persona']).trim(),
       friendlyDirective: str(chat, ['chat', 'friendlyDirective']),
       fallbackReply: str(chat, ['chat', 'fallbackReply']),
-      // Posted instead of a reply the outbound classifier rejected.
-      blockedReply: str(chat, ['chat', 'blockedReply']),
       busyEmoji: str(chat, ['chat', 'busyEmoji']),
       flagged: Object.freeze({
         header: str(flagged, ['chat', 'flagged', 'header']),

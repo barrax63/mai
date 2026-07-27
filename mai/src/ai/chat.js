@@ -12,7 +12,6 @@ import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { runTool, toolDefinitions } from '../chat/tools.js';
 import { logger } from '../logger.js';
-import { screenReply } from '../moderation/screen.js';
 import { createChatCompletion } from './openai.js';
 
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
@@ -207,24 +206,6 @@ export function normalizeReply(raw) {
 }
 
 /**
- * Normalizes a raw completion and screens it before it can be posted.
- *
- * Mai is the one account in the guild that nothing else moderates — her replies
- * never pass through `checkMessage` — so this is the only thing standing between
- * a prompt-injected model and the channel. `normalizeReply` alone only defuses
- * `@everyone`; it says nothing about what the model actually wrote.
- *
- * @param {string} raw
- * @param {{ guildId?: string | null }} context
- * @returns {Promise<string>}
- */
-async function deliverable(raw, context) {
-  const reply = normalizeReply(raw);
-  const screened = await screenReply(reply, { guildId: context?.guildId });
-  return screened.ok ? reply : content.chat.blockedReply;
-}
-
-/**
  * Runs the completion, serving any tool calls the model makes along the way.
  *
  * @param {object[]} messages From `buildMessages`.
@@ -246,7 +227,7 @@ export async function generateReply(messages, context) {
     });
 
     const calls = message?.tool_calls ?? [];
-    if (calls.length === 0) return deliverable(message?.content, context);
+    if (calls.length === 0) return normalizeReply(message?.content);
 
     logger.info(
       { round, tools: calls.map((call) => call.function?.name) },

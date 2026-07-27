@@ -4,8 +4,9 @@
  *
  *   - `/mai ask` republishes a member's text under Mai's name, so the question
  *     is classified first — and fails closed, unlike the message pipeline.
+ *   - what Mai says herself is deliberately *not* classified: the persona is
+ *     built to insult repeat offenders, and a filter would eat exactly that.
  *   - a pardon and the operational counters stop at the guild border.
- *   - Mai's own replies are screened before they are posted.
  *   - the public interactions endpoint is capped before the signature check.
  */
 import './setup-security.js';
@@ -20,7 +21,7 @@ import { depth, enqueue, forgiveUser } from '../src/db/queue.js';
 import { recordUsage, totalsFor, dayKey } from '../src/db/usage.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { routeInteraction } from '../src/interactions/router.js';
-import { screenInput, screenReply } from '../src/moderation/screen.js';
+import { screenInput } from '../src/moderation/screen.js';
 
 await openTestDatabase();
 
@@ -80,24 +81,41 @@ test('screenInput fails closed when the classifier is unreachable', async () => 
   }
 });
 
-test('screenReply fails open — an outage must not silence her', async () => {
-  const restore = stubFetch(() => new Response('boom', { status: 500 }));
-  try {
-    assert.equal((await screenReply('miau', { guildId: TEST_GUILD })).ok, true);
-  } finally {
-    restore();
-  }
-});
+test('Mai is never classified on the way out', async () => {
+  // Her persona escalates into outright insults at the top of the ladder
+  // ("Beleidigungen erwünscht"), which a classifier scores as harassment
+  // 0.89-0.98 — screening her output would replace the angry cat with a canned
+  // line exactly when she is supposed to be angry. The guard against a
+  // prompt-injected model is the prompt, not a filter on the way out.
+  const { generateReply } = await import('../src/ai/chat.js');
 
-test('a flagged reply is blocked before it can be posted', async () => {
-  const restore = stubFetch(() => verdictResponse(true, ['hate']));
+  const calls = [];
+  const restore = stubFetch((url) => {
+    calls.push(url);
+    if (url.includes('/chat/completions')) {
+      return jsonResponse({
+        choices: [{ message: { content: '*faucht* Verschwinde, du Idiot.' } }],
+      });
+    }
+    return verdictResponse(true, ['harassment']);
+  });
+
+  let reply;
   try {
-    const screened = await screenReply('etwas schlimmes', { guildId: TEST_GUILD });
-    assert.equal(screened.ok, false);
-    assert.deepEqual(screened.categories, ['hate']);
+    reply = await generateReply([{ role: 'system', content: 'x' }], {
+      userId: MEMBER,
+      guildId: TEST_GUILD,
+    });
   } finally {
     restore();
   }
+
+  assert.equal(reply, '*faucht* Verschwinde, du Idiot.', 'posted verbatim');
+  assert.equal(
+    calls.some((url) => url.includes('/moderations')),
+    false,
+    'no outbound classification call at all',
+  );
 });
 
 // -------------------------------------------------------------------- fix 3

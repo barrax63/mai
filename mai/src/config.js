@@ -186,10 +186,6 @@ export const config = Object.freeze({
     // Function calling: lets her look up her own moderation queue and server
     // facts instead of inventing them.
     toolsEnabled: bool('CHAT_TOOLS_ENABLED', 'true'),
-    // Run Mai's own replies through the classifier before posting. She is the
-    // one account nothing else moderates, so this is what catches a
-    // prompt-injected model. Needs MODERATION_ENABLED.
-    screenReplies: bool('CHAT_SCREEN_REPLIES', 'true'),
     // Per-user token bucket: at most `rateLimitMax` replies per window.
     rateLimitMax: int('CHAT_RATE_LIMIT_MAX', '5', { min: 1 }),
     rateLimitWindowMs: int('CHAT_RATE_LIMIT_WINDOW_MS', '60000', { min: 1000 }),

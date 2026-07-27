@@ -1,19 +1,23 @@
 /**
- * Classifying text Mai is about to **say**, rather than text a member posted.
+ * Classifying text a member handed Mai to **repeat**.
  *
- * The message pipeline (`check.js`) judges what members write and can always
- * fall back on deleting it. Nothing here can: once Mai has posted, the text
- * carries her name. So both screens run before she speaks — with deliberately
- * different failure modes:
+ * `/mai ask` quotes the question back into the channel, which makes that command
+ * the one path where a member's words get published by the bot without the
+ * message pipeline ever seeing them. So the question is classified first.
  *
- *   - `screenInput` guards text a member handed her to repeat verbatim
- *     (`/mai ask` echoes the question back into the channel). Fails **closed**:
- *     without a verdict there is no evidence the text is safe, and unlike a
- *     posted message there is no deletion path to clean up afterwards. Refusing
- *     costs a member one command; failing open costs the guild a megaphone.
- *   - `screenReply` guards what the model produced. Fails **open**: the threat
- *     is a prompt-injected model rather than attacker text passed through
- *     unchanged, and a classifier outage should not silence Mai completely.
+ * Fails **closed**, unlike `check.js`. A posted message that slips through can
+ * still be deleted afterwards; text Mai has already repeated under her own name
+ * cannot be taken back the same way, and there is no queue row for it. Refusing
+ * costs a member one command.
+ *
+ * There is deliberately **no outbound screen on Mai's own replies.** Her persona
+ * escalates with a member's open violations and at the top of that ladder she is
+ * instructed to insult them outright ("Beleidigungen erwünscht" in
+ * `chat.flagged.tones`). A classifier scores exactly that as harassment — the
+ * tones measured 0.89–0.98 — so screening her output would replace the angry cat
+ * with a canned line almost every time she is supposed to be angry. The
+ * behaviour is the feature, and the guard against a prompt-injected model is the
+ * prompt itself: see `fenced()` and `prompt.untrustedNotice` in `ai/chat.js`.
  */
 import { classify } from '../ai/moderation.js';
 import { config } from '../config.js';
@@ -47,32 +51,5 @@ export async function screenInput(text, { guildId } = {}) {
       'Could not classify a question, refusing to repeat it',
     );
     return { ok: false, categories: [] };
-  }
-}
-
-/**
- * @param {string} reply
- * @param {{ guildId?: string | null }} [context]
- * @returns {Promise<{ ok: boolean, categories: string[] }>}
- */
-export async function screenReply(reply, { guildId } = {}) {
-  if (!config.chat.screenReplies) return CLEAN;
-  if (!config.moderation.enabled) return CLEAN;
-  if (!String(reply ?? '').trim()) return CLEAN;
-
-  try {
-    const verdict = await classify(reply, [], { guildId });
-    if (!verdict.flagged) return CLEAN;
-
-    // Mai is the one account nothing else moderates, so this is the only place
-    // a prompt-injected reply gets caught.
-    logger.warn(
-      { guildId, categories: verdict.categories },
-      'Blocked a flagged reply before posting it',
-    );
-    return { ok: false, categories: verdict.categories };
-  } catch (error) {
-    logger.warn({ guildId, err: error }, 'Could not screen a reply, posting it anyway');
-    return CLEAN;
   }
 }

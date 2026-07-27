@@ -60,9 +60,6 @@ chat:
 
   # Posted when the model returns nothing usable.
   fallbackReply: '*Mai starrt dich lange an, sagt aber nichts.* 🐾'
-  # Ersetzt eine Antwort, die die Ausgangsprüfung nicht bestanden hat
-  # (CHAT_SCREEN_REPLIES). Sagt bewusst nicht, was blockiert wurde.
-  blockedReply: '*faucht kurz und schüttelt den Kopf* Das sag ich nicht.'
   # Reaction instead of a reply when the user hit the rate limit or Mai is at
   # her concurrency cap — a cat that cannot be bothered right now.
   busyEmoji: '😴'

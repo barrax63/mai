@@ -25,7 +25,7 @@ Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) i
 - **Flagged** → warning reaction, a scold reply, and a queue row with a grace period.
 - **After the grace period** → messages the author did not delete themselves are removed and the author gets a warning DM. The scold reply is cleaned up either way.
 - **Edited** → re-classified, so the edit button is not a way past the check. The verdict cuts both ways: an edit that fixes a flagged message takes the warning reaction, the scold reply and the queue row back off it. Editing one violation into another refreshes the categories but keeps the original deadline.
-- **Mai's own replies** → classified before posting. She is the one account the pipeline above never sees, so this is what stops a prompt-injected model from saying anything through her.
+- **`/mai ask`** → the question is classified before Mai quotes it back into the channel. Her own replies are deliberately *not* classified: she is written to get ruder the more open violations someone has, and a filter would cut exactly that.
 
 Every action can also be mirrored into a staff channel as an embed — metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)).
 
