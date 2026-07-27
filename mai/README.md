@@ -7,7 +7,7 @@ Two connections to Discord run side by side:
 | Path | Transport | Purpose |
 |------|-----------|---------|
 | `POST /interactions` | HTTP (inbound via cloudflared) | Slash commands, signature-verified with the app public key |
-| Gateway | WebSocket (outbound) | `messageCreate` / `guildMemberAdd` events from every channel the bot can read |
+| Gateway | WebSocket (outbound) | `messageCreate` / `messageUpdate` / `guildMemberAdd` events from every channel the bot can read |
 
 The gateway connection is outbound, so message listening works even without the tunnel; cloudflared is only needed for the interactions endpoint.
 
@@ -30,10 +30,17 @@ src/commands/              slash commands (/ping, /mai)
 
 ## Moderation
 
-Every non-bot guild message with text content is classified ([src/moderation/check.js](src/moderation/check.js)):
+Every non-bot guild message with text content is classified when it is posted **and again when it is edited** ([src/moderation/check.js](src/moderation/check.js)):
 
 - **Guild allowlist** via `DISCORD_GUILD_IDS` (comma-separated IDs; empty = all guilds). This is the **whole-bot** gate, enforced once in `onMessageCreate` and in the interactions endpoint — in an un-listed guild Mai does nothing (no moderation, no chat, no reactions, no welcome, no slash-command response). Direct messages are never moderated (a bot cannot delete a DM) and are allowed only from users who share a listed guild with the bot (see Chat below).
 - **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
+- **Edits** ([src/gateway/events/message-update.js](src/gateway/events/message-update.js)) run through the same classifier via `recheckMessage`, because otherwise "post something harmless, then edit it" walks straight past the check. The verdict cuts both ways, since the message may already have a queue row:
+  - clean before, a violation now → flagged like any new message, with a fresh grace period;
+  - a violation before and still one → the categories are refreshed, the deadline is **not** — editing one slur into another must not buy more time — and the message is not scolded a second time;
+  - a violation before, clean now → the flag is taken back off entirely: Mai's warning reaction is removed, the scold reply is deleted, the queue row is dropped, and the log channel gets a *Vom Autor korrigiert* entry so a `flagged` entry never just evaporates. The correction is recorded in the strike history as `edited` and, like a self-deletion during the grace period, deliberately **does not** count towards escalation;
+  - classification unavailable → an unqueued message passes as usual, but a queued one **keeps its row**: no verdict is not the same as innocent.
+
+  Discord also fires `messageUpdate` for link previews resolving, pins and flag changes; those are filtered out by `edited_timestamp` plus a content comparison, so they never cost a classification call. Edits are moderation-only — retrofitting a mention into a message does not make Mai answer it. No extra intent or Developer Portal toggle is needed.
 - **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the message is looked up. Gone (author deleted it) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, the row dropped, and the author gets one DM per tick listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient) keeps the row for the next tick.
 - **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside `MODERATION_STRIKE_WINDOW_DAYS` picks a Discord timeout from the ladder (`MODERATION_TIMEOUT_LADDER`, default `0,10,60,1440` — nothing, 10 min, 1 h, then 24 h repeating). Escalation runs **once per member per tick**: three messages removed in one sweep is one incident. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design — Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped.
 - **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely.

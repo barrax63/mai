@@ -130,6 +130,7 @@ function loadContent() {
           flagged: str(logTitles, ['moderation', 'log', 'titles', 'flagged']),
           deleted: str(logTitles, ['moderation', 'log', 'titles', 'deleted']),
           selfDeleted: str(logTitles, ['moderation', 'log', 'titles', 'selfDeleted']),
+          cleared: str(logTitles, ['moderation', 'log', 'titles', 'cleared']),
           forgiven: str(logTitles, ['moderation', 'log', 'titles', 'forgiven']),
           reported: str(logTitles, ['moderation', 'log', 'titles', 'reported']),
           appealed: str(logTitles, ['moderation', 'log', 'titles', 'appealed']),
@@ -220,6 +221,7 @@ function loadContent() {
         actions: Object.freeze({
           deleted: str(historyActions, ['commands', 'history', 'actions', 'deleted']),
           self_deleted: str(historyActions, ['commands', 'history', 'actions', 'self_deleted']),
+          edited: str(historyActions, ['commands', 'history', 'actions', 'edited']),
         }),
         nextTimeout: str(history, ['commands', 'history', 'nextTimeout']),
         nextNothing: str(history, ['commands', 'history', 'nextNothing']),

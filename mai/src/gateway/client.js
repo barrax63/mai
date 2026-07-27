@@ -17,6 +17,7 @@ import { config } from '../config.js';
 import { logger } from '../logger.js';
 import { startEnforcer } from '../moderation/enforcer.js';
 import { onMessageCreate } from './events/message-create.js';
+import { onMessageUpdate } from './events/message-update.js';
 import { onGuildMemberAdd } from './events/guild-member-add.js';
 import { startPresenceRotation } from './presence.js';
 
@@ -96,6 +97,14 @@ export function createGatewayClient() {
   client.on(Events.MessageCreate, (message) => {
     onMessageCreate(message).catch((error) => {
       logger.error({ err: error, messageId: message.id }, 'messageCreate handler failed');
+    });
+  });
+
+  // Edits go through moderation too — the same intents cover MESSAGE_UPDATE, so
+  // this needs no extra Developer Portal toggle.
+  client.on(Events.MessageUpdate, (oldMessage, newMessage) => {
+    onMessageUpdate(oldMessage, newMessage).catch((error) => {
+      logger.error({ err: error, messageId: newMessage?.id }, 'messageUpdate handler failed');
     });
   });
 

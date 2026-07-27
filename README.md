@@ -20,10 +20,11 @@ OpenAI  ◀─────────HTTPS (outbound: /moderations, /chat/compl
 
 ## Moderation
 
-Every new message in an allowlisted guild (`DISCORD_GUILD_IDS`) is classified. Message content is never persisted — only IDs, category labels and timestamps:
+Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) is classified. Message content is never persisted — only IDs, category labels and timestamps:
 
 - **Flagged** → warning reaction, a scold reply, and a queue row with a grace period.
 - **After the grace period** → messages the author did not delete themselves are removed and the author gets a warning DM. The scold reply is cleaned up either way.
+- **Edited** → re-classified, so the edit button is not a way past the check. The verdict cuts both ways: an edit that fixes a flagged message takes the warning reaction, the scold reply and the queue row back off it. Editing one violation into another refreshes the categories but keeps the original deadline.
 
 Every action can also be mirrored into a staff channel as an embed — metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)).
 

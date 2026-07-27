@@ -77,6 +77,7 @@ moderation:
       flagged: '🟡 Nachricht markiert'
       deleted: '🔴 Nachricht gelöscht'
       selfDeleted: '🟢 Vom Autor selbst gelöscht'
+      cleared: '✅ Vom Autor korrigiert'
       forgiven: '🔵 Verstöße erlassen'
       reported: '🟣 Nachricht gemeldet'
       appealed: '🟪 Einspruch eingelegt'
@@ -213,6 +214,7 @@ commands:
     actions:
       deleted: 'gelöscht'
       self_deleted: 'selbst entfernt'
+      edited: 'korrigiert'
     nextTimeout: '{minutes} Minuten Timeout'
     nextNothing: 'kein Timeout'
     nextDisabled: 'kein Timeout (Eskalation ist aus)'

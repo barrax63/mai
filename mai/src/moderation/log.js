@@ -19,6 +19,8 @@ import { logger } from '../logger.js';
 export const LOG_FLAGGED = 'flagged';
 export const LOG_DELETED = 'deleted';
 export const LOG_SELF_DELETED = 'selfDeleted';
+/** The author edited the violation out of a flagged message. */
+export const LOG_CLEARED = 'cleared';
 export const LOG_FORGIVEN = 'forgiven';
 export const LOG_REPORTED = 'reported';
 export const LOG_APPEALED = 'appealed';
@@ -31,6 +33,7 @@ const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
   [LOG_DELETED]: 0xe74c3c,
   [LOG_SELF_DELETED]: 0x2ecc71,
+  [LOG_CLEARED]: 0x1abc9c,
   [LOG_FORGIVEN]: 0x3498db,
   [LOG_REPORTED]: 0x5865f2,
   [LOG_APPEALED]: 0x9b59b6,
@@ -81,6 +84,17 @@ function fieldsFor(event) {
 
     case LOG_SELF_DELETED:
       return [user, channel, { name: labels.categories, value: categories, inline: true }];
+
+    case LOG_CLEARED:
+      return [
+        user,
+        channel,
+        // What it *was* flagged for. The message itself still exists, so unlike
+        // the deleted cases the jump link still resolves — staff can see what
+        // the author replaced it with.
+        { name: labels.categories, value: categories, inline: true },
+        { name: labels.message, value: jumpLink(event), inline: true },
+      ];
 
     case LOG_FORGIVEN:
       return [

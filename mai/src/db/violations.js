@@ -10,6 +10,8 @@ import { getDb } from './index.js';
 
 export const ACTION_DELETED = 'deleted';
 export const ACTION_SELF_DELETED = 'self_deleted';
+/** The author edited the violation out of a flagged message during the grace period. */
+export const ACTION_EDITED = 'edited';
 
 const parseCategories = (value) => {
   try {

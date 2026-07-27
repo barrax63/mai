@@ -24,6 +24,7 @@ import {
 } from '../db/violations.js';
 import { logger } from '../logger.js';
 import { appealComponents } from './appeal.js';
+import { deleteMessageById } from './cleanup.js';
 import { applyTimeout, decideEscalation } from './escalation.js';
 import {
   LOG_ABANDONED,
@@ -56,24 +57,6 @@ const status = { lastTickAt: null, lastTickMs: null, running: false, lastError: 
  */
 export function getEnforcerStatus() {
   return { ...status };
-}
-
-/**
- * Deletes a message by id without fetching it first. Best effort — a manually
- * removed scold reply must never block queue cleanup.
- *
- * @param {import('discord.js').Client} client
- * @param {string} channelId
- * @param {string | null} messageId
- */
-async function deleteMessageById(client, channelId, messageId) {
-  if (!messageId) return;
-  try {
-    const channel = await client.channels.fetch(channelId);
-    await channel?.messages?.delete(messageId);
-  } catch (error) {
-    logger.debug({ channelId, messageId, err: error }, 'Deleting message failed');
-  }
 }
 
 /**

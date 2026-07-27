@@ -56,6 +56,36 @@ export function enqueue(entry) {
 }
 
 /**
+ * The pending row for one message, if it has one. Reading this is how the edit
+ * re-check tells "newly flagged" from "already flagged and still is".
+ *
+ * @param {string} messageId
+ * @returns {ReturnType<typeof toRow> | null}
+ */
+export function findRow(messageId) {
+  const row = getDb()
+    .prepare('SELECT * FROM moderation_queue WHERE message_id = ?')
+    .get(messageId);
+  return row ? toRow(row) : null;
+}
+
+/**
+ * Re-classification of an already-queued message came back with different
+ * categories. Only those are written: `warned_at` and `due_at` deliberately stay
+ * where they are, so editing one violation into another cannot buy a fresh grace
+ * period.
+ *
+ * @param {string} messageId
+ * @param {string[]} categories
+ * @returns {number} Rows changed.
+ */
+export function updateCategories(messageId, categories) {
+  return getDb()
+    .prepare('UPDATE moderation_queue SET categories = ? WHERE message_id = ?')
+    .run(JSON.stringify(categories ?? []), messageId).changes;
+}
+
+/**
  * Rows whose grace period has expired, oldest first.
  *
  * @param {string} nowIso
