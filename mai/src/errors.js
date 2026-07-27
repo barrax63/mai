@@ -58,8 +58,13 @@ export function explainError(error) {
   const code = error && typeof error === 'object' ? error.code : undefined;
   if (code === undefined || code === null) return describeError(error);
 
-  const known = content.moderation.errors[String(code)];
-  if (!known) return describeError(error);
+  // Own properties only. The code comes off an error object from Discord or
+  // from Node, so `constructor` or `toString` would otherwise resolve against
+  // Object.prototype and put a function into a log embed. Same rule as the
+  // tool table in chat/tools.js.
+  const key = String(code);
+  if (!Object.hasOwn(content.moderation.errors, key)) return describeError(error);
+  const known = content.moderation.errors[key];
 
   return fill(content.moderation.errorLine, { reason: known, code: short(code) });
 }

@@ -218,6 +218,28 @@ test('a refused timeout is reported, not thrown, and without the raw message', a
   );
 });
 
+test('an error code inherited from Object.prototype is not a mapped code', async () => {
+  // The code comes off an error object, so it is not ours. A plain property
+  // read on the map would answer for `constructor` with the Object function
+  // and render it into the log embed.
+  const client = {
+    guilds: {
+      fetch: async () => ({
+        members: {
+          fetch: async () => ({
+            timeout: async () => {
+              throw Object.assign(new Error('boom'), { name: 'WeirdError', code: 'constructor' });
+            },
+          }),
+        },
+      }),
+    },
+  };
+
+  const result = await applyTimeout(client, { guildId: GUILD, userId: MEMBER, minutes: 10 });
+  assert.equal(result.error, 'WeirdError code=constructor');
+});
+
 test('an unmapped error code degrades to the name and the code, never the message', async () => {
   const client = {
     guilds: {

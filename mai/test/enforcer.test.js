@@ -19,6 +19,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bumpAttempts, enqueue, findRow, remove } from '../src/db/queue.js';
 import { resetSettings, updateSettings } from '../src/db/settings.js';
+import { historyFor } from '../src/db/violations.js';
 import { clearOwnDeletions } from '../src/moderation/cleanup.js';
 import { runTick } from '../src/moderation/enforcer.js';
 
@@ -220,6 +221,57 @@ test('a member enforced in two guilds gets one DM per guild, not one merged one'
   } finally {
     resetSettings(TEST_GUILD, 'log-channel');
     resetSettings(OTHER_GUILD, 'log-channel');
+  }
+});
+
+test('a paused guild that also left the allowlist still has its rows dropped', async () => {
+  clearOwnDeletions();
+  const messageId = '950000000000000030';
+
+  // Both at once. The allowlist check runs before the pause check, so these
+  // rows must still reach processRow: excluding every paused guild from the
+  // due query would strand them in the database for good.
+  const stranger = '333333333333333333';
+  updateSettings(stranger, { enabled: false });
+
+  try {
+    seed(messageId, { guildId: stranger });
+
+    const { client, record } = fakeClient();
+    await runTick(client);
+
+    assert.equal(findRow(messageId), null, 'dropped, because the guild is no longer allowlisted');
+    assert.equal(record.deleted.length, 0, 'and nothing was enforced in it on the way out');
+  } finally {
+    remove(messageId);
+  }
+});
+
+test('a channel that holds no messages is a failure, not a self-deletion', async () => {
+  clearOwnDeletions();
+  const messageId = '950000000000000031';
+
+  try {
+    seed(messageId);
+
+    // Resolves, but is a category or a voice channel: no `messages` on it.
+    const { client, record } = fakeClient();
+    client.channels.fetch = async (channelId) => ({ id: channelId, parentId: null });
+
+    await runTick(client);
+
+    const row = findRow(messageId);
+    assert.ok(row, 'the row is kept for the next tick');
+    assert.equal(row.attempts, 1, 'counted as an attempt, so it can give up eventually');
+    assert.equal(record.deleted.length, 0);
+
+    // The decisive part: recording this as the author having deleted their own
+    // message would quietly downgrade a strike.
+    const recorded = historyFor(TEST_GUILD, TEST_USER, 50)
+      .filter((entry) => entry.messageId === messageId);
+    assert.deepEqual(recorded, [], 'nothing goes on the record');
+  } finally {
+    remove(messageId);
   }
 });
 

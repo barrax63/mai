@@ -162,9 +162,21 @@ async function processRow(client, row) {
   let channel = null;
   try {
     channel = await client.channels.fetch(row.channelId);
-    if (!channel?.messages) throw Object.assign(new Error('Channel has no messages'), { code: UNKNOWN_CHANNEL });
   } catch (error) {
     return handleLookupError(client, row, error);
+  }
+
+  // Resolved, but not something messages live in (a category, a voice channel,
+  // a forum's parent). Deliberately *not* thrown as UNKNOWN_CHANNEL: that code
+  // means "the author deleted it" and would record a self-deletion, silently
+  // downgrading a strike over what is really an unenforceable row. Reported as
+  // the failure it is, so it counts attempts and eventually gives up.
+  if (!channel?.messages) {
+    return reportFailure(
+      client,
+      row,
+      Object.assign(new Error('Channel holds no messages'), { code: 'not_text_channel' }),
+    );
   }
 
   // Staff declared this channel off-limits after the message was flagged.
@@ -347,7 +359,11 @@ export async function runTick(client) {
   // Paused guilds are excluded from the query rather than skipped per row: their
   // rows are kept indefinitely by design, and being oldest-first they would
   // otherwise occupy the cap on every tick and starve every other guild.
-  const paused = pausedGuildIds();
+  // Only guilds that are *still allowlisted*. A guild that is both paused and
+  // no longer allowlisted has to stay in the query: `processRow` checks the
+  // allowlist before the pause and drops those rows, and skipping them here
+  // would strand them in the database forever.
+  const paused = pausedGuildIds().filter((guildId) => isGuildAllowed(guildId));
   const overdue = dueCount(now.toISOString(), paused);
   if (overdue > config.moderation.maxRowsPerTick) {
     logger.warn(

@@ -218,7 +218,10 @@ export function pausedGuildIds() {
  * @throws {RangeError} On an out-of-range value.
  */
 export function updateSettings(guildId, patch, actorId) {
-  const entries = Object.entries(patch).filter(([name]) => name in SETTINGS);
+  // `Object.hasOwn`, not `in`: `in` walks the prototype chain, so a patch key
+  // of `constructor` would pass the filter and then contribute `undefined` as
+  // a column name to the statement below.
+  const entries = Object.entries(patch).filter(([name]) => Object.hasOwn(SETTINGS, name));
   if (entries.length === 0) return effectiveSettings(guildId);
 
   const columns = entries.map(([name]) => SETTINGS[name].column);

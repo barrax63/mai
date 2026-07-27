@@ -171,8 +171,12 @@ function routeAutocomplete(interaction, send) {
 
   // Same two gates as every other kind, answered in this one's protocol: an
   // un-listed or paused guild gets no suggestions rather than a message, which
-  // Discord would reject outright.
-  if (refusalReason(interaction, logContext)) return send(autocompleteResponse([]));
+  // Discord would reject outright. `allowMod` matches routeCommand: `/mod`
+  // keeps working while a guild is paused, so its suggestions have to as well,
+  // or the way back on is a command whose options will not complete.
+  if (refusalReason(interaction, logContext, { allowMod: true })) {
+    return send(autocompleteResponse([]));
+  }
 
   const command = commandHandlers.get(interaction.data?.name);
   if (typeof command?.autocomplete !== 'function') {

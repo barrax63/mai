@@ -210,6 +210,17 @@ test('autocomplete passes the same guild gates as every other interaction kind',
       const paused = await suggest();
       assert.equal(paused.type, InteractionResponseType.APPLICATION_COMMAND_AUTOCOMPLETE_RESULT);
       assert.deepEqual(paused.data.choices, [], 'a paused guild gets nothing either');
+
+      // …except /mod, which stays usable while paused so a server can switch
+      // Mai back on. Suggestions have to follow the command: an option that
+      // will not complete is a command that cannot be typed.
+      commandHandlers.get('mod').autocomplete = () => choices;
+      try {
+        const staff = await suggest({ data: { name: 'mod' } });
+        assert.deepEqual(staff.data.choices, choices, '/mod still completes while paused');
+      } finally {
+        delete commandHandlers.get('mod').autocomplete;
+      }
     } finally {
       updateSettings(TEST_GUILD, { enabled: true });
     }
