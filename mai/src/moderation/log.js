@@ -72,8 +72,10 @@ function messageField(event) {
 
   const id = `\`${event.messageId}\``;
   const link = `https://discord.com/channels/${event.guildId}/${event.channelId}/${event.messageId}`;
+  // The link goes on its own line: an id is nearly as wide as the column, so
+  // side by side the link wraps mid-phrase.
   const value = MESSAGE_ALIVE.has(event.type)
-    ? `${id} · [${content.moderation.log.jump}](${link})`
+    ? `${id}\n[${content.moderation.log.jump}](${link})`
     : id;
 
   return { name: content.moderation.log.fields.message, value, inline: true };

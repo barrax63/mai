@@ -44,7 +44,7 @@ test('a flagged entry carries ids, categories, deadline and a jump link', () => 
   // The id first, always, then a jump link while the message still exists.
   assert.equal(
     fieldValue(embed, labels.message),
-    `\`${MESSAGE}\` · [${content.moderation.log.jump}](https://discord.com/channels/${GUILD}/${CHANNEL}/${MESSAGE})`,
+    `\`${MESSAGE}\`\n[${content.moderation.log.jump}](https://discord.com/channels/${GUILD}/${CHANNEL}/${MESSAGE})`,
   );
   assert.equal(embed.footer, undefined, 'no boilerplate footer on every entry');
   assert.ok(embed.timestamp, 'but a log entry still says when');
