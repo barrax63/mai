@@ -446,6 +446,9 @@ export const config = Object.freeze({
     // or 'reset' (also removes the guild nickname). Needs the GuildMembers
     // intent, which is why anything but 'off' requests it (see `discord` above).
     nameCheck: nameCheckMode,
+    // Classify and report, but never act: the way to pick a threshold without
+    // tuning it by deletion. Per server: /mod config set shadow.
+    shadow: bool('MODERATION_SHADOW', 'false'),
   },
   chat: {
     enabled: chatEnabled,

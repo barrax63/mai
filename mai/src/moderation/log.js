@@ -39,6 +39,11 @@ export const LOG_DEGRADED = 'degraded';
 export const LOG_RECOVERED = 'recovered';
 /** A member's display name is the violation, which no message rule can see. */
 export const LOG_NAME_FLAGGED = 'nameFlagged';
+/** Shadow mode: what Mai *would* have done, with the score that decided it. */
+export const LOG_SHADOW = 'shadow';
+/** Staff acted through Mai themselves: a manual deletion or warning. */
+export const LOG_MANUAL_DELETE = 'manualDelete';
+export const LOG_WARNED = 'warned';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
@@ -59,12 +64,15 @@ const COLORS = {
   [LOG_DEGRADED]: 0xe67e22,
   [LOG_RECOVERED]: 0x2ecc71,
   [LOG_NAME_FLAGGED]: 0xd35400,
+  [LOG_SHADOW]: 0x95a5a6,
+  [LOG_MANUAL_DELETE]: 0xc0392b,
+  [LOG_WARNED]: 0xf39c12,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
 
 /** Kinds where the message still exists, so a jump link resolves. */
-const MESSAGE_ALIVE = new Set([LOG_FLAGGED, LOG_REPORTED, LOG_CLEARED, LOG_STUCK]);
+const MESSAGE_ALIVE = new Set([LOG_FLAGGED, LOG_REPORTED, LOG_CLEARED, LOG_STUCK, LOG_SHADOW]);
 
 /**
  * Every entry about a message renders it the same way, in the same position:
@@ -216,6 +224,30 @@ function fieldsFor(event) {
     // which is both the evidence and always up to date.
     case LOG_NAME_FLAGGED:
       return [...head, categoryField, ...resolution];
+
+    // Shadow mode: nothing happened, and the score that would have made it
+    // happen is the whole point of the entry. Only the highest one, like the
+    // debug log: a full vector is a profile of the message.
+    case LOG_SHADOW:
+      return [
+        ...head,
+        categoryField,
+        {
+          name: labels.score,
+          value: event.topScore ? event.topScore.toFixed(2) : none,
+          inline: true,
+        },
+      ];
+
+    // Staff acting through Mai: who did it, and (for a warning) why.
+    case LOG_MANUAL_DELETE:
+    case LOG_WARNED:
+      return [
+        ...head,
+        { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
+        ...reason,
+        ...resolution,
+      ];
 
     // Moderation is failing open in this guild: `attempts` is the streak of
     // consecutive failures, `reason` the error in words (never its message).

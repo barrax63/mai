@@ -6,27 +6,45 @@
  * is a UI default a server admin can widen.
  */
 import { PermissionFlagsBits } from 'discord.js';
+import { simulate } from '../ai/moderation.js';
 import { config, isOperator, LINK_POLICIES, NAME_CHECKS } from '../config.js';
 import { content, fill } from '../content.js';
+import { describeError } from '../errors.js';
 import { clearForUser as clearEvidenceFor } from '../db/evidence.js';
 import { stats as historyStats } from '../db/history.js';
+import { addNote, clearForUser as clearNotesFor, MAX_NOTE_LENGTH, notesFor } from '../db/notes.js';
 import { depth, forgiveUser } from '../db/queue.js';
 import { effectiveSettings, resetSettings, SETTINGS, updateSettings } from '../db/settings.js';
 import { breakdownFor, budgetState, dayKey, monthKey, totalsFor } from '../db/usage.js';
 import {
+  ACTION_WARNED,
   clearForUser,
   historyFor,
+  recordViolation,
   strikeCount,
   totalsFor as violationTotals,
 } from '../db/violations.js';
+import { contentViolations } from '../moderation/heuristics.js';
+import { buildManualWarning } from '../moderation/warning.js';
+import { createRateLimiter } from '../rate-limit.js';
 import { ladderFor, strikeWindowStart } from '../moderation/escalation.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
 import { degradedGuildIds } from '../moderation/health.js';
-import { LOG_CONFIG, LOG_FORGIVEN, postModerationLog } from '../moderation/log.js';
+import { LOG_CONFIG, LOG_FORGIVEN, LOG_WARNED, postModerationLog } from '../moderation/log.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
 import { ephemeralResponse } from '../interactions/respond.js';
+
+/** How many category scores `/mod simulate` prints. */
+const SIMULATE_SCORES = 5;
+
+/**
+ * A simulation is a real API call, and staff are the one group that can loop a
+ * command deliberately. Generous, because tuning a threshold is exactly what
+ * this is for.
+ */
+const simulateLimiter = createRateLimiter({ max: 15, windowMs: 5 * 60_000, name: 'simulate' });
 
 /**
  * @param {object} interaction
@@ -255,6 +273,19 @@ function historyResponse(interaction) {
     .map(([action, count]) => `${count} ${actionLabel(action)}`)
     .join(', ');
 
+  // The team's own memory of this member, next to what Mai did about them: the
+  // whole point of a note is that the next moderator finds it where they are
+  // already looking.
+  const notes = notesFor(guildId, userId, 5)
+    .map((entry) =>
+      fill(content.commands.note.line, {
+        when: `<t:${Math.floor(new Date(entry.createdAt).getTime() / 1000)}:d>`,
+        actorId: entry.authorId,
+        note: entry.note,
+      }),
+    )
+    .join('\n');
+
   return ephemeralResponse(
     fill(content.commands.history.body, {
       userId,
@@ -264,8 +295,185 @@ function historyResponse(interaction) {
       breakdown: breakdown ? ` (${breakdown})` : '',
       next: nextConsequence(next, settings.escalationEnabled),
       entries: lines || content.commands.history.empty,
+      notes: notes || content.commands.note.empty,
     }),
   );
+}
+
+/**
+ * `/mod simulate <text>`: what would happen to this message here?
+ *
+ * The answer to "where do I put the threshold?" without finding out by
+ * deletion. It runs the guild's own policy over text the moderator typed
+ * themselves and shows the score vector that produced the verdict, plus whether
+ * a local rule would have caught it before the classifier was ever asked.
+ *
+ * The vector is the one place a full set of scores is shown (see `simulate` in
+ * ai/moderation.js): the text is staff's own, the answer is ephemeral to them,
+ * and nothing is stored or logged. Never point this at a member's message with
+ * the intention of profiling them.
+ *
+ * @param {object} interaction
+ */
+async function simulateResponse(interaction) {
+  const { simulate: lines } = content.commands;
+  if (!config.moderation.enabled) return ephemeralResponse(lines.disabled);
+
+  const text = String(optionValue(resolveSubcommand(interaction).options, 'text') ?? '').trim();
+  if (!text) return ephemeralResponse(lines.empty);
+
+  const userId = interaction.member?.user?.id ?? '';
+  if (!simulateLimiter.consume(userId)) return ephemeralResponse(lines.busy);
+
+  // `effectiveSettings(null)` in a DM yields the process defaults, which is a
+  // useful thing for an operator to be able to check.
+  const settings = effectiveSettings(interaction.guild_id);
+
+  let verdict;
+  try {
+    verdict = await simulate(text, {
+      guildId: interaction.guild_id,
+      policy: { threshold: settings.threshold, categories: settings.categories },
+    });
+  } catch (error) {
+    logger.error({ guildId: interaction.guild_id, err: error }, '/mod simulate failed');
+    return ephemeralResponse(fill(lines.failed, { reason: describeError(error) }));
+  }
+
+  const local = contentViolations(text, settings);
+  const scores = Object.entries(verdict.scores)
+    .sort(([, a], [, b]) => b - a)
+    .slice(0, SIMULATE_SCORES)
+    .map(([category, score]) =>
+      fill(lines.line, { category, score: Number(score).toFixed(3) }),
+    )
+    .join('\n');
+
+  // Metadata only, and no text: the categories are worth having in the log, the
+  // moderator's test string is not.
+  logger.info(
+    { guildId: interaction.guild_id, byUserId: userId, categories: verdict.categories, local },
+    'Ran /mod simulate',
+  );
+
+  return ephemeralResponse(
+    fill(lines.body, {
+      verdict: local.length > 0 || verdict.flagged ? lines.wouldFlag : lines.wouldPass,
+      local: local.length > 0 ? local.join(', ') : lines.noLocal,
+      categories: verdict.categories.join(', ') || content.moderation.log.none,
+      threshold: settings.threshold > 0 ? settings.threshold : content.commands.config.thresholdOff,
+      scores: scores || content.moderation.log.none,
+    }),
+  );
+}
+
+/**
+ * `/mod warn <user> [reason]`: a warning from staff, in Mai's voice.
+ *
+ * Mai could only ever warn somebody as a consequence of her own verdict, so a
+ * moderator who wanted to say "stop that" either did it in the channel in front
+ * of everyone or in their own DMs, where the rest of the team never sees it.
+ *
+ * On the record as `warned`, which is deliberately **not** a strike:
+ * `strikeCount` only counts enforced deletions, so a human having a word cannot
+ * silently move somebody up a ladder that ends in a timeout.
+ *
+ * @param {object} interaction
+ */
+async function warnResponse(interaction) {
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+  const { options } = resolveSubcommand(interaction);
+  const userId = String(optionValue(options, 'user') ?? '');
+  if (!userId) return ephemeralResponse(content.commands.error);
+
+  const reason = String(optionValue(options, 'reason') ?? '').trim();
+  const actorId = interaction.member?.user?.id;
+  const client = getGatewayClient();
+
+  const guildName = client?.guilds?.cache?.get(interaction.guild_id)?.name ?? '';
+  const body = buildManualWarning({ reason, guildName });
+
+  let delivered = false;
+  try {
+    const user = await client?.users?.fetch(userId);
+    if (user) {
+      await user.send({ content: body, allowedMentions: { parse: [] } });
+      delivered = true;
+    }
+  } catch (error) {
+    // Closed DMs are a normal outcome; the moderator is told in the reply and
+    // the entry, so they can decide to say it in the channel instead.
+    logger.info({ guildId: interaction.guild_id, userId, err: error }, 'Manual warning not delivered');
+  }
+
+  recordViolation({
+    guildId: interaction.guild_id,
+    userId,
+    // No message behind this one: the record's message id is the actor's mark.
+    messageId: `warn:${actorId ?? 'unknown'}`,
+    categories: [],
+    action: ACTION_WARNED,
+  });
+
+  logger.info(
+    { guildId: interaction.guild_id, userId, byUserId: actorId, delivered, hasReason: Boolean(reason) },
+    'Warned a member manually',
+  );
+  logger.debug({ userId, reason }, 'Manual warning reason');
+
+  void postModerationLog(client, {
+    type: LOG_WARNED,
+    guildId: interaction.guild_id,
+    userId,
+    actorId,
+    // Staff's own words, deliberately handed to staff: the same exception the
+    // report reason falls under.
+    reason: reason || undefined,
+    resolution: delivered
+      ? content.commands.warn.delivered
+      : content.commands.warn.notDelivered,
+  });
+
+  return ephemeralResponse(
+    fill(delivered ? content.commands.warn.done : content.commands.warn.undelivered, { userId }),
+  );
+}
+
+/**
+ * `/mod note add|clear <user>`: the team's own memory of a member.
+ *
+ * Its own store rather than a column on the strike record, because it answers a
+ * different question: the record says what Mai did, a note says what the team
+ * decided. Shown in `/mod history`, where the next moderator will look.
+ *
+ * @param {object} interaction
+ */
+function noteResponse(interaction) {
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+  const { name, options } = resolveSubcommand(interaction);
+  const userId = String(optionValue(options, 'user') ?? '');
+  if (!userId) return ephemeralResponse(content.commands.error);
+
+  const actorId = interaction.member?.user?.id;
+  const { note: lines } = content.commands;
+
+  if (name === 'clear') {
+    const removed = clearNotesFor(interaction.guild_id, userId);
+    logger.info({ guildId: interaction.guild_id, userId, removed, byUserId: actorId }, 'Cleared member notes');
+    return ephemeralResponse(fill(removed > 0 ? lines.cleared : lines.nothing, { count: removed, userId }));
+  }
+
+  const text = String(optionValue(options, 'text') ?? '').trim();
+  if (!text) return ephemeralResponse(content.commands.error);
+
+  addNote({ guildId: interaction.guild_id, userId, authorId: actorId ?? 'unknown', note: text });
+  // The note itself only at debug, like every other piece of free text.
+  logger.info({ guildId: interaction.guild_id, userId, byUserId: actorId }, 'Added a member note');
+  logger.debug({ userId, note: text }, 'Member note');
+
+  return ephemeralResponse(fill(lines.added, { userId }));
 }
 
 /**
@@ -402,6 +610,8 @@ function configView(guildId) {
         ? fill(content.commands.config.evidenceOn, { hours: config.moderation.evidenceHours })
         : guardOff,
       evidenceSource: inherited('evidence'),
+      shadow: yesNo(settings.shadowMode),
+      shadowSource: inherited('shadow'),
     }),
   );
 }
@@ -638,7 +848,7 @@ export const mod = {
       },
       {
         name: 'history',
-        description: 'A member’s strike record and what the next violation would cost',
+        description: 'A member’s strike record, staff notes, and what the next violation would cost',
         type: 1, // SUB_COMMAND
         options: [
           {
@@ -646,6 +856,79 @@ export const mod = {
             description: 'The member to look up',
             type: 6, // USER
             required: true,
+          },
+        ],
+      },
+      {
+        name: 'warn',
+        description: 'Send a member a warning from the team, in Mai’s voice (not a strike)',
+        type: 1, // SUB_COMMAND
+        options: [
+          {
+            name: 'user',
+            description: 'The member to warn',
+            type: 6, // USER
+            required: true,
+          },
+          {
+            name: 'reason',
+            description: 'What they should stop doing (goes into the DM and the log)',
+            type: 3, // STRING
+            max_length: 400,
+          },
+        ],
+      },
+      {
+        name: 'simulate',
+        description: 'What would happen to this text here? Scores, categories, local rules',
+        type: 1, // SUB_COMMAND
+        options: [
+          {
+            name: 'text',
+            description: 'The message to judge (nothing is stored)',
+            type: 3, // STRING
+            required: true,
+            max_length: 400,
+          },
+        ],
+      },
+      {
+        name: 'note',
+        description: 'The team’s own notes about a member',
+        type: 2, // SUB_COMMAND_GROUP
+        options: [
+          {
+            name: 'add',
+            description: 'Write down something the next moderator should know',
+            type: 1,
+            options: [
+              {
+                name: 'user',
+                description: 'The member the note is about',
+                type: 6, // USER
+                required: true,
+              },
+              {
+                name: 'text',
+                description: 'The note itself',
+                type: 3, // STRING
+                required: true,
+                max_length: MAX_NOTE_LENGTH,
+              },
+            ],
+          },
+          {
+            name: 'clear',
+            description: 'Remove every note about a member',
+            type: 1,
+            options: [
+              {
+                name: 'user',
+                description: 'The member whose notes go',
+                type: 6,
+                required: true,
+              },
+            ],
           },
         ],
       },
@@ -809,6 +1092,11 @@ export const mod = {
                 description: 'Keep deleted messages briefly, encrypted, so staff can review appeals',
                 type: 5, // BOOLEAN
               },
+              {
+                name: 'shadow',
+                description: 'Report verdicts in the log and act on none of them (threshold tuning)',
+                type: 5, // BOOLEAN
+              },
             ],
           },
           {
@@ -829,9 +1117,16 @@ export const mod = {
     ],
   },
 
+  // Only `simulate` waits for anything: it is a model call. Everything else
+  // answers from the database inside Discord's window.
+  deferred: (interaction) => resolveSubcommand(interaction).name === 'simulate',
+  // Every `/mod` answer is staff-only, and for the deferred one the flag has to
+  // be set at defer time: the later edit cannot turn a public message private.
+  ephemeral: true,
+
   /**
    * @param {object} interaction Raw interaction payload from Discord.
-   * @returns {object} Interaction response body.
+   * @returns {Promise<object> | object} Interaction response body.
    */
   execute(interaction) {
     if (!mayModerate(interaction)) {
@@ -845,10 +1140,13 @@ export const mod = {
     const { group, name } = resolveSubcommand(interaction);
     if (group === 'config') return configResponse(interaction);
     if (group === 'exempt') return exemptResponse(interaction);
+    if (group === 'note') return noteResponse(interaction);
     if (name === 'on') return powerResponse(interaction, true);
     if (name === 'off') return powerResponse(interaction, false);
     if (name === 'forgive') return forgiveResponse(interaction);
     if (name === 'history') return historyResponse(interaction);
+    if (name === 'warn') return warnResponse(interaction);
+    if (name === 'simulate') return simulateResponse(interaction);
     if (name === 'spend') return spendResponse(interaction);
     return statusResponse(interaction);
   },

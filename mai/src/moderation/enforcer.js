@@ -18,6 +18,7 @@ import { config, isGuildAllowed } from '../config.js';
 import { content, fill } from '../content.js';
 import { pruneOlderThan as pruneEvidence, recordEvidence } from '../db/evidence.js';
 import { pruneOlderThan } from '../db/history.js';
+import { pruneOlderThan as pruneNotes } from '../db/notes.js';
 import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
 import { effectiveSettings, isGuildActive, pausedGuildIds } from '../db/settings.js';
 import {
@@ -484,6 +485,8 @@ export async function runTick(client) {
     now.getTime() - config.moderation.violationRetentionDays * 86_400_000,
   ).toISOString();
   const violationsPruned = pruneViolations(violationCutoff);
+  // Staff notes ride on the same window as the record they annotate.
+  const notesPruned = pruneNotes(violationCutoff);
   // Hours, and unconditional: with MODERATION_EVIDENCE_HOURS at 0 the cutoff is
   // *now*, so switching the feature off also clears what is left behind instead
   // of leaving quoted messages in the database indefinitely.
@@ -495,7 +498,7 @@ export async function runTick(client) {
   status.lastTickMs = Date.now() - startedAt;
   status.lastError = null;
 
-  if (enforced.length > 0 || pruned > 0 || violationsPruned > 0 || evidencePruned > 0) {
+  if (enforced.length > 0 || pruned > 0 || violationsPruned > 0 || evidencePruned > 0 || notesPruned > 0) {
     logger.info(
       {
         enforced: enforced.length,
@@ -503,6 +506,7 @@ export async function runTick(client) {
         historyRowsPruned: pruned,
         violationsPruned,
         evidencePruned,
+        notesPruned,
         ms: status.lastTickMs,
       },
       'Moderation tick finished',

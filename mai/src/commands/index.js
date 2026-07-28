@@ -21,9 +21,10 @@
 import { mai } from './mai.js';
 import { mod } from './mod.js';
 import { ping } from './ping.js';
+import { removeMessage } from './remove.js';
 import { report } from './report.js';
 
-export const commands = [ping, mai, mod, report];
+export const commands = [ping, mai, mod, report, removeMessage];
 
 /** Command definitions in the shape Discord's registration API expects. */
 export const commandDefinitions = commands.map((command) => command.definition);

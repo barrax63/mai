@@ -10,6 +10,7 @@ import { buildMessages, generateReply } from '../src/ai/chat.js';
 import { runTool, toolDefinitions } from '../src/chat/tools.js';
 import { content } from '../src/content.js';
 import { enqueue } from '../src/db/queue.js';
+import { ACTION_DELETED, recordViolation } from '../src/db/violations.js';
 import { visibleImages } from '../src/gateway/events/mai-chat.js';
 
 await openTestDatabase();
@@ -347,6 +348,92 @@ test('server facts come from the gateway, not from the model', () => {
 
   assert.equal(result.name, 'Katzenhaus');
   assert.equal(result.members, 42);
+});
+
+test('the timeout tool reads the cache and never guesses', () => {
+  const timedOut = new Date(Date.now() + 600_000);
+  const client = {
+    guilds: {
+      cache: new Map([
+        ['g1', { members: { cache: new Map([['u', { communicationDisabledUntil: timedOut }]]) } }],
+      ]),
+    },
+  };
+
+  const result = runTool({ function: { name: 'get_my_timeout_status' } }, {
+    userId: 'u',
+    guildId: 'g1',
+    client,
+  });
+  assert.equal(result.timed_out, true);
+  assert.equal(result.until, timedOut.toISOString());
+
+  // An expired timeout is not a timeout, and a member nobody has cached is
+  // reported as unknown rather than invented.
+  const expired = new Map([['u', { communicationDisabledUntil: new Date(Date.now() - 1000) }]]);
+  assert.equal(
+    runTool({ function: { name: 'get_my_timeout_status' } }, {
+      userId: 'u',
+      guildId: 'g1',
+      client: { guilds: { cache: new Map([['g1', { members: { cache: expired } }]]) } },
+    }).timed_out,
+    false,
+  );
+  assert.deepEqual(
+    runTool({ function: { name: 'get_my_timeout_status' } }, { userId: 'u', guildId: 'g1', client: {} }),
+    { error: 'unknown_member' },
+  );
+  assert.deepEqual(
+    runTool({ function: { name: 'get_my_timeout_status' } }, { userId: 'u', guildId: null, client: {} }),
+    { error: 'not_in_a_server' },
+  );
+});
+
+test('the appeal tool answers for the caller, in their guild only', () => {
+  recordViolation({
+    guildId: 'g-appeal',
+    userId: 'appellant',
+    messageId: 'm-1',
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+  });
+  recordViolation({
+    guildId: 'g-appeal',
+    userId: 'someone-else',
+    messageId: 'm-2',
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+  });
+
+  const result = runTool({ function: { name: 'get_my_appeal_status' } }, {
+    userId: 'appellant',
+    guildId: 'g-appeal',
+    client: null,
+  });
+
+  assert.equal(result.messages_removed_then, 1, 'their own record, not the guild\'s');
+  assert.ok(result.last_enforcement_at);
+  // No log channel in this guild, so there is nowhere for an appeal to land.
+  assert.equal(result.can_appeal, false);
+
+  assert.deepEqual(
+    runTool({ function: { name: 'get_my_appeal_status' } }, { userId: 'u', guildId: null }),
+    { error: 'not_in_a_server' },
+  );
+});
+
+test('the rules tool is only offered when there are rules to quote', () => {
+  // Empty in the shipped config: a tool that answers "no rules" would send the
+  // model straight back to inventing them, which is what it exists to prevent.
+  assert.deepEqual(content.chat.rules, []);
+  assert.equal(
+    toolDefinitions.some((tool) => tool.function.name === 'get_server_rules'),
+    false,
+  );
+  // The handler still exists and answers truthfully if it is ever reached.
+  assert.deepEqual(runTool({ function: { name: 'get_server_rules' } }, { userId: 'u' }), {
+    rules: [],
+  });
 });
 
 test('the clock tool answers in the configured timezone', () => {

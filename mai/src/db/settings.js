@@ -166,6 +166,12 @@ export const SETTINGS = Object.freeze({
     column: 'name_check',
     parse: (value) => (value === null ? null : parseNameCheck(value, 'name-check')),
   },
+  shadow: {
+    // Classify and report, act on nothing. Not a pause: rows queued before
+    // shadow was switched on are still enforced (`/mod off` is the pause).
+    column: 'shadow_mode',
+    parse: (value) => (value === null ? null : toFlag(value, 'shadow')),
+  },
   flood: {
     column: 'flood_rule',
     parse: (value) => {
@@ -241,6 +247,7 @@ export function effectiveSettings(guildId) {
     // available at all, not whether it is on.
     evidenceEnabled: flag('evidence_enabled', false) && config.moderation.evidenceHours > 0,
     nameCheck: row?.name_check ?? config.moderation.nameCheck,
+    shadowMode: flag('shadow_mode', config.moderation.shadow),
     inherited: {
       enabled: row?.enabled == null,
       escalation: row?.escalation_enabled == null,
@@ -259,6 +266,7 @@ export function effectiveSettings(guildId) {
       flood: row?.flood_rule == null,
       evidence: row?.evidence_enabled == null,
       'name-check': row?.name_check == null,
+      shadow: row?.shadow_mode == null,
     },
   };
 }

@@ -14,6 +14,13 @@ export const ACTION_SELF_DELETED = 'self_deleted';
 export const ACTION_EDITED = 'edited';
 /** Staff granted an appeal: Mai was wrong, so this stops counting as a strike. */
 export const ACTION_OVERTURNED = 'overturned';
+/**
+ * Staff warned the member through Mai (`/mod warn`). On the record so the next
+ * moderator can see it happened, and deliberately **not** a strike: nothing was
+ * deleted, and a human deciding to have a word should not silently move someone
+ * up a ladder that ends in a timeout.
+ */
+export const ACTION_WARNED = 'warned';
 
 const parseCategories = (value) => {
   try {

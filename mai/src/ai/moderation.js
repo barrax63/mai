@@ -86,6 +86,7 @@ export async function classify(text, attachments = [], { guildId, policy } = {})
 
   const result = await createModeration(input, { guildId });
   const decided = applyPolicy(result, policy);
+  const top = topScore(result.scores);
 
   logger.debug(
     {
@@ -96,10 +97,44 @@ export async function classify(text, attachments = [], { guildId, policy } = {})
       images: images.length,
       // Only the highest score: enough to tune a threshold against, without
       // turning the log into a profile of the message.
-      topScore: Math.max(0, ...Object.values(result.scores ?? {}).map(Number)),
+      topScore: top.score,
     },
     'Classification result',
   );
 
-  return decided;
+  // The top score rides along because shadow mode reports it: a guild choosing
+  // a threshold needs the number its own messages produce. Still only the
+  // highest one, never the vector, for the same reason it is the only one
+  // logged: a full vector is a profile of the message.
+  return { ...decided, topCategory: top.category, topScore: top.score };
+}
+
+/**
+ * @param {Record<string, number>} [scores]
+ * @returns {{ category: string | null, score: number }}
+ */
+function topScore(scores) {
+  return Object.entries(scores ?? {}).reduce(
+    (best, [category, score]) => (Number(score) > best.score ? { category, score: Number(score) } : best),
+    { category: null, score: 0 },
+  );
+}
+
+/**
+ * Classification for `/mod simulate`: the same call and the same policy, but
+ * the **whole** score vector comes back.
+ *
+ * Deliberately its own function rather than a flag on `classify`, so the one
+ * place that sees a full vector is greppable. What makes it acceptable here and
+ * nowhere else: the text is what a moderator typed themselves, the answer is
+ * ephemeral to that moderator, and nothing is stored or logged. Do not reuse
+ * this on member messages.
+ *
+ * @param {string} text
+ * @param {{ guildId?: string | null, policy?: { threshold?: number, categories?: string[] } }} [options]
+ * @returns {Promise<{ flagged: boolean, categories: string[], scores: Record<string, number> }>}
+ */
+export async function simulate(text, { guildId, policy } = {}) {
+  const result = await createModeration(String(text ?? '').trim(), { guildId });
+  return { ...applyPolicy(result, policy), scores: result.scores ?? {} };
 }

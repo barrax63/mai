@@ -76,6 +76,7 @@ function loadContent() {
   const moderation = section(parsed, 'moderation');
   const errorCodes = section(moderation, 'errors');
   const warningDm = section(moderation, 'warningDm');
+  const manualWarning = section(moderation, 'manualWarning');
   const log = section(moderation, 'log');
   const logTitles = section(log, 'titles');
   const logFields = section(log, 'fields');
@@ -89,6 +90,10 @@ function loadContent() {
   const forgive = section(commands, 'forgive');
   const configSection = section(commands, 'config');
   const reportSection = section(commands, 'report');
+  const removeSection = section(commands, 'remove');
+  const warnSection = section(commands, 'warn');
+  const noteSection = section(commands, 'note');
+  const simulateSection = section(commands, 'simulate');
   const exemptSection = section(commands, 'exempt');
   const spend = section(commands, 'spend');
   const history = section(commands, 'history');
@@ -104,6 +109,15 @@ function loadContent() {
     chat: Object.freeze({
       persona: str(chat, ['chat', 'persona']).trim(),
       friendlyDirective: str(chat, ['chat', 'friendlyDirective']),
+      // The server's rules in the operator's own words, for the
+      // `get_server_rules` tool. Optional and empty by default: no rules here
+      // means the tool is not offered at all, which is better than offering one
+      // that answers with nothing and sends the model back to inventing.
+      // Absent is fine; present but not a list of strings is a typo and fails
+      // loudly, like every other key here.
+      rules: Object.freeze(
+        chat.rules === undefined ? [] : strings(chat, ['chat', 'rules'], { min: 0 }),
+      ),
       fallbackReply: str(chat, ['chat', 'fallbackReply']),
       busyEmoji: str(chat, ['chat', 'busyEmoji']),
       flagged: Object.freeze({
@@ -169,6 +183,9 @@ function loadContent() {
           degraded: str(logTitles, ['moderation', 'log', 'titles', 'degraded']),
           recovered: str(logTitles, ['moderation', 'log', 'titles', 'recovered']),
           nameFlagged: str(logTitles, ['moderation', 'log', 'titles', 'nameFlagged']),
+          shadow: str(logTitles, ['moderation', 'log', 'titles', 'shadow']),
+          manualDelete: str(logTitles, ['moderation', 'log', 'titles', 'manualDelete']),
+          warned: str(logTitles, ['moderation', 'log', 'titles', 'warned']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -188,6 +205,7 @@ function loadContent() {
           appeal: str(logFields, ['moderation', 'log', 'fields', 'appeal']),
           changes: str(logFields, ['moderation', 'log', 'fields', 'changes']),
           incident: str(logFields, ['moderation', 'log', 'fields', 'incident']),
+          score: str(logFields, ['moderation', 'log', 'fields', 'score']),
         }),
         jump: str(log, ['moderation', 'log', 'jump']),
         none: str(log, ['moderation', 'log', 'none']),
@@ -228,6 +246,15 @@ function loadContent() {
         nicknameReset: str(names, ['moderation', 'names', 'nicknameReset']),
         globalName: str(names, ['moderation', 'names', 'globalName']),
         resetFailed: str(names, ['moderation', 'names', 'resetFailed']),
+      }),
+      // `/mod warn`: staff having a word, in Mai's voice. Its own template
+      // because nothing was removed, so there is nothing to quote back.
+      manualWarning: Object.freeze({
+        title: str(manualWarning, ['moderation', 'manualWarning', 'title']),
+        intro: str(manualWarning, ['moderation', 'manualWarning', 'intro']),
+        unknownGuild: str(manualWarning, ['moderation', 'manualWarning', 'unknownGuild']),
+        reasonLabel: str(manualWarning, ['moderation', 'manualWarning', 'reasonLabel']),
+        footer: str(manualWarning, ['moderation', 'manualWarning', 'footer']),
       }),
       warningDm: Object.freeze({
         maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
@@ -297,6 +324,7 @@ function loadContent() {
           self_deleted: str(historyActions, ['commands', 'history', 'actions', 'self_deleted']),
           edited: str(historyActions, ['commands', 'history', 'actions', 'edited']),
           overturned: str(historyActions, ['commands', 'history', 'actions', 'overturned']),
+          warned: str(historyActions, ['commands', 'history', 'actions', 'warned']),
         }),
         nextTimeout: str(history, ['commands', 'history', 'nextTimeout']),
         nextNothing: str(history, ['commands', 'history', 'nextNothing']),
@@ -314,6 +342,36 @@ function loadContent() {
         budgetOk: str(spend, ['commands', 'spend', 'budgetOk']),
         budgetExceeded: str(spend, ['commands', 'spend', 'budgetExceeded']),
         nothing: str(spend, ['commands', 'spend', 'nothing']),
+      }),
+      warn: Object.freeze({
+        done: str(warnSection, ['commands', 'warn', 'done']),
+        undelivered: str(warnSection, ['commands', 'warn', 'undelivered']),
+        delivered: str(warnSection, ['commands', 'warn', 'delivered']),
+        notDelivered: str(warnSection, ['commands', 'warn', 'notDelivered']),
+      }),
+      note: Object.freeze({
+        added: str(noteSection, ['commands', 'note', 'added']),
+        cleared: str(noteSection, ['commands', 'note', 'cleared']),
+        nothing: str(noteSection, ['commands', 'note', 'nothing']),
+        line: str(noteSection, ['commands', 'note', 'line']),
+        empty: str(noteSection, ['commands', 'note', 'empty']),
+      }),
+      simulate: Object.freeze({
+        body: str(simulateSection, ['commands', 'simulate', 'body']),
+        line: str(simulateSection, ['commands', 'simulate', 'line']),
+        wouldFlag: str(simulateSection, ['commands', 'simulate', 'wouldFlag']),
+        wouldPass: str(simulateSection, ['commands', 'simulate', 'wouldPass']),
+        noLocal: str(simulateSection, ['commands', 'simulate', 'noLocal']),
+        empty: str(simulateSection, ['commands', 'simulate', 'empty']),
+        disabled: str(simulateSection, ['commands', 'simulate', 'disabled']),
+        busy: str(simulateSection, ['commands', 'simulate', 'busy']),
+        failed: str(simulateSection, ['commands', 'simulate', 'failed']),
+      }),
+      remove: Object.freeze({
+        done: str(removeSection, ['commands', 'remove', 'done']),
+        guildOnly: str(removeSection, ['commands', 'remove', 'guildOnly']),
+        botMessage: str(removeSection, ['commands', 'remove', 'botMessage']),
+        failed: str(removeSection, ['commands', 'remove', 'failed']),
       }),
       report: Object.freeze({
         modalTitle: str(reportSection, ['commands', 'report', 'modalTitle']),

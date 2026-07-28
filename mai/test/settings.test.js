@@ -41,6 +41,7 @@ test('a guild without a row inherits every default', () => {
     flood: true,
     evidence: true,
     'name-check': true,
+    shadow: true,
   });
 });
 
@@ -187,6 +188,7 @@ test('reset without a name clears everything', () => {
     flood: true,
     evidence: true,
     'name-check': true,
+    shadow: true,
   });
 });
 

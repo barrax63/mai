@@ -23,6 +23,15 @@ chat:
   # Appended to the persona when the user has no open violations.
   friendlyDirective: 'Sei freundlich. Keine Beleidigungen, keine Inhalte für Erwachsene.'
 
+  # Die Serverregeln im Wortlaut, für das Tool `get_server_rules`: fragt jemand
+  # Mai nach den Regeln, liest sie hier nach, statt sich welche auszudenken.
+  #
+  # Leer gelassen heißt: das Tool wird dem Modell gar nicht erst angeboten. Hier
+  # stehen bewusst keine Beispielregeln, denn ausgedachte Regeln, die Mai als
+  # die des Servers ausgibt, wären genau der Fehler, den das Tool verhindern
+  # soll. Eintragen und Container neu starten.
+  rules: []
+
   # Appended instead when the user has open (un-enforced) violations anywhere.
   # header: {count} = number of open rows, {categories} = comma-separated slugs.
   # tones: picked by open-violation count; the last entry covers "and above".
@@ -140,6 +149,11 @@ moderation:
       # Der Name selbst steht nicht im Eintrag: die Erwähnung im Feld
       # "Mitglied" zeigt ihn ohnehin an, und zwar immer den aktuellen.
       nameFlagged: '🏷️ Name beanstandet'
+      # Schattenmodus: Mai hätte etwas getan, hat es aber nicht.
+      shadow: '👻 Nur beobachtet'
+      # Das Team hat selbst durch Mai gehandelt.
+      manualDelete: '🔴 Vom Team gelöscht'
+      warned: '🟨 Verwarnung vom Team'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -160,6 +174,9 @@ moderation:
       changes: 'Geändert'
       # Der Vollstreckungslauf, gegen den sich ein Einspruch richtet.
       incident: 'Vorfall'
+      # Höchster Kategorie-Score im Schattenmodus: die Zahl, nach der man die
+      # Schwelle einstellt. Immer nur der höchste, nie der ganze Vektor.
+      score: 'Höchster Score'
     jump: 'Zur Nachricht'
     none: '–'
 
@@ -209,6 +226,17 @@ moderation:
     nicknameReset: 'Server-Spitzname entfernt.'
     globalName: 'Das ist der globale Benutzername, den kann Mai nicht ändern. Bitte von Hand entscheiden.'
     resetFailed: 'Spitzname konnte nicht entfernt werden:'
+
+  # DM hinter /mod warn: ein Mensch aus dem Team wollte etwas sagen, Mai sagt es.
+  # Kein Einspruchs-Button: ein Einspruch hebt Verstöße auf, und eine
+  # Verwarnung von Hand ist keiner. Wer sich wehren will, redet mit dem Team.
+  manualWarning:
+    title: '# Verwarnung'
+    # {guild} = Name des Servers.
+    intro: 'Das Moderationsteam von {guild} hat dich verwarnt.'
+    unknownGuild: 'diesem Server'
+    reasonLabel: '**Grund:**'
+    footer: '*Fragen dazu? Wende dich an das Team des Servers.*'
 
   # DM sent after the grace period expired and messages were deleted.
   # One DM per user per tick, listing every message removed in that tick.
@@ -335,6 +363,9 @@ commands:
       **Nächster Verstoß:** {next}
 
       {entries}
+
+      **Notizen des Teams:**
+      {notes}
     line: '• {when}: {action} ({categories})'
     actions:
       deleted: 'gelöscht'
@@ -342,10 +373,56 @@ commands:
       edited: 'korrigiert'
       # Bleibt in der Akte sichtbar, zählt aber nicht mehr als Verstoß.
       overturned: 'Einspruch stattgegeben'
+      # /mod warn: steht in der Akte, zählt aber nicht für die Eskalation.
+      warned: 'vom Team verwarnt'
     nextTimeout: '{minutes} Minuten Timeout'
     nextNothing: 'kein Timeout'
     nextDisabled: 'kein Timeout (Eskalation ist aus)'
     empty: '_keine Einträge_'
+
+  # /mod warn: Verwarnung vom Team, in Mais Stimme.
+  warn:
+    done: '*nickt* Erledigt, <@{userId}> hat die Verwarnung bekommen.'
+    undelivered: '*legt die Ohren an* Notiert, aber die DM kam nicht an (DMs zu?). Sag es <@{userId}> lieber direkt.'
+    # Für den Log-Eintrag.
+    delivered: 'DM zugestellt.'
+    notDelivered: 'DM kam nicht an (DMs zu?).'
+
+  # /mod note: was das Team über ein Mitglied weiß.
+  note:
+    added: '*kritzelt etwas* Notiert zu <@{userId}>.'
+    cleared: '{count} Notiz(en) zu <@{userId}> gelöscht.'
+    nothing: 'Zu <@{userId}> gibt es keine Notizen.'
+    # In /mod history. {when} = Datum, {actorId} = wer es notiert hat.
+    line: '• {when} von <@{actorId}>: {note}'
+    empty: '_keine_'
+
+  # /mod simulate: was würde mit diesem Text hier passieren?
+  simulate:
+    body: |
+      # 🔬 Test
+      **Ergebnis:** {verdict}
+      **Eigene Regeln:** {local}
+      **Kategorien:** {categories}
+      **Schwelle:** {threshold}
+
+      {scores}
+    line: '• `{category}`: {score}'
+    wouldFlag: '🔴 würde beanstandet'
+    wouldPass: '🟢 würde durchgehen'
+    noLocal: '_keine getroffen_'
+    empty: 'Ohne Text kann ich nichts prüfen.'
+    disabled: 'Die Moderation ist auf diesem Bot komplett abgeschaltet.'
+    busy: '*gähnt* Immer mit der Ruhe. Gleich wieder.'
+    # {reason} = Fehlername plus Status/Code, nie die Fehlermeldung selbst.
+    failed: 'Die Prüfung hat nicht geklappt: {reason}'
+
+  # "Löschen (Mai)": Kontextmenü für das Team (Rechtsklick auf eine Nachricht).
+  remove:
+    done: '*schnippt mit dem Schwanz* Weg damit. Der Verstoß steht in der Akte von <@{userId}>.'
+    guildOnly: 'Das geht nur auf einem Server.'
+    botMessage: 'Das ist eine Bot-Nachricht, dafür lege ich keine Akte an.'
+    failed: 'Die Nachricht konnte ich nicht löschen. Fehlt mir die Berechtigung?'
 
   # "Mai: melden": Kontextmenü-Meldung (Rechtsklick auf eine Nachricht).
   report:
@@ -396,6 +473,7 @@ commands:
       **Flut-Regel:** {flood}{floodSource}
       **Namensprüfung:** {nameCheck}{nameCheckSource}
       **Beweis-Aufbewahrung:** {evidence}{evidenceSource}
+      **Schattenmodus:** {shadow}{shadowSource}
     inherited: '_(Standard)_'
     on: 'ja'
     off: 'nein'

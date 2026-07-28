@@ -54,6 +54,7 @@ Every non-bot guild message with text content is classified when it is posted **
 
   What they produce is an ordinary list of category slugs, so a trip goes through the same path as a classified violation: warning reaction, scold reply, grace period, queue row, log entry, strike. There is deliberately no separate "delete it instantly" route. Content rules also run on **edits** (posting clean and editing an invite in afterwards would otherwise walk past all of them); the flood rule does not, because editing a message is not sending one.
 - **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
+- **Shadow mode** (`/mod config set shadow:true`) runs both layers and acts on neither: no warning reaction, no scold reply, no queue row, no strike, no timeout. Every verdict goes to the log channel as a *Nur beobachtet* entry carrying the categories, the **top score** and a working jump link, so a server picks its threshold by reading a week of its own traffic instead of by deleting the wrong messages and apologising. It is not a pause: rows queued before it was switched on are still enforced (`/mod off` is the pause). `/mod simulate <text>` answers the same question for one string on demand, including which local rule would have caught it, and is the only place a full score vector is shown: the text is the moderator's own, the answer is ephemeral to them, and nothing is stored or logged.
 - **Where the line sits is per server.** The endpoint answers twice (a `flagged` boolean and a `category_scores` map), and `MODERATION_THRESHOLD` (`/mod config set threshold`) decides which one counts. At `0` the provider decides, as before. Above `0`, a category counts when it scores at least that much and the provider's own boolean is ignored entirely (otherwise raising the threshold could never make anything pass). This exists for a measured reason: omni-moderation scores the same insult **0.88 in English and 0.20 in German**, so on a German-speaking server its default line lets most abuse through. `MODERATION_CATEGORIES` (`/mod config set categories`) narrows things the other way: only the listed categories count at all.
 - **Exempt channels** (`/mod exempt add|remove|list`): a vent channel, an NSFW channel, a staff channel. Moderation only: chat and reactions keep working there, which is usually the point. Exempting a channel covers its threads, and any pending queue rows in it are dropped on the next tick rather than enforced later: "Mai does not moderate here" should not be followed by her deleting something there ten minutes on.
 - **Edits** ([src/gateway/events/message-update.js](src/gateway/events/message-update.js)) run through the same classifier via `recheckMessage`, because otherwise "post something harmless, then edit it" walks straight past the check. The verdict cuts both ways, since the message may already have a queue row:
@@ -87,7 +88,7 @@ Every non-bot guild message with text content is classified when it is posted **
   - **Context Discord hides**: what a message replies to (quoted, truncated) and the thread it sits in are resolved and put in front of the current turn. Without them a reply reads as a non-sequitur. Neither is persisted: only what the member wrote themselves.
   - **Prompt injection**: only the system message carries instructions, and it says so. Text the speaker merely *chose* to pull in (the quoted message, the thread title) is wrapped in `⟪…⟫`, with those characters stripped from the value first so it cannot close its own fence. Speaker labels have newlines and colons removed, so a username cannot forge a second `Name:` turn. The speaker's own message is deliberately not fenced: it is the thing being answered.
   - **Vision** (`CHAT_VISION_ENABLED`): image attachments on messages addressed to her are passed to the model as content parts, at most `CHAT_VISION_MAX_IMAGES` per message. Images are never stored; a picture-only message is remembered as a placeholder.
-  - **Tools** (`CHAT_TOOLS_ENABLED`, [src/chat/tools.js](src/chat/tools.js)): `get_my_violations`, `get_server_info` and `get_current_time`. **No tool takes arguments from the model**: who is asking and where comes from the interaction context, so a model cannot read another member's record by naming them. At most two tool rounds, then the last call goes out without tools so she has to answer in words.
+  - **Tools** (`CHAT_TOOLS_ENABLED`, [src/chat/tools.js](src/chat/tools.js)): `get_my_violations`, `get_server_info`, `get_current_time`, `get_my_timeout_status`, `get_my_appeal_status`, and `get_server_rules` where `chat.rules` in the YAML is filled in (an empty list means the tool is not offered at all, because one that answers "no rules" sends the model straight back to inventing them). **No tool takes arguments from the model**: who is asking and where comes from the interaction context, so a model cannot read another member's record by naming them. They are also synchronous by design, so the timeout tool reads the member cache and reports "unknown" on a miss rather than guessing. At most two tool rounds, then the last call goes out without tools so she has to answer in words.
   - **Tone**: while the author has an open (un-enforced) violation in the queue (in *any* guild, DMs included) Mai turns aggressive, escalating with the number of open strikes. Enforcement (or `/mod forgive`) makes her friendly again. This reads the *queue*, not the strike record: a member with an empty queue and ten strikes gets friendly Mai.
   - **Limits**: `CHAT_RATE_LIMIT_MAX` replies per user per `CHAT_RATE_LIMIT_WINDOW_MS`, `CHAT_MAX_CONCURRENT` model calls in flight. Over either limit she reacts with the busy emoji instead of answering. Turns in one channel are serialized so parallel conversations cannot interleave history reads and writes.
   - `CHAT_ENABLED=false` disables chat.
@@ -97,22 +98,16 @@ Every non-bot guild message with text content is classified when it is posted **
 
 ## Slash commands
 
-| Command | Who | Effect |
-|---------|-----|--------|
-| `/ping` | everyone | Liveness check (ephemeral) |
-| `/mai ask <frage>` | everyone | A public question to Mai, answered in character. Stateless: no channel history in the prompt, nothing written to her memory. Subject to the same rate limit as chat, and the question is classified before it is quoted back into the channel |
-| `/mai forget` | everyone | Wipes what Mai remembers about you, behind a confirmation button. Removes your own turns everywhere plus the full history of your DM channel with her |
-| `/mai appeal` | everyone | Opens the appeal form for your most recent enforcement here, for members whose warning DM never arrived. Same form, same scope as the button under that DM |
-| `/mod status` | Manage Messages | Open violations and chat-memory size **for this server**, plus last moderation tick, whether classification is currently working, configured models and uptime (ephemeral) |
-| `/mod forgive <user> [strikes]` | Manage Messages | Drops that member's open violations **in this server** and cleans up the scold replies; `strikes:true` also wipes their strike record, resetting the ladder |
-| `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
-| `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month **for this server**, per purpose and model. The budget's figures are process-wide, so staff only learn whether it is exhausted |
-| `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
-| `/mod config set [log-channel] [welcome-channel] [grace] [timeout-ladder] [strike-window] [escalation] [enabled] [threshold] [categories] [invite-filter] [link-policy] [link-domains] [mention-cap] [flood] [name-check] [evidence]` | Manage Messages | Sets any subset for this server |
-| `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
-| `/mod exempt add\|remove\|list [channel]` | Manage Messages | Channels Mai does not moderate; chat and reactions keep working there |
-| `/mod off` / `/mod on` | Manage Messages | Kill switch: switches Mai off in this server completely, and back on |
-| `Nachricht melden` (right-click a message → Apps) | everyone | Reports the message to staff; see below |
+Every command and right-click action, option by option, lives in
+**[COMMANDS.md](../COMMANDS.md)**. In short:
+
+| Command | Who |
+|---------|-----|
+| `/ping`, `/mai ask <frage>`, `/mai forget`, `/mai appeal` | everyone |
+| `Nachricht melden` (right-click a message → Apps) | everyone |
+| `/mod status`, `/mod history`, `/mod forgive`, `/mod warn`, `/mod note`, `/mod simulate`, `/mod spend` | Manage Messages |
+| `/mod off` / `/mod on`, `/mod exempt`, `/mod config` | Manage Messages |
+| `Löschen (Mai)` (right-click a message → Apps) | Manage Messages |
 
 Discord hides the `/mod` subcommands from members without Manage Messages
 (`default_member_permissions`), but the check is repeated in code: that field is
@@ -205,6 +200,33 @@ around it is deliberate:
 - the button is only attached where evidence is actually kept, so it is never a
   promise Mai cannot keep.
 
+## Staff acting through Mai
+
+Everything above is Mai deciding. Three commands let the team decide instead,
+and land in the same record so the next moderator sees one history rather than
+"what Mai did" plus whatever happened out of band:
+
+- **`Löschen (Mai)`** ([src/commands/remove.js](src/commands/remove.js)),
+  right-click a message → *Apps*. The message goes and the strike is recorded,
+  so it counts towards the *next* automatic escalation. No grace period (a human
+  already looked), no timeout (Discord's own is right there, with the duration
+  visible), no appeal button (an appeal is against Mai being wrong; this was a
+  person). If Mai still had the message queued, that row and its scold reply go
+  too: otherwise the next tick would find the message missing, read it as the
+  author having fixed it, and write a self-deletion over the strike.
+- **`/mod warn <user> [reason]`**: the warning DM Mai sends after enforcement,
+  but from the team and without anything having been deleted. Recorded as
+  `warned`, which is deliberately **not** a strike, so a moderator having a word
+  cannot quietly move somebody up a ladder that ends in a timeout. A closed DM
+  is reported to the moderator and in the log entry, so they can say it in the
+  channel instead.
+- **`/mod note add|clear <user>`**: what the team knows that no counter records
+  ("already spoke to them in voice", "is fourteen"). Shown in `/mod history`,
+  where somebody will actually look. Plaintext, unlike the two encrypted
+  content stores: this is staff's own words about their own server, the same
+  class as a report reason. Pruned on the strike-record window, so it does not
+  become an unbounded file on a person.
+
 ## Per-guild settings
 
 One process serves several servers, and they disagree about where Mai should log
@@ -232,6 +254,7 @@ inherited.
 | `mention-cap` | `MODERATION_MENTION_CAP` | Most mentions one message may carry, `@everyone` included (0–100, 0 = off) |
 | `flood` | `MODERATION_FLOOD` | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
 | `name-check` | `MODERATION_NAME_CHECK` | Display names: `off`, `log`, or `reset` (also removes the server nickname) |
+| `shadow` | `MODERATION_SHADOW` | Report every verdict in the log and act on none of them |
 | `evidence` | off | Keep enforced messages (encrypted, `MODERATION_EVIDENCE_HOURS`) so staff can review an appeal |
 
 A setting whose value is a *list* still lives in the `SETTINGS` map as one
@@ -286,6 +309,8 @@ With `log-channel` set, every moderation action is posted as an embed
 | `warningUndelivered` | orange | The warning DM bounced: the member was enforced without ever being told, and never saw the appeal button |
 | `degraded` / `recovered` | orange / green | Classification started failing (moderation is passing everything through here), and started working again |
 | `nameFlagged` | dark orange | A member's display name was classified as a violation, and what happened to it |
+| `shadow` | grey | Shadow mode: what Mai *would* have done, with the score that decided it |
+| `manualDelete` / `warned` | red / amber | Staff acting through Mai: a message deleted by hand, or `/mod warn` |
 
 **Every entry starts with the same head**: member, channel, message, in that
 order, and each kind appends its own fields. Following one incident across
@@ -458,6 +483,7 @@ SQLite via the builtin `node:sqlite` module (no native dependency), at `DATABASE
 | `violations` | The long-term strike record: ids, category slugs, action, timestamp: no content | `VIOLATION_RETENTION_DAYS` |
 | `chat_history` | Mai's short-term memory; `content`/`username` encrypted | `CHAT_HISTORY_MAX_AGE_HOURS` |
 | `evidence` | Enforced messages, for reviewing an appeal; `content` encrypted. Off by default | `MODERATION_EVIDENCE_HOURS` (0 = never stored) |
+| `member_notes` | What staff wrote down about a member (`/mod note`), plaintext: staff's own words about their own server | `VIOLATION_RETENTION_DAYS` |
 | `guild_settings` | Per-guild overrides of the process defaults; NULL = inherit | until changed |
 | `usage_daily` | Call and token counters per day, guild, model and purpose | kept |
 | `schema_migrations` | Which numbered migration files have been applied | kept |

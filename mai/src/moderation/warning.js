@@ -102,6 +102,34 @@ export function groupByMember(records) {
 }
 
 /**
+ * The DM behind `/mod warn`: a human decided to have a word, in Mai's voice.
+ *
+ * Its own template rather than `buildWarning`'s, because it is about a
+ * different thing: no messages were removed, so there is nothing to quote back,
+ * and the reason is staff's own words rather than a category slug. There is
+ * also no appeal button, deliberately: an appeal overturns *strikes*, a manual
+ * warning is not one, so granting it would have nothing to do. The footer says
+ * to talk to staff instead.
+ *
+ * @param {{ reason?: string, guildName?: string }} warning
+ * @returns {string}
+ */
+export function buildManualWarning({ reason, guildName } = {}) {
+  const manual = content.moderation.manualWarning;
+  const body = [
+    manual.title,
+    '',
+    fill(manual.intro, { guild: sanitize(guildName) || manual.unknownGuild }),
+  ];
+
+  // Staff-written, and the only free text in here.
+  if (reason) body.push('', `${manual.reasonLabel} ${sanitize(reason)}`);
+  body.push('', manual.footer);
+
+  return body.join('\n').slice(0, content.moderation.warningDm.maxLength);
+}
+
+/**
  * @param {{ violations: { content: string, timestamp: Date | string | null }[], categories: string[] }} group
  * @param {{ applied?: boolean, until?: Date | null, strikes?: number } | undefined} [timeout]
  *   Escalation outcome, when this sweep also timed the member out.

@@ -51,11 +51,38 @@ Enforced deletions add up: a strike record drives an escalation ladder that ends
 
 Every action can also be mirrored into a staff channel as an embed: metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)). Two of those entries are about Mai failing rather than a member: a warning DM that bounced (the member was enforced without ever being told why), and classification going down, because moderation fails open on purpose and an outage otherwise looks exactly like a quiet afternoon.
 
-How hard Mai judges is per server too: `/mod config set threshold` decides violations on the classifier's own scores instead of its English-tuned default, and `/mod exempt add` leaves a channel alone entirely (chat and reactions keep working there).
+How hard Mai judges is per server too: `/mod config set threshold` decides violations on the classifier's own scores instead of its English-tuned default, and `/mod exempt add` leaves a channel alone entirely (chat and reactions keep working there). A server can find its threshold before living with it: **shadow mode** reports every verdict into the log channel with the score behind it and acts on none of them, and `/mod simulate <text>` answers the same question for one sentence on demand.
+
+Staff can also act *through* Mai instead of only undoing her: a right-click deletion that records the strike, `/mod warn` for a word from the team, and `/mod note` for what the team knows but no counter records. All three land in the same file, so the next moderator reads one history instead of two.
 
 Members are not only on the receiving end: anyone can report a message to staff (right-click → *Apps* → *Nachricht melden*), and a warning DM carries an *Einspruch einlegen* button (`/mai appeal` for members whose DMs are closed, so a bounced warning does not also cost them the appeal). Both land in the server's log channel with decision buttons, and granting an appeal overturns exactly the strikes it was about ([mai/README.md](mai/README.md#reports-and-appeals)). A server can also let Mai keep the enforced messages themselves for a few hours, encrypted, so whoever decides the appeal can read what it is about instead of taking somebody's word for it: off by default, two switches to turn on, and shown to one moderator privately rather than posted anywhere.
 
-Staff inspect and override with `/mod status`, `/mod history <user>`, `/mod forgive <user>`, `/mod spend`, `/mod off` / `/mod on` and `/mod config` (log channel, welcome channel, grace period, timeout ladder, strike window, escalation, threshold and categories, plus the local rules: invite filter, link policy and domains, mention cap, flood rule, name screening and appeal evidence, all per server); everything they see and do is scoped to their own server, and every change is announced in the server's own log channel. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
+## Commands
+
+Full reference, option by option: **[COMMANDS.md](COMMANDS.md)**. What they are
+for:
+
+| I want to … | Command |
+|---|---|
+| ask Mai something in public | `/mai ask <frage>` |
+| make her forget what I told her | `/mai forget` |
+| appeal a warning whose DM never arrived | `/mai appeal` |
+| report a message to the team | right-click → *Apps* → *Nachricht melden* |
+| see whether Mai is working, and what is queued | `/mod status` |
+| look up what a member has done here | `/mod history <user>` |
+| take back a punishment | `/mod forgive <user> [strikes]` |
+| have a word with somebody, from the team | `/mod warn <user> [reason]` |
+| write down what the team knows about them | `/mod note add\|clear <user>` |
+| delete a message myself, on the record | right-click → *Apps* → *Löschen (Mai)* |
+| find out where to put the threshold | `/mod simulate <text>`, or `shadow` mode |
+| stop her moderating one channel | `/mod exempt add <channel>` |
+| stop her completely, for now | `/mod off` (and `/mod on`) |
+| change how she behaves on this server | `/mod config view\|set\|reset` |
+| see what she is costing | `/mod spend` |
+
+Everything a moderator sees and does is scoped to their own server, and every
+settings change is announced in that server's log channel. Whoever runs the bot
+(`OPERATOR_USER_IDS`) additionally sees the process-wide figures.
 
 ## Mai: the bot persona
 

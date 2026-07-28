@@ -9,6 +9,10 @@
  * Both produce the same thing, a list of category slugs, and everything after
  * that point treats them identically.
  *
+ * A guild in **shadow mode** takes the same two verdicts and does nothing with
+ * them except write them to its log channel: the way to choose a threshold
+ * without tuning it by deletion.
+ *
  * `checkMessage` is called inline from the gateway handler, so the verdict is
  * available immediately: a flagged message that also addressed Mai gets the
  * scold reply instead of a chat answer. `recheckMessage` is the same pipeline
@@ -36,6 +40,7 @@ import {
   LOG_FLAGGED,
   LOG_RECOVERED,
   LOG_SELF_DELETED,
+  LOG_SHADOW,
   postModerationLog,
 } from './log.js';
 
@@ -248,6 +253,49 @@ async function flagMessage(message, categories) {
 }
 
 /**
+ * Shadow mode: report the verdict, act on nothing.
+ *
+ * Choosing a threshold used to mean tuning by deletion, which is a bad way to
+ * learn that 0.2 was too low: the messages are already gone and the apologies
+ * are already owed. Here the entry carries the categories and the score that
+ * produced them, and the message keeps its jump link because nothing was done
+ * to it, so staff can read a week of real traffic off their own log channel and
+ * pick the number.
+ *
+ * Deliberately *not* a pause: queue rows from before shadow was switched on are
+ * still enforced. Stopping everything is `/mod off`.
+ *
+ * @param {import('discord.js').Message} message
+ * @param {string[]} categories
+ * @param {number} [topScore]
+ * @returns {{ action: 'ok' }} Nothing happened, so the caller must see nothing.
+ */
+function shadowReport(message, categories, topScore) {
+  logger.info(
+    {
+      messageId: message.id,
+      guildId: message.guildId,
+      userId: message.author.id,
+      categories,
+      topScore,
+    },
+    'Shadow mode: would have flagged this message',
+  );
+
+  void postModerationLog(message.client, {
+    type: LOG_SHADOW,
+    guildId: message.guildId,
+    channelId: message.channelId,
+    messageId: message.id,
+    userId: message.author.id,
+    categories,
+    topScore,
+  });
+
+  return OK;
+}
+
+/**
  * The author edited the violation out of a flagged message. Everything the flag
  * put there comes back off (warning reaction, scold reply, queue row) and the
  * guild's log gets a closing entry, so a `flagged` entry never just evaporates
@@ -351,7 +399,9 @@ export async function checkMessage(message) {
   const local = localViolations(message, settings);
   if (local.length > 0) {
     logger.info({ messageId: message.id, categories: local }, 'Message broke a local rule');
-    return flagMessage(message, local);
+    return settings.shadowMode
+      ? shadowReport(message, local)
+      : flagMessage(message, local);
   }
 
   if (!hasClassifiableContent(message)) {
@@ -367,7 +417,9 @@ export async function checkMessage(message) {
     return OK;
   }
 
-  return flagMessage(message, verdict.categories);
+  return settings.shadowMode
+    ? shadowReport(message, verdict.categories, verdict.topScore)
+    : flagMessage(message, verdict.categories);
 }
 
 /**
@@ -398,7 +450,10 @@ export async function recheckMessage(message) {
   const local = localViolations(message, settings, { rate: false });
   if (local.length > 0) {
     logger.info({ messageId: message.id, categories: local }, 'Edited message broke a local rule');
-    return row ? stillFlagged(message, row, local) : flagMessage(message, local);
+    // A row from before shadow mode was switched on keeps its normal treatment:
+    // shadow stops new flags, it does not abandon pending ones.
+    if (row) return stillFlagged(message, row, local);
+    return settings.shadowMode ? shadowReport(message, local) : flagMessage(message, local);
   }
 
   // Edited down to nothing a classifier can judge (text removed, images off):
@@ -422,7 +477,11 @@ export async function recheckMessage(message) {
     return row ? clearFlag(message, row) : OK;
   }
 
-  if (!row) return flagMessage(message, verdict.categories);
+  if (!row) {
+    return settings.shadowMode
+      ? shadowReport(message, verdict.categories, verdict.topScore)
+      : flagMessage(message, verdict.categories);
+  }
 
   return stillFlagged(message, row, verdict.categories);
 }

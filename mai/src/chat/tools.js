@@ -10,14 +10,23 @@
  * model that could pass a user id could read another member's record.
  */
 import { config } from '../config.js';
+import { content } from '../content.js';
+import { effectiveSettings } from '../db/settings.js';
 import { openViolations } from '../db/queue.js';
-import { strikeCount } from '../db/violations.js';
+import { lastEnforcementPass, strikeCount, totalsFor } from '../db/violations.js';
 import { logger } from '../logger.js';
 import { strikeWindowStart } from '../moderation/escalation.js';
 
 const NO_ARGUMENTS = { type: 'object', properties: {}, additionalProperties: false };
 
-/** Sent to the model with every tool-enabled request. */
+/**
+ * Sent to the model with every tool-enabled request.
+ *
+ * `get_server_rules` is only offered where there *are* rules in the content
+ * file. An empty list would be worse than no tool: the model would call it,
+ * receive nothing, and go back to inventing, which is the exact failure these
+ * tools exist to stop.
+ */
 export const toolDefinitions = Object.freeze([
   {
     type: 'function',
@@ -45,6 +54,36 @@ export const toolDefinitions = Object.freeze([
       parameters: NO_ARGUMENTS,
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'get_my_timeout_status',
+      description:
+        'Ob die Person, die gerade schreibt, aktuell stummgeschaltet (Timeout) ist und bis wann. In Direktnachrichten nicht verfügbar.',
+      parameters: NO_ARGUMENTS,
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_my_appeal_status',
+      description:
+        'Ob die Person, die gerade schreibt, gegen ihre letzte Verwarnung Einspruch einlegen kann, wann diese war und ob frühere Einsprüche Erfolg hatten.',
+      parameters: NO_ARGUMENTS,
+    },
+  },
+  ...(content.chat.rules.length > 0
+    ? [
+        {
+          type: 'function',
+          function: {
+            name: 'get_server_rules',
+            description: 'Die Regeln dieses Servers, im Wortlaut. Nutze sie, statt Regeln zu erfinden.',
+            parameters: NO_ARGUMENTS,
+          },
+        },
+      ]
+    : []),
 ]);
 
 /**
@@ -113,6 +152,71 @@ const handlers = {
       }).format(new Date()),
       timezone: config.timezone,
     };
+  },
+
+  /**
+   * "Wie lange bin ich noch stumm?" used to get an invented number, and the one
+   * person who cannot read the answer off Discord's own UI is the member who is
+   * timed out and looking at a locked text box.
+   *
+   * Read from the cache, never fetched: tools are synchronous by design (see
+   * `runTool`), and a member who is talking to Mai right now is in the cache
+   * because their message put them there. A miss is reported as unknown rather
+   * than guessed at.
+   *
+   * @param {{ userId: string, guildId: string | null, client: object | null }} context
+   */
+  get_my_timeout_status({ userId, guildId, client }) {
+    if (!guildId) return { error: 'not_in_a_server' };
+
+    const member = client?.guilds?.cache?.get(guildId)?.members?.cache?.get(userId);
+    if (!member) return { error: 'unknown_member' };
+
+    const until = member.communicationDisabledUntil ?? null;
+    const active = Boolean(until) && new Date(until).getTime() > Date.now();
+
+    return {
+      timed_out: active,
+      until: active ? new Date(until).toISOString() : null,
+      until_local: active ? localTime(new Date(until).toISOString()) : null,
+      timezone: config.timezone,
+    };
+  },
+
+  /**
+   * What a member can actually do about a warning, so "kann ich da was machen?"
+   * stops being answered from the persona's imagination.
+   *
+   * Their own record only, in this guild only, and metadata only: no message
+   * text, no message ids.
+   *
+   * @param {{ userId: string, guildId: string | null }} context
+   */
+  get_my_appeal_status({ userId, guildId }) {
+    if (!guildId) return { error: 'not_in_a_server' };
+
+    const pass = lastEnforcementPass(guildId, userId, strikeWindowStart(guildId));
+    const totals = totalsFor(guildId, userId);
+
+    return {
+      // An appeal has to have somewhere to land and something to be about.
+      can_appeal: Boolean(pass) && Boolean(effectiveSettings(guildId).logChannelId),
+      how_to_appeal: 'Der Button unter der Verwarnungs-DM, oder /mai appeal auf dem Server.',
+      last_enforcement_at: pass?.sinceIso ?? null,
+      last_enforcement_local: localTime(pass?.sinceIso ?? null),
+      messages_removed_then: pass?.strikes ?? 0,
+      overturned_total: totals.byAction.overturned ?? 0,
+      timezone: config.timezone,
+    };
+  },
+
+  /**
+   * The rules in the operator's own words. Without this Mai answered "was sind
+   * hier die Regeln?" with whatever the model considered plausible, which is
+   * the same failure as inventing a deletion deadline.
+   */
+  get_server_rules() {
+    return { rules: content.chat.rules };
   },
 };
 
