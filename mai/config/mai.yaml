@@ -532,7 +532,7 @@ commands:
     # … while no welcome channel just falls back to the guild's system channel.
     systemChannel: '_System-Kanal_'
     # threshold 0 = the provider's own flagged decides, no score comparison.
-    thresholdOff: '_Standard (OpenAI)_'
+    thresholdOff: '_OpenAI_'
     # Empty category allowlist = every category the provider reports counts.
     allCategories: '_alle_'
     # No channel is exempt from moderation.
