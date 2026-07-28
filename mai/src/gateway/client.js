@@ -5,9 +5,9 @@
  * Requires the "Message Content Intent" to be enabled for the application in
  * the Discord Developer Portal (Bot -> Privileged Gateway Intents). Welcome
  * messages and name screening additionally require the "Server Members Intent";
- * the GuildMembers intent is only requested when DISCORD_WELCOME_ENABLED=true or
- * MODERATION_NAME_CHECK is not "off", because logging in with a privileged
- * intent that is not enabled in the portal fails.
+ * the GuildMembers intent is only requested when DISCORD_MEMBER_EVENTS=true,
+ * because logging in with a privileged intent that is not enabled in the portal
+ * fails.
  *
  * Direct messages arrive via the (non-privileged) DirectMessages intent plus
  * the Partials.Channel below: without the partial, discord.js drops events
@@ -66,9 +66,10 @@ export function createGatewayClient() {
     GatewayIntentBits.MessageContent,
   ];
   // Welcome messages and name screening are the two features that need member
-  // events. An intent is a process-wide decision made once, at login, so a
-  // guild's own `name-check` setting cannot turn this on: that is what
-  // MODERATION_NAME_CHECK is for, and `/mod config set name-check` says so.
+  // events, and both are per-guild settings. An intent is a process-wide
+  // decision made once, at login, so neither setting can turn this on: that is
+  // what DISCORD_MEMBER_EVENTS is for, and `/mod config set` says so when a
+  // server asks for something it cannot have yet.
   if (config.discord.memberEventsEnabled) {
     intents.push(GatewayIntentBits.GuildMembers);
   }

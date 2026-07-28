@@ -8,6 +8,7 @@
  * second one, which is why it is written to the database rather than kept in
  * memory.
  */
+import './setup-onboarding.js';
 import { interaction, openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';

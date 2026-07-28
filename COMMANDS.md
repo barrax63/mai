@@ -261,6 +261,7 @@ setting to the inherited default, or all of them when the setting is omitted.
 | Option | Effect |
 |---|---|
 | `log-channel` | Where moderation entries are posted. Unset = no log for this server, which also disables reports, appeals and evidence |
+| `welcome` | Greet new members at all. Needs `DISCORD_MEMBER_EVENTS` on the bot |
 | `welcome-channel` | Where new members are greeted (default: the server's system channel) |
 | `grace` | Minutes an author has to delete a flagged message themselves (1 to 1440) |
 | `timeout-ladder` | Timeout minutes per strike, e.g. `0,5,15,30,60`; the last step repeats |
@@ -278,14 +279,15 @@ setting to the inherited default, or all of them when the setting is omitted.
 | `evidence` | Keep enforced messages briefly, encrypted, so staff can review an appeal |
 | `shadow` | Report every verdict in the log and act on none of them, open-ended. `/mod setup observe` is the version that ends by itself |
 
-Two of these need something only the operator can switch on: `name-check` rides
-on a gateway intent and `evidence` on a retention window. Both are stored anyway
-so they take effect the moment that changes, and the command says plainly that
-nothing is happening yet.
+Three of these need something only the operator can switch on: `welcome` and
+`name-check` ride on a gateway intent (`DISCORD_MEMBER_EVENTS`), `evidence` on a
+retention window. All three are stored anyway so they take effect the moment
+that changes, and the command says plainly that nothing is happening yet.
 
-For the last seven, "off" and "not configured" are different answers:
-`/mod config set flood:off` stores *no flood rule here* rather than reverting to
-whatever `.env` says, which is what `/mod config reset flood` is for.
+For the guard rules, "off" and "not configured" are different answers:
+`/mod config set flood:off` stores *no flood rule here* rather than falling back
+to what the server's profile says, which is what `/mod config reset flood` is
+for.
 
 ### `Löschen (Mai)` (right-click a message, *Apps*)
 

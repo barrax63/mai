@@ -12,12 +12,12 @@
  * greeting.
  *
  * Both need the privileged "Server Members Intent" (Developer Portal -> Bot).
- * The GuildMembers gateway intent is only requested when DISCORD_WELCOME_ENABLED
- * or MODERATION_NAME_CHECK is on (see gateway/client.js), so this handler runs
- * for either feature and each half checks its own flag.
+ * The GuildMembers gateway intent is only requested when DISCORD_MEMBER_EVENTS
+ * is on (see gateway/client.js), so this handler runs for either feature and
+ * each half checks its own per-guild setting.
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { config, isGuildAllowed } from '../../config.js';
+import { isGuildAllowed } from '../../config.js';
 import { content, fill, pick } from '../../content.js';
 import { effectiveSettings, isGuildActive } from '../../db/settings.js';
 import { logger } from '../../logger.js';
@@ -67,7 +67,8 @@ export async function onGuildMemberAdd(member) {
     return;
   }
 
-  if (!config.discord.welcomeEnabled) return;
+  // Per server now, and already folded against the operator's intent switch.
+  if (!effectiveSettings(member.guild.id).welcomeEnabled) return;
 
   const channel = await welcomeChannel(member.guild);
   if (!channel) {

@@ -12,7 +12,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { config } from '../src/config.js';
 import { content } from '../src/content.js';
-import { resetSettings, updateSettings } from '../src/db/settings.js';
+import { effectiveSettings, resetSettings, updateSettings } from '../src/db/settings.js';
 import { onGuildMemberAdd } from '../src/gateway/events/guild-member-add.js';
 import { onGuildMemberUpdate } from '../src/gateway/events/guild-member-update.js';
 import { displayName, screenMemberName } from '../src/moderation/names.js';
@@ -22,7 +22,9 @@ await openTestDatabase();
 const LOG_CHANNEL = '810000000000000009';
 const SYSTEM_CHANNEL = '810000000000000008';
 
-updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL });
+// Both features are per-guild settings now, and this file needs both: a name
+// that is the violation must not come back as a welcome.
+updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL, 'name-check': 'log', welcome: true });
 
 let nextId = 0;
 const memberId = () => `812000000000000${(nextId += 1).toString().padStart(3, '0')}`;
@@ -102,10 +104,11 @@ const entry = (record) => record.posted.at(-1)?.embeds?.[0];
 const fieldValue = (embed, label) => embed.fields.find((field) => field.name === label)?.value;
 
 test('member events are requested as soon as names are screened', () => {
-  // A guild setting cannot turn a gateway intent on, so this flag is what makes
-  // the whole feature possible; without it the events never arrive.
-  assert.equal(config.moderation.nameCheck, 'log');
+  // A guild setting cannot turn a gateway intent on, so this variable is what
+  // makes the whole feature possible; without it the events never arrive and
+  // the setting below would be a promise Mai cannot keep.
   assert.equal(config.discord.memberEventsEnabled, true);
+  assert.equal(effectiveSettings(TEST_GUILD).nameCheck, 'log', 'the mode is the guild\'s own');
 });
 
 test('the display name is the nickname, then the global name, then the username', () => {
@@ -166,7 +169,7 @@ test('on `reset` the guild nickname goes, and the entry says so', async () => {
     );
   } finally {
     restore();
-    resetSettings(TEST_GUILD, 'name-check');
+    updateSettings(TEST_GUILD, { 'name-check': 'log' });
   }
 });
 
@@ -184,7 +187,7 @@ test('a global username is not Mai\'s to change, and the entry admits it', async
     );
   } finally {
     restore();
-    resetSettings(TEST_GUILD, 'name-check');
+    updateSettings(TEST_GUILD, { 'name-check': 'log' });
   }
 });
 
@@ -200,7 +203,7 @@ test('a refused reset is reported in words, not swallowed', async () => {
     assert.equal(resolution.includes('Missing Permissions'), false, 'never the raw message');
   } finally {
     restore();
-    resetSettings(TEST_GUILD, 'name-check');
+    updateSettings(TEST_GUILD, { 'name-check': 'log' });
   }
 });
 
@@ -220,7 +223,7 @@ test('an unreachable classifier leaves the name alone', async () => {
     assert.deepEqual(record.posted, []);
   } finally {
     restore();
-    resetSettings(TEST_GUILD, 'name-check');
+    updateSettings(TEST_GUILD, { 'name-check': 'log' });
   }
 });
 
@@ -234,7 +237,7 @@ test('off means no classification call at all', async () => {
     assert.equal((await screenMemberName(member)).flagged, false);
   } finally {
     restore();
-    resetSettings(TEST_GUILD, 'name-check');
+    updateSettings(TEST_GUILD, { 'name-check': 'log' });
   }
 });
 

@@ -453,6 +453,7 @@ function loadContent() {
         shadowUntil: str(configSection, ['commands', 'config', 'shadowUntil']),
         // Stored, but waiting on something only the operator can switch on.
         nameCheckUnavailable: str(configSection, ['commands', 'config', 'nameCheckUnavailable']),
+        welcomeUnavailable: str(configSection, ['commands', 'config', 'welcomeUnavailable']),
         evidenceUnavailable: str(configSection, ['commands', 'config', 'evidenceUnavailable']),
         nothing: str(configSection, ['commands', 'config', 'nothing']),
         invalid: str(configSection, ['commands', 'config', 'invalid']),

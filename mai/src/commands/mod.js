@@ -721,6 +721,10 @@ function configView(guildId) {
       // No log channel = no moderation log; no welcome channel = system channel.
       logChannel: settings.logChannelId ? `<#${settings.logChannelId}>` : unset,
       logChannelSource: inherited('log-channel'),
+      // Already folded against the operator's intent switch, so this line says
+      // what happens rather than what was asked for.
+      welcome: yesNo(settings.welcomeEnabled),
+      welcomeSource: inherited('welcome'),
       welcomeChannel: settings.welcomeChannelId ? `<#${settings.welcomeChannelId}>` : systemChannel,
       welcomeChannelSource: inherited('welcome-channel'),
       ladder: settings.timeoutLadder.join(', '),
@@ -872,9 +876,13 @@ function unavailableNotes(patch) {
   const notes = [];
 
   // An intent is requested once, at login, for the whole process: a guild
-  // cannot turn on the member events its name check needs.
+  // cannot turn on the member events these two ride on. Stored anyway, so the
+  // server is already configured the moment the operator flips the variable.
   if (patch['name-check'] && patch['name-check'] !== 'off' && !config.discord.memberEventsEnabled) {
     notes.push(content.commands.config.nameCheckUnavailable);
+  }
+  if (patch.welcome === true && !config.discord.memberEventsEnabled) {
+    notes.push(content.commands.config.welcomeUnavailable);
   }
   // Retention is the operator's call, because it is their database.
   if (patch.evidence === true && config.moderation.evidenceHours === 0) {
@@ -1191,6 +1199,11 @@ export const mod = {
                 description: 'Where Mai posts moderation entries (metadata only)',
                 type: 7, // CHANNEL
                 channel_types: [0, 5], // text, announcement
+              },
+              {
+                name: 'welcome',
+                description: 'Greet new members at all (needs DISCORD_MEMBER_EVENTS)',
+                type: 5, // BOOLEAN
               },
               {
                 name: 'welcome-channel',

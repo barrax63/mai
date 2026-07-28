@@ -1,0 +1,20 @@
+-- Whether Mai greets new members here, which is a server's decision.
+--
+-- It used to be `DISCORD_WELCOME_ENABLED`, one flag for every server the
+-- process serves, and it was there for a reason that was never about greeting:
+-- welcomes need the privileged GuildMembers intent, an intent is requested once
+-- at login for the whole process, and a guild setting cannot reach back into
+-- that. So the operator's switch and the server's choice were the same switch,
+-- and a deployment with two servers could not have one of them quiet.
+--
+-- They are separate now. `DISCORD_MEMBER_EVENTS` says only what the Developer
+-- Portal says ("the intent is on"), and this column says whether a server wants
+-- the greeting, exactly like `name-check` says whether it wants display names
+-- screened. Both ride the same intent and both answer with a warning through
+-- `/mod config set` when the operator has not enabled it, because silently
+-- accepting a setting that does nothing is how a server ends up believing it is
+-- configured.
+--
+-- NULL = inherit, and the base is off: a greeting is a thing a server opts into,
+-- not a thing it has to switch off.
+ALTER TABLE guild_settings ADD COLUMN welcome_enabled INTEGER;

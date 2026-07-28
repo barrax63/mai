@@ -363,35 +363,9 @@ for (const name of [
   );
 }
 
-/**
- * Runs one of the exported parsers over an environment variable, so the process
- * default is refused exactly like the same value typed into `/mod config set`.
- *
- * @param {(raw: unknown, label: string) => unknown} parse
- */
-const parsed = (parse) => (name, fallback) => {
-  try {
-    return parse(optional(name, fallback) ?? '', name);
-  } catch (error) {
-    throw new Error(`Environment variable ${error.message}`);
-  }
-};
-
-/**
- * The thirteenth of the per-server policies, and the one that could not leave.
- *
- * `MODERATION_NAME_CHECK` is not only a policy: anything but `off` requests the
- * privileged GuildMembers intent, and an intent is decided once, at login, for
- * the whole process. A guild setting therefore cannot turn one on, so the
- * operator has to state up front whether member events are available at all.
- * The setting of the same name is per guild like the rest, and answers with a
- * warning when this says no.
- *
- * Collapsing this and `DISCORD_WELCOME_ENABLED` into a single "I switched the
- * intent on in the Developer Portal" variable is the obvious next move, and
- * would let the policy half of it follow the other twelve into `BASE_SETTINGS`.
- */
-const nameCheck = parsed(parseNameCheck);
+// The parsers above are exported rather than used here: nothing in the
+// environment is a per-server policy any more, so `/mod config set` and
+// `BASE_SETTINGS` are their only callers (db/settings.js).
 
 const moderationEnabled = bool('MODERATION_ENABLED', 'true');
 const chatEnabled = bool('CHAT_ENABLED', 'true');
@@ -400,11 +374,40 @@ const needsOpenAi = moderationEnabled || chatEnabled;
 // because keeping evidence is the second thing that needs one.
 const evidenceHours = hours('MODERATION_EVIDENCE_HOURS', '0');
 
-// Both of these decide whether the privileged GuildMembers intent is requested,
-// so they are read here rather than inside the config object: `discord` is built
-// before `moderation` and cannot look forward into it.
-const welcomeEnabled = bool('DISCORD_WELCOME_ENABLED', 'false');
-const nameCheckMode = nameCheck('MODERATION_NAME_CHECK', 'off');
+/**
+ * Whether the privileged "Server Members Intent" is switched on in the Discord
+ * Developer Portal, which is the only thing this variable says.
+ *
+ * It used to be said twice and sideways: `DISCORD_WELCOME_ENABLED` and
+ * `MODERATION_NAME_CHECK` were both *policies*, and requesting the intent was a
+ * side effect of either being on. So a deployment could not greet members in
+ * one server and not another, turning on a name check anywhere silently changed
+ * what the gateway asked Discord for, and switching a policy off in the last
+ * server that wanted it dropped the intent from under the other feature.
+ *
+ * One variable, one meaning, and it is a fact about the deployment rather than
+ * a stance on moderation: exactly the test for whether something belongs here.
+ * Both features are ordinary per-guild settings now (`welcome`, `name-check`),
+ * folded against this in `effectiveSettings` so what a caller reads is what
+ * actually happens, and stored even when it says no, so a server that
+ * configured itself is already configured the moment the operator flips it.
+ *
+ * Getting it wrong is loud in one direction and quiet in the other: `true`
+ * without the portal toggle makes the gateway login fail outright, which is why
+ * it cannot default to on.
+ */
+const memberEventsEnabled = bool('DISCORD_MEMBER_EVENTS', 'false');
+
+deprecate(
+  'DISCORD_WELCOME_ENABLED',
+  'Greeting new members is a per-server setting now (/mod config set welcome:true). '
+    + 'Set DISCORD_MEMBER_EVENTS=true to make the intent available at all.',
+);
+deprecate(
+  'MODERATION_NAME_CHECK',
+  'Display-name screening is a per-server setting now (/mod config set name-check). '
+    + 'Set DISCORD_MEMBER_EVENTS=true to make the intent available at all.',
+);
 
 /**
  * The database content key: base64 of exactly 32 bytes (AES-256-GCM).
@@ -442,15 +445,12 @@ export const config = Object.freeze({
         .map((id) => id.trim())
         .filter(Boolean),
     ),
-    // Welcome messages need the privileged "Server Members Intent": keep the
-    // GuildMembers intent out of the login unless it is enabled in the
-    // Developer Portal, otherwise the gateway connection is refused.
-    welcomeEnabled,
-    // Member events (joins, nickname changes) all ride on that one intent, and
-    // two features want them now. A guild setting cannot turn an intent on:
-    // intents are decided once, at login, for the whole process, so this is the
-    // operator's switch and `/mod config set name-check` says so when it is off.
-    memberEventsEnabled: welcomeEnabled || nameCheckMode !== 'off',
+    // Member events (joins, nickname changes) ride on the privileged
+    // GuildMembers intent, which is requested once at login for the whole
+    // process, so no guild setting can turn one on. Keep it out of the login
+    // unless the Developer Portal toggle is on, or the gateway refuses the
+    // connection outright.
+    memberEventsEnabled,
     // Whoever runs the bot itself, as opposed to whoever moderates a server
     // that uses it. Only these ids see process-wide numbers in `/mod status`
     // and `/mod spend`; everyone else sees their own guild. Empty = nobody, so
@@ -517,10 +517,6 @@ export const config = Object.freeze({
     // (`/mod config set evidence:true`). Hours, not days: it exists for the
     // appeal window, not as an archive.
     evidenceHours,
-    // What to do about a member whose *name* is the violation: 'off', 'log',
-    // or 'reset' (also removes the guild nickname). Needs the GuildMembers
-    // intent, which is why anything but 'off' requests it (see `discord` above).
-    nameCheck: nameCheckMode,
     // How long `/mod setup observe` watches before switching itself back to
     // enforcing. A week, because that is what Mai's introduction promises, and
     // the promise is the feature: a flag somebody has to remember to turn off

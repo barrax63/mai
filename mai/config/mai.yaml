@@ -510,6 +510,7 @@ commands:
       **Mai aktiv:** {enabled}{enabledSource}
       **Eskalation:** {escalation}{escalationSource}
       **Moderations-Log:** {logChannel}{logChannelSource}
+      **Begrüßung:** {welcome}{welcomeSource}
       **Willkommens-Kanal:** {welcomeChannel}{welcomeChannelSource}
       **Schonfrist:** {grace} Minuten{graceSource}
       **Timeout-Leiter:** {ladder} Minuten pro Verstoß{ladderSource}
@@ -553,9 +554,10 @@ commands:
     evidenceOn: 'an, {hours} Stunden'
     # Schattenmodus mit Enddatum (Beobachtungszeit) statt auf Dauer.
     shadowUntil: '(Beobachtungszeit, endet {until})'
-    # Zwei Einstellungen brauchen etwas, das nur der Betreiber einschalten kann.
+    # Drei Einstellungen brauchen etwas, das nur der Betreiber einschalten kann.
     # Der Wert wird trotzdem gespeichert und greift, sobald das passiert.
-    nameCheckUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (MODERATION_NAME_CHECK ist aus). Sag der Person Bescheid, die den Bot betreibt.'
+    nameCheckUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (DISCORD_MEMBER_EVENTS ist aus). Sag der Person Bescheid, die den Bot betreibt.'
+    welcomeUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (DISCORD_MEMBER_EVENTS ist aus), also merkt sie neue Mitglieder nicht. Sag der Person Bescheid, die den Bot betreibt.'
     evidenceUnavailable: '⚠️ Gespeichert, aber es wird nichts aufbewahrt: der Betreiber hat MODERATION_EVIDENCE_HOURS auf 0 stehen.'
     nothing: 'Nichts angegeben, nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'

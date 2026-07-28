@@ -32,6 +32,7 @@ test('a guild without a row inherits every default', () => {
     escalation: true,
     'log-channel': true,
     'welcome-channel': true,
+    welcome: true,
     grace: true,
     'timeout-ladder': true,
     'strike-window': true,
@@ -179,6 +180,7 @@ test('reset without a name clears everything', () => {
     escalation: true,
     'log-channel': true,
     'welcome-channel': true,
+    welcome: true,
     grace: true,
     'timeout-ladder': true,
     'strike-window': true,
@@ -245,13 +247,37 @@ test('the mention cap and the link policy take only what they can act on', () =>
 test('name-check takes only the three modes it can act on', () => {
   const id = guild();
 
-  assert.equal(updateSettings(id, { 'name-check': 'reset' }).nameCheck, 'reset');
-  assert.equal(updateSettings(id, { 'name-check': 'off' }).nameCheck, 'off');
-  assert.equal(updateSettings(id, { 'name-check': ' LOG ' }).nameCheck, 'log', 'normalized');
+  // Asserted on the stored value: `effectiveSettings` folds in the operator's
+  // `DISCORD_MEMBER_EVENTS`, which is off in this file's environment, so what
+  // it *reports* is covered by the test below instead.
+  updateSettings(id, { 'name-check': 'reset' });
+  assert.equal(rawSettings(id).name_check, 'reset');
+  updateSettings(id, { 'name-check': ' LOG ' });
+  assert.equal(rawSettings(id).name_check, 'log', 'normalized');
 
   for (const bad of ['ban', 'kick', 'löschen']) {
     assert.throws(() => updateSettings(id, { 'name-check': bad }), RangeError, `accepted ${bad}`);
   }
+});
+
+test('the two member-event settings are stored, but report what actually happens', () => {
+  // Both ride the privileged GuildMembers intent, which only the operator can
+  // request and which this file's environment does not. Storing the value
+  // anyway is the point: the server is configured the moment that changes, and
+  // `/mod config set` says plainly that nothing is happening yet. What the
+  // settings *read* as has to be the truth, though, or a server believes it is
+  // screening names when no member event will ever arrive.
+  const id = guild();
+  assert.equal(config.discord.memberEventsEnabled, false, 'the premise of this test');
+
+  const settings = updateSettings(id, { 'name-check': 'reset', welcome: true });
+  assert.equal(settings.nameCheck, 'off', 'reported as what happens');
+  assert.equal(settings.welcomeEnabled, false);
+
+  assert.equal(rawSettings(id).name_check, 'reset', 'but the decision is kept');
+  assert.equal(rawSettings(id).welcome_enabled, 1);
+  assert.equal(settings.inherited['name-check'], false, 'the guild did decide');
+  assert.equal(settings.inherited.welcome, false);
 });
 
 test('evidence stays off while the operator keeps no retention window', () => {

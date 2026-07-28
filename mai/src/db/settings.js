@@ -87,6 +87,13 @@ export const SETTINGS = Object.freeze({
     column: 'welcome_channel_id',
     parse: (value) => (value === null ? null : String(value)),
   },
+  welcome: {
+    // Greet new members here at all. Rides the same privileged intent as
+    // `name-check`, so it is stored either way and `/mod config set` warns when
+    // the operator has not switched `DISCORD_MEMBER_EVENTS` on.
+    column: 'welcome_enabled',
+    parse: (value) => (value === null ? null : toFlag(value, 'welcome')),
+  },
   grace: {
     column: 'grace_period_minutes',
     parse: (value) => {
@@ -298,6 +305,9 @@ export function effectiveSettings(guildId) {
     logChannelId: row?.log_channel_id ?? null,
     // Falls back to the guild's system channel in the welcome handler.
     welcomeChannelId: row?.welcome_channel_id ?? null,
+    // Whether there is a greeting at all. Needs `DISCORD_MEMBER_EVENTS` too:
+    // the intent it rides on is the operator's, decided once at login.
+    welcomeEnabled: flag('welcome_enabled') && config.discord.memberEventsEnabled,
     gracePeriodMinutes: value('grace_period_minutes'),
     timeoutLadder: value('timeout_ladder').split(',').map(Number),
     strikeWindowDays: value('strike_window_days'),
@@ -319,10 +329,9 @@ export function effectiveSettings(guildId) {
     // the feature is available at all, this flag whether it is used. Folded in
     // here so every caller reads what actually happens.
     evidenceEnabled: flag('evidence_enabled') && config.moderation.evidenceHours > 0,
-    // The one setting with no entry in `BASE_SETTINGS`: its default is the
-    // operator's, because the same variable decides whether the privileged
-    // intent it needs was requested at login at all (see presets.js).
-    nameCheck: value('name_check') ?? config.moderation.nameCheck,
+    // Screening a display name needs the same intent the greeting does, so it
+    // is folded the same way: what this returns is what actually happens.
+    nameCheck: config.discord.memberEventsEnabled ? value('name_check') : 'off',
     shadowMode: flag('shadow_mode'),
     // When an observation period ends by itself. NULL = shadow mode with no
     // end, which is what an explicit `/mod config set shadow:true` means.
@@ -335,6 +344,7 @@ export function effectiveSettings(guildId) {
       escalation: row?.escalation_enabled == null,
       'log-channel': !row?.log_channel_id,
       'welcome-channel': !row?.welcome_channel_id,
+      welcome: row?.welcome_enabled == null,
       grace: row?.grace_period_minutes == null,
       'timeout-ladder': !row?.timeout_ladder,
       'strike-window': row?.strike_window_days == null,

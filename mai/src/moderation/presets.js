@@ -133,19 +133,18 @@ export const BASE_SETTINGS = Object.freeze({
   'link-domains': '',
   'mention-cap': 0,
   flood: '',
+  // Both of these ride the privileged GuildMembers intent, which only
+  // `DISCORD_MEMBER_EVENTS` can request. Off here is the honest base either
+  // way: a greeting is opted into, and a name check that cannot run must not
+  // read as on. `effectiveSettings` folds the operator's switch into both, so
+  // what it returns is what actually happens.
+  'name-check': 'off',
+  welcome: false,
   // Keeping a member's deleted words needs the operator's retention window too
-  // (`MODERATION_EVIDENCE_HOURS`), which `effectiveSettings` folds in.
+  // (`MODERATION_EVIDENCE_HOURS`), folded in the same way.
   evidence: false,
   shadow: false,
 });
-
-// `name-check` is deliberately absent, and it is the one setting whose default
-// still comes from the environment (`MODERATION_NAME_CHECK`). Anything but
-// `off` requests the privileged GuildMembers intent, which is decided once at
-// login for the whole process, so the operator states it up front and a base
-// value here would either silently disagree with what the gateway asked for or
-// quietly promise a screening that cannot run. The profiles still set it, and a
-// guild that does gets the warning `/mod config set name-check` already gives.
 
 /**
  * Every setting name any bundle above decides, which is what `/mod setup` hands

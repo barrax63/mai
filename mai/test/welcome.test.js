@@ -18,6 +18,18 @@ import { onGuildMemberAdd } from '../src/gateway/events/guild-member-add.js';
 
 await openTestDatabase();
 
+// Greeting is a per-guild setting now; the environment variable only says the
+// intent is available at all. `resetSettings` therefore switches it off along
+// with everything else, so the tests that start from a clean guild opt back in
+// through this rather than calling `resetSettings` directly.
+const freshGuild = (guildId = TEST_GUILD) => {
+  resetSettings(guildId);
+  updateSettings(guildId, { welcome: true });
+};
+
+freshGuild(TEST_GUILD);
+freshGuild(OTHER_GUILD);
+
 const WELCOME_CHANNEL = '860000000000000001';
 const SYSTEM_CHANNEL = '860000000000000002';
 const BOT = '860000000000000003';
@@ -63,7 +75,7 @@ function fakeMember({
 }
 
 test('a new member is greeted in the guild system channel by default', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member, record } = fakeMember();
 
   await onGuildMemberAdd(member);
@@ -74,7 +86,7 @@ test('a new member is greeted in the guild system channel by default', async () 
 });
 
 test('the greeting is one of the configured lines, with the mention filled in', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member, record } = fakeMember();
 
   await onGuildMemberAdd(member);
@@ -88,7 +100,7 @@ test('the greeting is one of the configured lines, with the mention filled in', 
 });
 
 test('the new member is the only thing a welcome may ping', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member, record } = fakeMember();
 
   await onGuildMemberAdd(member);
@@ -104,7 +116,7 @@ test('a configured welcome channel wins over the system channel', async () => {
 
   assert.deepEqual(record.fetched, [WELCOME_CHANNEL]);
   assert.equal(record.sent[0].channelId, WELCOME_CHANNEL);
-  resetSettings(TEST_GUILD);
+  freshGuild();
 });
 
 test('an unreachable configured channel falls back instead of failing', async () => {
@@ -114,7 +126,7 @@ test('an unreachable configured channel falls back instead of failing', async ()
   await onGuildMemberAdd(member);
 
   assert.equal(record.sent[0].channelId, SYSTEM_CHANNEL);
-  resetSettings(TEST_GUILD);
+  freshGuild();
 });
 
 test('a configured channel that holds no messages falls back too', async () => {
@@ -124,11 +136,11 @@ test('a configured channel that holds no messages falls back too', async () => {
   await onGuildMemberAdd(member);
 
   assert.equal(record.sent[0].channelId, SYSTEM_CHANNEL);
-  resetSettings(TEST_GUILD);
+  freshGuild();
 });
 
 test('with nowhere to write, nothing is written', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member, record } = fakeMember({ systemChannel: false });
 
   await onGuildMemberAdd(member);
@@ -137,7 +149,7 @@ test('with nowhere to write, nothing is written', async () => {
 });
 
 test('without Send Messages Mai stays quiet rather than throwing on the gateway', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member, record } = fakeMember({ canSend: false });
 
   await onGuildMemberAdd(member);
@@ -146,7 +158,7 @@ test('without Send Messages Mai stays quiet rather than throwing on the gateway'
 });
 
 test('a failing send is survivable', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member } = fakeMember();
   member.guild.systemChannel.send = async () => {
     throw Object.assign(new Error('Missing Permissions'), { code: 50013 });
@@ -156,7 +168,7 @@ test('a failing send is survivable', async () => {
 });
 
 test('bots are not welcomed', async () => {
-  resetSettings(TEST_GUILD);
+  freshGuild();
   const { member, record } = fakeMember({ bot: true });
 
   await onGuildMemberAdd(member);

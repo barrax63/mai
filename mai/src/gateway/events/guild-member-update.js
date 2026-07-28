@@ -8,8 +8,7 @@
  * timing someone out would immediately re-screen them.
  *
  * Rides on the same privileged GuildMembers intent as the welcome (requested
- * only when `MODERATION_NAME_CHECK` is on or welcomes are enabled: see
- * gateway/client.js).
+ * only when `DISCORD_MEMBER_EVENTS` is on: see gateway/client.js).
  */
 import { displayName, screenMemberName } from '../../moderation/names.js';
 import { logger } from '../../logger.js';
