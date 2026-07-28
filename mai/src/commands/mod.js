@@ -734,9 +734,14 @@ function forgiveResponse(interaction) {
  */
 function configView(guildId) {
   const settings = effectiveSettings(guildId);
-  // Three layers, so three answers. An unmarked line is one this server set
-  // itself, which is the one a moderator reading this most needs to spot.
-  const marker = { profile: content.commands.config.fromProfile, default: content.commands.config.inherited };
+  // Three layers, so three answers, plus the one setting Mai switches on her
+  // own behalf. An unmarked line is one this server set itself, which is the
+  // one a moderator reading this most needs to spot.
+  const marker = {
+    profile: content.commands.config.fromProfile,
+    default: content.commands.config.inherited,
+    self: content.commands.config.bySelf,
+  };
   const inherited = (key) => (marker[settings.source[key]] ? ` ${marker[settings.source[key]]}` : '');
   const { unset, systemChannel, thresholdOff, allCategories, noExemptChannels, guardOff, noDomains } =
     content.commands.config;

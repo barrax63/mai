@@ -290,7 +290,14 @@ export function effectiveSettings(guildId) {
   // answers to "who decided that?".
   const source = (name) => {
     const { column } = SETTINGS[name];
-    if (row?.[column] != null) return 'set';
+    if (row?.[column] != null) {
+      // Escalation is the one setting Mai writes on her own behalf, when she
+      // has lost the permission to carry it out. Without this it reads exactly
+      // like a colleague having switched it off, which is the wrong thing for
+      // the next moderator to believe: one of those is undone by granting a
+      // permission and the other by having a conversation.
+      return name === 'escalation' && row.escalation_suspended_at ? 'self' : 'set';
+    }
     return fromProfile && column in fromProfile ? 'profile' : 'default';
   };
 

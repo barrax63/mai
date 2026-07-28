@@ -453,6 +453,8 @@ function loadContent() {
         // decides, and an unmarked line is one somebody here set deliberately.
         inherited: str(configSection, ['commands', 'config', 'inherited']),
         fromProfile: str(configSection, ['commands', 'config', 'fromProfile']),
+        // The fourth source: Mai switched it off herself, lacking the permission.
+        bySelf: str(configSection, ['commands', 'config', 'bySelf']),
         noProfile: str(configSection, ['commands', 'config', 'noProfile']),
         on: str(configSection, ['commands', 'config', 'on']),
         off: str(configSection, ['commands', 'config', 'off']),

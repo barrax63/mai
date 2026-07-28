@@ -250,6 +250,33 @@ test('a ladder she cannot carry out is switched off, not retried forever', () =>
   assert.equal(rawSettings(TEST_GUILD).escalation_enabled, 0);
 });
 
+test('the view says who switched escalation off', async () => {
+  wipe();
+  resetPermissionAudit();
+  auditPermissions(fakeGuild({ permissions: PermissionFlagsBits.SendMessages }).guild);
+
+  // Not `set`: reading it as a colleague's decision is the wrong thing for the
+  // next moderator to believe. One of those is undone by granting a permission.
+  assert.equal(effectiveSettings(TEST_GUILD).source.escalation, 'self');
+
+  const view = await route(
+    interaction({
+      type: InteractionType.APPLICATION_COMMAND,
+      member: STAFF,
+      data: {
+        name: 'mod',
+        options: [{ name: 'config', type: 2, options: [{ name: 'view', type: 1 }] }],
+      },
+    }),
+  );
+  const line = view.data.content.split('\n').find((row) => row.includes('Eskalation'));
+  assert.ok(line.includes(content.commands.config.bySelf), line);
+
+  // Staff switching it off themselves reads as theirs, unmarked.
+  updateSettings(TEST_GUILD, { escalation: false }, 'admin-1');
+  assert.equal(effectiveSettings(TEST_GUILD).source.escalation, 'set');
+});
+
 test('the ladder comes back by itself when the permission does', () => {
   wipe();
   resetPermissionAudit();

@@ -552,6 +552,10 @@ commands:
     # bewusst gesetzt hat.
     inherited: '_(Standard)_'
     fromProfile: '_(Profil)_'
+    # Mai hat das selbst abgeschaltet, weil ihr das Recht dazu fehlt. Steht nur
+    # an der Eskalation: sonst liest es sich wie eine Entscheidung des Teams,
+    # und das eine behebt man mit einem Recht, das andere mit einem Gespräch.
+    bySelf: '_(von Mai abgeschaltet: mir fehlen die Rechte)_'
     # Der Server hat noch kein Profil gewählt: /mod setup.
     noProfile: '_keines_ (`/mod setup`)'
     on: 'ja'
