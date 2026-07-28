@@ -92,11 +92,54 @@ minutes.
 
 ## For staff (Manage Messages)
 
+### `/mod setup <preset> [log-channel]`
+
+The whole configuration in one command, from a preset. Ephemeral, and it
+answers with the resulting settings so nothing is applied invisibly.
+
+`/mod config set` exposes every knob individually, which is right for tuning and
+wrong for the first ten minutes: the honest default for every house rule is
+"off", so a server that never gets round to seventeen options is running a
+moderation bot that moderates nothing. A preset writes ordinary per-guild
+settings, all of them changeable afterwards with `/mod config set` and
+resettable with `/mod config reset`.
+
+| Preset | What it sets |
+|---|---|
+| `observe` | Shadow mode on, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off. Everything detects, nothing acts |
+| `standard` | The same detection, enforced: shadow off, escalation on |
+| `strict` | Enforced, plus threshold `0.3`, mention cap 5, flood `5/10`, grace 5 minutes, name check `reset` |
+
+`observe` is the recommended first step and the reason shadow mode exists: a
+week of it tells a server what Mai would have done to its own traffic, which is
+the only honest way to find out whether her line sits where theirs does. Then
+`/mod simulate` and `/mod config set threshold`.
+
+No preset touches `enabled`, so applying one cannot quietly undo somebody's
+`/mod off`, and only `strict` sets a `threshold`: guessing that number for a
+server nobody has looked at is exactly the tuning-by-deletion the rest of this
+exists to avoid.
+
+`log-channel` is optional here but has no sane default anywhere, so the command
+says so when it is still missing: without one there is no moderation log, no
+reports and no appeals.
+
+The same three presets sit as buttons on the message Mai posts when she joins a
+server, so a fresh server is one click rather than one command.
+
 ### `/mod status`
 
 Queue depth and chat-memory size for this server, when the last moderation tick
-ran, whether classification is currently working, the configured models, and
-uptime. Ephemeral.
+ran, whether classification is currently working, **which permissions Mai is
+missing**, the configured models, and uptime. Ephemeral.
+
+The permission line is there because every one of those permissions is
+discovered by failing: Manage Messages at the end of a grace period, Moderate
+Members when somebody has just earned a timeout, Send Messages in the log
+channel when there is finally something to log. Each failure is handled
+gracefully, which is exactly why a server can run for weeks believing it is
+moderated. Only what this server has switched on is checked: a guild with
+escalation off is not told about Moderate Members.
 
 The classification line matters because moderation **fails open**: when the
 provider is unreachable, messages pass and Mai keeps chatting. The log channel
@@ -256,6 +299,7 @@ handler checks the clicker's own id or permissions.
 
 | Control | Where it appears | Who |
 |---|---|---|
+| *Erst mal nur beobachten* / *Standard* / *Streng* | Under Mai's introduction, once per server | Staff |
 | *Ja, vergiss alles* / *Abbrechen* | Under `/mai forget` | The member who ran it |
 | *Löschen* / *Verwerfen* | Under a report in the log channel | Staff |
 | *Einspruch einlegen* | Under a warning DM, when the server has a log channel | The warned member |
@@ -270,10 +314,15 @@ appeals process. *Beweis ansehen* is the exception that stays ephemeral: it
 shows the deleted messages to the one moderator reviewing them, because posting
 them into the channel would undo the deletion it documents.
 
+A preset button applies its bundle and then **replaces the introduction** for
+everyone: which preset a server chose is not a private fact about whoever
+clicked, and it stops a second admin from picking a different one an hour later.
+
 ## Things Mai does without being asked
 
-Not commands, listed here so the picture is complete: classifying every new and
-edited message, enforcing after the grace period with a warning DM and the
+Not commands, listed here so the picture is complete: introducing herself once
+in every server she joins (with the presets above on it, and a note about any
+permission she is missing), classifying every new and edited message, enforcing after the grace period with a warning DM and the
 escalation ladder, screening display names, greeting new members, reacting to
 trigger words, and replying in character to mentions, replies and direct
 messages. All of it is described in [mai/README.md](mai/README.md).

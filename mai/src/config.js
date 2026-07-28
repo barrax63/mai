@@ -449,6 +449,13 @@ export const config = Object.freeze({
     // Classify and report, but never act: the way to pick a threshold without
     // tuning it by deletion. Per server: /mod config set shadow.
     shadow: bool('MODERATION_SHADOW', 'false'),
+    // Missed ticks before the process gives up on itself and exits, so the
+    // container restarts it. A tick that hangs (a Discord call that never
+    // settles) is skipped by the overlap guard forever after, which /healthz
+    // reports and nothing acts on: Docker restart policies do not watch health.
+    // 0 = never exit, for anyone who would rather have a wedged bot than a
+    // restarting one.
+    stuckRestartTicks: int('MODERATION_STUCK_RESTART_TICKS', '5'),
   },
   chat: {
     enabled: chatEnabled,

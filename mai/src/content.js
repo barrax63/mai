@@ -10,6 +10,7 @@
 import { readFileSync } from 'node:fs';
 import { parse } from 'yaml';
 import { config } from './config.js';
+import { PRESET_NAMES } from './moderation/presets.js';
 
 const fail = (message) => {
   throw new Error(`Content config (${config.content.path}): ${message}`);
@@ -87,6 +88,8 @@ function loadContent() {
   const appealCommand = section(commands, 'appeal');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
+  const setupSection = section(commands, 'setup');
+  const setupPresets = section(setupSection, 'presets');
   const forgive = section(commands, 'forgive');
   const configSection = section(commands, 'config');
   const reportSection = section(commands, 'report');
@@ -305,6 +308,34 @@ function loadContent() {
         healthy: str(status, ['commands', 'status', 'healthy']),
         degraded: str(status, ['commands', 'status', 'degraded']),
         degradedGuilds: str(status, ['commands', 'status', 'degradedGuilds']),
+        // What Mai is missing to do what this server asked of her.
+        permissionsOk: str(status, ['commands', 'status', 'permissionsOk']),
+        permissionsMissing: str(status, ['commands', 'status', 'permissionsMissing']),
+        permissionsUnknown: str(status, ['commands', 'status', 'permissionsUnknown']),
+      }),
+      setup: Object.freeze({
+        introduction: str(setupSection, ['commands', 'setup', 'introduction']),
+        missingPermissions: str(setupSection, ['commands', 'setup', 'missingPermissions']),
+        applied: str(setupSection, ['commands', 'setup', 'applied']),
+        appliedPublic: str(setupSection, ['commands', 'setup', 'appliedPublic']),
+        needsLogChannel: str(setupSection, ['commands', 'setup', 'needsLogChannel']),
+        unknownPreset: str(setupSection, ['commands', 'setup', 'unknownPreset']),
+        // One entry per preset, checked against the presets themselves: a new
+        // bundle without its wording would otherwise ship a nameless button.
+        presets: Object.freeze(
+          Object.fromEntries(
+            PRESET_NAMES.map((name) => {
+              const preset = section(setupPresets, name);
+              return [
+                name,
+                Object.freeze({
+                  button: str(preset, ['commands', 'setup', 'presets', name, 'button']),
+                  summary: str(preset, ['commands', 'setup', 'presets', name, 'summary']),
+                }),
+              ];
+            }),
+          ),
+        ),
       }),
       appeal: Object.freeze({
         guildOnly: str(appealCommand, ['commands', 'appeal', 'guildOnly']),

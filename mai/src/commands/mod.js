@@ -25,7 +25,9 @@ import {
   totalsFor as violationTotals,
 } from '../db/violations.js';
 import { contentViolations } from '../moderation/heuristics.js';
+import { PRESET_NAMES, presetPatch } from '../moderation/presets.js';
 import { buildManualWarning } from '../moderation/warning.js';
+import { missingPermissions, permissionsComplete } from '../permissions.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { ladderFor, strikeWindowStart } from '../moderation/escalation.js';
 import { getGatewayClient } from '../gateway/client.js';
@@ -34,7 +36,7 @@ import { getEnforcerStatus } from '../moderation/enforcer.js';
 import { degradedGuildIds } from '../moderation/health.js';
 import { LOG_CONFIG, LOG_FORGIVEN, LOG_WARNED, postModerationLog } from '../moderation/log.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
-import { ephemeralResponse } from '../interactions/respond.js';
+import { ephemeralResponse, updateResponse } from '../interactions/respond.js';
 
 /** How many category scores `/mod simulate` prints. */
 const SIMULATE_SCORES = 5;
@@ -115,6 +117,18 @@ function statusResponse(interaction) {
         count: degraded.length,
       });
 
+  // What she is missing to do what this server asked for. Cheap (cached guild,
+  // no REST call) and exactly the question `/mod status` is opened for: every
+  // one of these fails gracefully at runtime, which is why nobody notices.
+  const guild = getGatewayClient()?.guilds?.cache?.get(interaction.guild_id);
+  const gaps = guild ? missingPermissions(guild) : { known: false, guild: [], logChannel: [] };
+  const permissions = permissionsComplete(gaps)
+    ? content.commands.status.permissionsOk
+    : fill(content.commands.status.permissionsMissing, {
+        permissions: [...gaps.guild, ...gaps.logChannel].join(', ')
+          || content.commands.status.permissionsUnknown,
+      });
+
   return ephemeralResponse(
     fill(content.commands.status.body, {
       // Enforcer health, uptime and the model names stay unscoped: they are
@@ -127,6 +141,7 @@ function statusResponse(interaction) {
       lastTick,
       openai,
       classifier,
+      permissions,
       uptime: formatUptime(process.uptime()),
     }),
   );
@@ -299,6 +314,96 @@ function historyResponse(interaction) {
     }),
   );
 }
+
+/**
+ * Applies a whole preset (moderation/presets.js) as one ordinary settings
+ * patch, so the caller gets exactly what `/mod config set` would have given
+ * them for seventeen typed options.
+ *
+ * @param {string} guildId
+ * @param {string} name Preset name, which may have come from a `custom_id`.
+ * @param {string|undefined} actorId
+ * @param {string} [logChannelId] Set at the same time, because a server without
+ *   one has no moderation log, no reports and no appeals.
+ * @returns {{ applied: boolean, needsLogChannel: boolean }}
+ */
+function applyPreset(guildId, name, actorId, logChannelId) {
+  const patch = presetPatch(name);
+  if (!patch) return { applied: false, needsLogChannel: false };
+
+  if (logChannelId) patch['log-channel'] = logChannelId;
+
+  updateSettings(guildId, patch, actorId);
+  logger.info({ guildId, preset: name, byUserId: actorId }, 'Applied a settings preset');
+  announceConfigChange(guildId, actorId, describeChanges(patch));
+
+  return {
+    applied: true,
+    // Everything else has a working default; this one does not, and staff have
+    // to be told rather than left wondering why reports go nowhere.
+    needsLogChannel: !effectiveSettings(guildId).logChannelId,
+  };
+}
+
+/**
+ * `/mod setup <preset> [log-channel]`: the whole configuration in one command.
+ *
+ * @param {object} interaction
+ */
+function setupResponse(interaction) {
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+  const { options } = resolveSubcommand(interaction);
+  const preset = String(optionValue(options, 'preset') ?? '');
+  const logChannelId = optionValue(options, 'log-channel');
+  const actorId = interaction.member?.user?.id;
+
+  const { applied, needsLogChannel } = applyPreset(
+    interaction.guild_id,
+    preset,
+    actorId,
+    logChannelId ? String(logChannelId) : undefined,
+  );
+  if (!applied) return ephemeralResponse(content.commands.setup.unknownPreset);
+
+  const { setup } = content.commands;
+  const note = needsLogChannel ? `\n${setup.needsLogChannel}` : '';
+
+  return ephemeralResponse(
+    `${fill(setup.applied, { summary: setup.presets[preset].summary })}${note}\n\n`
+      + `${configView(interaction.guild_id).data.content}`,
+  );
+}
+
+/**
+ * The same thing from the introduction message Mai posts when she joins.
+ *
+ * The buttons sit in an ordinary channel where anyone can click them, so the
+ * clicker's permissions are checked here rather than assumed from the fact that
+ * the message exists. The answer replaces that message for everyone: which
+ * preset a server chose is not a private fact about the person who clicked, and
+ * it stops a second admin from picking a different one an hour later.
+ */
+export const setupComponents = {
+  setup(interaction, [preset]) {
+    if (!mayModerate(interaction)) return ephemeralResponse(content.commands.forbidden);
+    if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+    const actorId = interaction.member?.user?.id;
+    const { applied, needsLogChannel } = applyPreset(interaction.guild_id, preset, actorId);
+    if (!applied) return ephemeralResponse(content.commands.setup.unknownPreset);
+
+    const { setup } = content.commands;
+    const note = needsLogChannel ? `\n${setup.needsLogChannel}` : '';
+
+    return updateResponse(
+      `${fill(setup.appliedPublic, {
+        userId: actorId,
+        summary: setup.presets[preset].summary,
+      })}${note}`,
+    );
+  },
+};
 
 /**
  * `/mod simulate <text>`: what would happen to this message here?
@@ -825,8 +930,28 @@ export const mod = {
     options: [
       {
         name: 'status',
-        description: 'Queue depth, chat memory, last moderation run',
+        description: 'Queue depth, chat memory, last moderation run, missing permissions',
         type: 1, // SUB_COMMAND
+      },
+      {
+        name: 'setup',
+        description: 'Configure this server in one go, from a preset',
+        type: 1, // SUB_COMMAND
+        options: [
+          {
+            name: 'preset',
+            description: 'observe = watch only (start here), standard = enforce, strict = harder',
+            type: 3, // STRING
+            required: true,
+            choices: PRESET_NAMES.map((value) => ({ name: value, value })),
+          },
+          {
+            name: 'log-channel',
+            description: 'Where Mai posts moderation entries (needed for reports and appeals)',
+            type: 7, // CHANNEL
+            channel_types: [0, 5], // text, announcement
+          },
+        ],
       },
       {
         name: 'forgive',
@@ -1141,6 +1266,7 @@ export const mod = {
     if (group === 'config') return configResponse(interaction);
     if (group === 'exempt') return exemptResponse(interaction);
     if (group === 'note') return noteResponse(interaction);
+    if (name === 'setup') return setupResponse(interaction);
     if (name === 'on') return powerResponse(interaction, true);
     if (name === 'off') return powerResponse(interaction, false);
     if (name === 'forgive') return forgiveResponse(interaction);

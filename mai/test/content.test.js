@@ -35,6 +35,7 @@ test('fill is used by every command template that has placeholders', () => {
     historyChannels: 3,
     lastTick: 'gerade',
     classifier: content.commands.status.healthy,
+    permissions: content.commands.status.permissionsOk,
     openai: 'chat x',
     uptime: '1m',
   });

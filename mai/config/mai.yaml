@@ -304,6 +304,43 @@ commands:
     done: '*schüttelt sich* Vergessen. {count} Zeile(n) sind weg.'
     cancelled: '*schnurrt* Gut, ich behalte es im Kopf.'
 
+  # Erste Einrichtung: die Nachricht, die Mai beim Beitritt schreibt, und
+  # /mod setup. Ein Preset schreibt ganz normale Server-Einstellungen, die
+  # danach einzeln über /mod config änderbar bleiben.
+  setup:
+    introduction: |
+      # 🐾 Miau!
+      Ich bin **Mai**, die Moderations-Katze für diesen Server. Was ich tue:
+      • Ich lese mit und markiere Nachrichten, die gegen die Regeln verstoßen. Wer seine Nachricht selbst löscht, bevor die Schonfrist um ist, kommt ohne Eintrag davon.
+      • Danach lösche ich sie, schicke eine Verwarnung per DM und zähle mit. Wer immer weiter macht, bekommt einen Timeout. Rauswürfe und Banns überlasse ich euch.
+      • Nebenbei bin ich eine Katze: erwähnt mich, antwortet mir oder schreibt mir direkt.
+
+      **Womit fangen wir an?** Ein Klick genügt, alles Weitere geht später mit `/mod config`.
+      • **Erst mal nur beobachten** (empfohlen): Ich schaue eine Woche zu und schreibe in den Log-Kanal, was ich getan *hätte*. Niemand wird gelöscht oder verwarnt. Danach wisst ihr, ob meine Linie zu eurem Server passt.
+      • **Standard**: dasselbe, aber ich handle wirklich.
+      • **Streng**: schärfere Schwelle, kürzere Schonfrist, Spitznamen werden zurückgesetzt.
+
+      Sag mir mit `/mod config set log-channel:#kanal` noch, wo ich hinschreiben darf: ohne Log-Kanal gibt es keine Meldungen und keine Einsprüche. Mit `/mod off` schalte ich mich hier komplett ab.
+    # Angehängt, wenn Mai Rechte fehlen. {permissions} = Discord-Namen.
+    missingPermissions: '⚠️ Mir fehlen noch Rechte, sonst läuft das oben nur halb: `{permissions}`'
+    # Antwort auf /mod setup (nur für die Person sichtbar, die es ausführt).
+    applied: '*streckt sich* Eingerichtet: {summary}'
+    # Antwort auf einen Klick in der Begrüßungsnachricht: ersetzt sie, damit der
+    # ganze Server sieht, was gewählt wurde, und niemand nochmal klickt.
+    appliedPublic: '*schnurrt* <@{userId}> hat mich eingerichtet: {summary}'
+    needsLogChannel: '⚠️ Fehlt noch: `/mod config set log-channel:#kanal`. Ohne den gibt es kein Moderations-Log, keine Meldungen und keine Einsprüche.'
+    unknownPreset: 'Das Preset kenne ich nicht.'
+    presets:
+      observe:
+        button: 'Erst mal nur beobachten'
+        summary: 'Ich beobachte nur und schreibe alles in den Log-Kanal, ohne zu handeln.'
+      standard:
+        button: 'Standard'
+        summary: 'Normale Moderation mit Schonfrist, Verwarnungen und Timeout-Leiter.'
+      strict:
+        button: 'Streng'
+        summary: 'Schärfere Schwelle, kürzere Schonfrist, Spitznamen werden zurückgesetzt.'
+
   # /mod status
   status:
     body: |
@@ -312,6 +349,7 @@ commands:
       **Chat-Verlauf:** {historyRows} Zeilen in {historyChannels} Kanälen
       **Letzter Moderationslauf:** {lastTick}
       **Klassifizierung:** {classifier}
+      **Berechtigungen:** {permissions}
       **OpenAI Modelle:** {openai}
       **Uptime:** {uptime}
     never: 'noch nie'
@@ -321,6 +359,12 @@ commands:
     degraded: '⚠️ fällt gerade aus, es wird nichts moderiert'
     # Betreiber-Sicht: dieselbe Frage über alle Server. {count} = betroffene Server.
     degradedGuilds: '⚠️ fällt auf {count} Server(n) aus'
+    # Was Mai fehlt, um das zu tun, worum dieser Server sie gebeten hat. Jede
+    # dieser Berechtigungen fällt sonst erst im Ernstfall auf, weil alles
+    # sauber fehlschlägt. {permissions} = Discord-Namen, kommagetrennt.
+    permissionsOk: 'vollständig'
+    permissionsMissing: '⚠️ es fehlt: {permissions}'
+    permissionsUnknown: 'unbekannt (Mai sieht sich selbst gerade nicht)'
     # Angehängt an die Überschrift, wenn die Zahlen *alle* Server umfassen:
     # das sehen nur Betreiber (OPERATOR_USER_IDS), nicht Server-Moderatoren.
     allGuilds: '(alle Server)'

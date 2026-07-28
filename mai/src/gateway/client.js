@@ -14,9 +14,11 @@
  * for the uncached DM channel.
  */
 import { Client, Events, GatewayIntentBits, Partials } from 'discord.js';
-import { config } from '../config.js';
+import { config, isGuildAllowed } from '../config.js';
 import { logger } from '../logger.js';
+import { auditPermissions } from '../permissions.js';
 import { startEnforcer } from '../moderation/enforcer.js';
+import { onGuildCreate } from './events/guild-create.js';
 import { onMessageCreate } from './events/message-create.js';
 import { onMessageUpdate } from './events/message-update.js';
 import { onMessageDelete } from './events/message-delete.js';
@@ -87,10 +89,25 @@ export function createGatewayClient() {
 
     startPresenceRotation(ready);
 
+    // Every permission Mai lacks is otherwise discovered at the worst possible
+    // moment, by failing. Once per process, per guild, at `warn`.
+    for (const guild of ready.guilds.cache.values()) {
+      if (isGuildAllowed(guild.id)) auditPermissions(guild);
+    }
+
     // The enforcer needs a logged-in client to delete messages and send DMs.
     if (config.moderation.enabled && !enforcer) {
       enforcer = startEnforcer(ready);
     }
+  });
+
+  // Joining a server is the one moment an introduction is useful, and it is
+  // also the only moment anybody is looking. Not gated on any feature flag:
+  // a server that just added Mai has to be told what she does either way.
+  client.on(Events.GuildCreate, (guild) => {
+    onGuildCreate(guild).catch((error) => {
+      logger.error({ err: error, guildId: guild?.id }, 'guildCreate handler failed');
+    });
   });
 
   client.on(Events.Error, (error) => {

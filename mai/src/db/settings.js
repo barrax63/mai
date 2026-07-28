@@ -304,13 +304,54 @@ export function pausedGuildIds() {
 
 /**
  * How many guilds have changed at least one setting from the process default,
- * for the operator metrics: a guild only gets a row once it overrode something,
- * so this is a count of configured servers, not of servers Mai is in.
+ * for the operator metrics: this is a count of configured servers, not of
+ * servers Mai is in.
+ *
+ * Counts *settings*, not rows. A row also exists for a server that has only
+ * been greeted (`onboarded_at`), and counting those would report every server
+ * Mai has ever joined as configured. The condition is built from the SETTINGS
+ * map so it stays true as columns are added.
  *
  * @returns {number}
  */
 export function configuredGuildCount() {
-  return getDb().prepare('SELECT COUNT(*) AS count FROM guild_settings').get().count;
+  const anySetting = COLUMNS.map((column) => `${column} IS NOT NULL`).join(' OR ');
+  return getDb()
+    .prepare(`SELECT COUNT(*) AS count FROM guild_settings WHERE ${anySetting}`)
+    .get().count;
+}
+
+/**
+ * Whether Mai has already introduced herself here.
+ *
+ * Persisted rather than kept in memory on purpose: the introduction is a
+ * one-time event, and a restart (or a gateway reconnect that replays the join)
+ * must not produce a second one.
+ *
+ * @param {string} guildId
+ * @returns {boolean}
+ */
+export function wasOnboarded(guildId) {
+  return Boolean(rawSettings(guildId)?.onboarded_at);
+}
+
+/**
+ * @param {string} guildId
+ * @param {Date} [now]
+ */
+export function markOnboarded(guildId, now = new Date()) {
+  // Its own statement: this is bookkeeping, not a setting, so it deliberately
+  // does not go through `updateSettings` and cannot be reached by
+  // `/mod config set` or reset by `/mod config reset`.
+  const at = now.toISOString();
+  // `updated_by` stays NULL: nobody ran anything, Mai joined a server.
+  getDb()
+    .prepare(
+      `INSERT INTO guild_settings (guild_id, onboarded_at, updated_at)
+       VALUES (?, ?, ?)
+       ON CONFLICT (guild_id) DO UPDATE SET onboarded_at = excluded.onboarded_at`,
+    )
+    .run(String(guildId), at, at);
 }
 
 /**

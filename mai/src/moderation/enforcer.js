@@ -55,8 +55,22 @@ const UNKNOWN_MESSAGE = 10008;
 const REPORT_AFTER_ATTEMPTS = 5;
 const GIVE_UP_AFTER_ATTEMPTS = 60;
 
-/** @type {{ lastTickAt: string | null, lastTickMs: number | null, running: boolean, lastError: string | null }} */
-const status = { lastTickAt: null, lastTickMs: null, running: false, lastError: null };
+/**
+ * `lastProgressAt` is the watchdog's heartbeat (see below): epoch ms, bumped by
+ * anything that proves the loop is alive, which is every resolved row and every
+ * finished pass. Deliberately not the same thing as `lastTickAt`, which only
+ * moves when a whole pass completes.
+ *
+ * @type {{ lastTickAt: string | null, lastTickMs: number | null, running: boolean,
+ *   lastError: string | null, lastProgressAt: number | null }}
+ */
+const status = {
+  lastTickAt: null,
+  lastTickMs: null,
+  running: false,
+  lastError: null,
+  lastProgressAt: null,
+};
 
 /**
  * @returns {typeof status}
@@ -442,6 +456,9 @@ export async function runTick(client) {
   }
 
   for (const row of dueRows(now.toISOString(), config.moderation.maxRowsPerTick, paused)) {
+    // Every row is a sign of life for the watchdog, so a long but working pass
+    // through a backlog is never mistaken for a hung one.
+    status.lastProgressAt = Date.now();
     try {
       const { enforced: record, keepRow } = await processRow(client, row);
       if (!keepRow) remove(row.messageId);
@@ -496,6 +513,7 @@ export async function runTick(client) {
 
   status.lastTickAt = now.toISOString();
   status.lastTickMs = Date.now() - startedAt;
+  status.lastProgressAt = Date.now();
   status.lastError = null;
 
   if (enforced.length > 0 || pruned > 0 || violationsPruned > 0 || evidencePruned > 0 || notesPruned > 0) {
@@ -515,6 +533,57 @@ export async function runTick(client) {
 }
 
 /**
+ * The overlap guard turns a *hung* tick into permanent silence: a Discord call
+ * that never settles leaves `running` true, so every later tick is skipped and
+ * nothing is ever enforced again. `/healthz` reports that and Docker marks the
+ * container unhealthy, but a restart policy does not act on health, so an
+ * unhealthy Mai simply sits there being unhealthy.
+ *
+ * So the loop watches itself: if the last completed tick is older than
+ * `MODERATION_STUCK_RESTART_TICKS` intervals, the process exits and the
+ * container's `restart: on-failure` brings back a working one. Losing an
+ * in-flight tick costs nothing, because every row it had not resolved is still
+ * in the queue and the next process picks it up.
+ *
+ * Same shape as the uncaught-exception handler in index.js: `fatal` (so the
+ * alert hook forwards it), then exit after a beat so that alert can leave.
+ *
+ * What it measures is **progress**, not completion: a tick working through a
+ * backlog under a rate limit can legitimately outlast several intervals, and
+ * killing that would restart into the same backlog forever. Every resolved row
+ * counts as a sign of life, so the only thing that trips this is a loop that is
+ * neither finishing nor moving.
+ *
+ * Exported as a pure predicate so the decision can be tested without a process
+ * that actually exits.
+ *
+ * @param {{ lastProgressAt?: number | null, startedAt: number, now?: number }} state
+ * @returns {boolean}
+ */
+export function isWedged({ lastProgressAt, startedAt, now = Date.now() }) {
+  const limit = config.moderation.stuckRestartTicks;
+  if (limit <= 0) return false;
+
+  return now - (lastProgressAt ?? startedAt) > config.moderation.tickMs * limit;
+}
+
+/**
+ * @param {number} startedAt When the loop was started, for the first tick.
+ * @returns {boolean} Whether the process is on its way out.
+ */
+function watchdog(startedAt) {
+  if (!isWedged({ lastProgressAt: status.lastProgressAt, startedAt })) return false;
+
+  const age = Date.now() - (status.lastProgressAt ?? startedAt);
+  logger.fatal(
+    { lastTickAt: status.lastTickAt, ageMs: age, running: status.running },
+    'Moderation tick is neither finishing nor moving, exiting so the container restarts',
+  );
+  setTimeout(() => process.exit(1), 1_000);
+  return true;
+}
+
+/**
  * Starts the tick loop. Overlapping runs are skipped, so a slow tick cannot
  * pile up on itself.
  *
@@ -522,7 +591,13 @@ export async function runTick(client) {
  * @returns {{ stop: () => void }}
  */
 export function startEnforcer(client) {
+  const startedAt = Date.now();
+
   const tick = async () => {
+    // Before the overlap guard, deliberately: the case worth catching is the
+    // one where that guard is what is keeping the loop quiet.
+    if (watchdog(startedAt)) return;
+
     if (status.running) {
       logger.warn('Previous moderation tick still running, skipping this one');
       return;

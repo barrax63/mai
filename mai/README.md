@@ -105,7 +105,7 @@ Every command and right-click action, option by option, lives in
 |---------|-----|
 | `/ping`, `/mai ask <frage>`, `/mai forget`, `/mai appeal` | everyone |
 | `Nachricht melden` (right-click a message → Apps) | everyone |
-| `/mod status`, `/mod history`, `/mod forgive`, `/mod warn`, `/mod note`, `/mod simulate`, `/mod spend` | Manage Messages |
+| `/mod setup`, `/mod status`, `/mod history`, `/mod forgive`, `/mod warn`, `/mod note`, `/mod simulate`, `/mod spend` | Manage Messages |
 | `/mod off` / `/mod on`, `/mod exempt`, `/mod config` | Manage Messages |
 | `Löschen (Mai)` (right-click a message → Apps) | Manage Messages |
 
@@ -226,6 +226,31 @@ and land in the same record so the next moderator sees one history rather than
   content stores: this is staff's own words about their own server, the same
   class as a report reason. Pruned on the strike-record window, so it does not
   become an unbounded file on a person.
+
+## Joining a server, and staying alive in it
+
+Three things Mai does about her own setup, because nobody else will:
+
+- **She introduces herself, once** ([src/gateway/events/guild-create.js](src/gateway/events/guild-create.js)). A fresh server used to get nothing: no log channel, every house rule off (the only honest default for a house rule), and seventeen `/mod config set` options between an admin and a working bot. She now posts one message in the system channel (or the first channel she may write in) naming what she does, and carries the three setup presets as buttons: one click is a whole configuration. `onboarded_at` in `guild_settings` keeps it to one message ever, whatever a reconnect or a re-join does, and the row it writes does not count as "configured" in the metrics.
+- **She checks her own permissions** ([src/permissions.js](src/permissions.js)): once per process for every allowlisted server, again on join (the result goes into the introduction), and on demand in `/mod status`. Only what that server switched on is checked, so a guild with escalation off is not nagged about Moderate Members. Every one of these fails gracefully at runtime, which is exactly why nobody notices them.
+- **She restarts herself when wedged** ([src/moderation/enforcer.js](src/moderation/enforcer.js)): the overlap guard turns a hung tick into permanent silence, and `/healthz` reporting that changes nothing on its own, because Docker restart policies do not watch health. After `MODERATION_STUCK_RESTART_TICKS` intervals with no sign of life the process logs at `fatal` (so the alert channel hears about it) and exits, and `restart: on-failure` brings back a working one. It measures **progress**, not completion: every resolved row counts, so a long pass through a backlog under a rate limit is never mistaken for a hang and restarted into the same backlog forever.
+
+### Presets
+
+[src/moderation/presets.js](src/moderation/presets.js), applied by `/mod setup <preset>` or by the buttons on the introduction:
+
+| Preset | What it sets |
+|---|---|
+| `observe` | Shadow mode on, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off: everything detects, nothing acts |
+| `standard` | The same detection, enforced |
+| `strict` | Enforced, plus threshold `0.3`, mention cap 5, flood `5/10`, grace 5 minutes, name check `reset` |
+
+A preset is a starting point, not a mode: it writes ordinary per-guild settings
+through the ordinary path, and every one of them can be changed afterwards or
+put back with `/mod config reset`. None of them touches `enabled`, so applying
+one cannot undo somebody's `/mod off`, and only `strict` sets a `threshold`:
+guessing that number for a server nobody has looked at is the tuning-by-deletion
+that shadow mode exists to replace.
 
 ## Per-guild settings
 

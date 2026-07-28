@@ -23,7 +23,7 @@ import { resetSettings, updateSettings } from '../src/db/settings.js';
 import { historyFor } from '../src/db/violations.js';
 import { explainError } from '../src/errors.js';
 import { clearOwnDeletions } from '../src/moderation/cleanup.js';
-import { runTick } from '../src/moderation/enforcer.js';
+import { getEnforcerStatus, runTick } from '../src/moderation/enforcer.js';
 
 await openTestDatabase();
 
@@ -232,6 +232,20 @@ test('a member enforced in two guilds gets one DM per guild, not one merged one'
     resetSettings(TEST_GUILD, 'log-channel');
     resetSettings(OTHER_GUILD, 'log-channel');
   }
+});
+
+test('every resolved row counts as a sign of life for the watchdog', async () => {
+  clearOwnDeletions();
+  const before = getEnforcerStatus().lastProgressAt;
+  seed('950000000000000013');
+
+  const { client } = fakeClient();
+  await runTick(client);
+
+  // Without this the watchdog measures completion only, and a long pass through
+  // a backlog under a rate limit would be killed and restarted into the same
+  // backlog forever.
+  assert.ok(getEnforcerStatus().lastProgressAt > (before ?? 0));
 });
 
 test('a warning nobody could deliver is reported to the guild instead', async () => {

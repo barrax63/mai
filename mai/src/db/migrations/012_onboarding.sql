@@ -1,0 +1,16 @@
+-- When Mai introduced herself to a server, so she only ever does it once.
+--
+-- A new server used to get nothing: she joins, has no log channel, moderates
+-- invisibly, and the only way to find out what she can do is to read the
+-- repository. The join handler now posts one introduction with the setup
+-- presets on it, and this column is what keeps that to one.
+--
+-- Deliberately a timestamp rather than a flag: "she has said hello" and "when"
+-- are the same fact, and the date is what an operator wants when a server
+-- claims it never saw the message.
+--
+-- Bookkeeping, not a setting: it is not in the SETTINGS map, so it cannot be
+-- set or reset through `/mod config`, and `configuredGuildCount` skips rows
+-- that carry nothing else (see settings.js) so a greeting does not make a
+-- server look configured.
+ALTER TABLE guild_settings ADD COLUMN onboarded_at TEXT;

@@ -64,6 +64,7 @@ for:
 
 | I want to … | Command |
 |---|---|
+| set her up on a new server | `/mod setup <preset>`, or the buttons she posts on joining |
 | ask Mai something in public | `/mai ask <frage>` |
 | make her forget what I told her | `/mai forget` |
 | appeal a warning whose DM never arrived | `/mai appeal` |
@@ -83,6 +84,18 @@ for:
 Everything a moderator sees and does is scoped to their own server, and every
 settings change is announced in that server's log channel. Whoever runs the bot
 (`OPERATOR_USER_IDS`) additionally sees the process-wide figures.
+
+## Looking after herself
+
+Mai is meant to run without somebody watching her, so three things are hers to
+notice rather than yours. She **introduces herself once** in every server she
+joins, with three setup presets on buttons, because the honest default for every
+house rule is "off" and a server that never works through the options is running
+a moderation bot that moderates nothing. She **checks her own permissions** at
+startup, on joining and in `/mod status`, because every one of them is otherwise
+discovered by failing at the worst possible moment. And she **restarts herself**
+when the moderation loop stops making progress, because an unhealthy container
+that Docker will not restart is a bot that is quietly doing nothing.
 
 ## Mai: the bot persona
 
