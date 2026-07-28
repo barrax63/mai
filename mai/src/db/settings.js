@@ -336,6 +336,10 @@ export function effectiveSettings(guildId) {
     // When an observation period ends by itself. NULL = shadow mode with no
     // end, which is what an explicit `/mod config set shadow:true` means.
     shadowUntil: row?.shadow_until ?? null,
+    // Set only while *Mai* has escalation switched off, because she cannot
+    // carry it out. Distinguishes her decision from staff's, so restoring the
+    // permission restores the ladder without overruling anybody.
+    escalationSuspendedAt: row?.escalation_suspended_at ?? null,
     // True when this guild has not explicitly set the key itself. Deliberately
     // still a plain "did somebody here type this?", so it keeps answering the
     // question `/mod config reset` is about; `source` is the finer view.
@@ -542,6 +546,52 @@ export function expireShadowWindows(now = new Date()) {
 }
 
 /**
+ * Switches escalation off because Mai cannot carry it out, and records that it
+ * was her doing.
+ *
+ * @param {string} guildId
+ * @param {Date} [now]
+ * @returns {boolean} False when it was already suspended, so the caller can
+ *   announce it exactly once rather than on every audit.
+ */
+export function suspendEscalation(guildId, now = new Date()) {
+  const at = now.toISOString();
+  // One statement, and it only fires while the marker is absent: two overlapping
+  // callers cannot both come away thinking they were the one who did it.
+  const { changes } = getDb()
+    .prepare(
+      `INSERT INTO guild_settings (guild_id, escalation_enabled, escalation_suspended_at, updated_at)
+       VALUES (?, 0, ?, ?)
+       ON CONFLICT (guild_id) DO UPDATE SET
+         escalation_enabled = 0, escalation_suspended_at = excluded.escalation_suspended_at,
+         updated_at = excluded.updated_at
+       WHERE guild_settings.escalation_suspended_at IS NULL`,
+    )
+    .run(String(guildId), at, at);
+
+  return changes > 0;
+}
+
+/**
+ * Hands escalation back to whatever the guild's profile or the base says, but
+ * only if the suspension was hers to lift.
+ *
+ * @param {string} guildId
+ * @returns {boolean} False when there was nothing of hers to undo.
+ */
+export function resumeEscalation(guildId) {
+  const { changes } = getDb()
+    .prepare(
+      `UPDATE guild_settings
+       SET escalation_enabled = NULL, escalation_suspended_at = NULL, updated_at = ?
+       WHERE guild_id = ? AND escalation_suspended_at IS NOT NULL`,
+    )
+    .run(new Date().toISOString(), String(guildId));
+
+  return changes > 0;
+}
+
+/**
  * Whether Mai has already introduced herself here.
  *
  * Persisted rather than kept in memory on purpose: the introduction is a
@@ -595,6 +645,16 @@ export function updateSettings(guildId, patch, actorId) {
   const values = entries.map(([name, value]) => SETTINGS[name].parse(value));
 
   const db = getDb();
+
+  // A human saying anything about escalation ends Mai's suspension of it: from
+  // here on the setting is theirs, and finding the permission restored must not
+  // silently undo what they just typed. Keyed on `actorId` because that is
+  // exactly the difference: `suspendEscalation` writes without one.
+  if (actorId && Object.hasOwn(patch, 'escalation')) {
+    db.prepare('UPDATE guild_settings SET escalation_suspended_at = NULL WHERE guild_id = ?')
+      .run(String(guildId));
+  }
+
   // The row may not exist yet; INSERT … ON CONFLICT keeps this one statement.
   const assignments = columns.map((column) => `${column} = excluded.${column}`).join(', ');
   const placeholders = columns.map(() => '?').join(', ');

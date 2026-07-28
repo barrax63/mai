@@ -167,6 +167,13 @@ function loadContent() {
       scoldPrefix: typeof moderation.scoldPrefix === 'string' ? moderation.scoldPrefix : '',
       scoldReplies: Object.freeze(strings(moderation, ['moderation', 'scoldReplies'])),
       log: Object.freeze({
+        // The channel she creates for a server that has none.
+        channelName: str(log, ['moderation', 'log', 'channelName']),
+        channelTopic: str(log, ['moderation', 'log', 'channelTopic']),
+        // A config entry with no actor: Mai changed it herself.
+        selfActor: str(log, ['moderation', 'log', 'selfActor']),
+        escalationSuspended: str(log, ['moderation', 'log', 'escalationSuspended']),
+        escalationResumed: str(log, ['moderation', 'log', 'escalationResumed']),
         titles: Object.freeze({
           flagged: str(logTitles, ['moderation', 'log', 'titles', 'flagged']),
           deleted: str(logTitles, ['moderation', 'log', 'titles', 'deleted']),
@@ -320,6 +327,10 @@ function loadContent() {
         applied: str(setupSection, ['commands', 'setup', 'applied']),
         appliedPublic: str(setupSection, ['commands', 'setup', 'appliedPublic']),
         needsLogChannel: str(setupSection, ['commands', 'setup', 'needsLogChannel']),
+        // What she did about a log channel herself, said in the introduction.
+        logChannelAdopted: str(setupSection, ['commands', 'setup', 'logChannelAdopted']),
+        logChannelMissing: str(setupSection, ['commands', 'setup', 'logChannelMissing']),
+        logChannelCreated: str(setupSection, ['commands', 'setup', 'logChannelCreated']),
         unknownPreset: str(setupSection, ['commands', 'setup', 'unknownPreset']),
         observationEnds: str(setupSection, ['commands', 'setup', 'observationEnds']),
         // One entry per preset, checked against the presets themselves: a new

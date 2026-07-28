@@ -23,6 +23,7 @@ import { content, fill } from '../../content.js';
 import { markOnboarded, wasOnboarded } from '../../db/settings.js';
 import { logger } from '../../logger.js';
 import { auditPermissions, permissionsComplete } from '../../permissions.js';
+import { ensureLogChannel } from '../../moderation/log-channel.js';
 import { PRESET_NAMES } from '../../moderation/presets.js';
 
 const ACTION_ROW = 1;
@@ -73,6 +74,25 @@ const presetButtons = () => [
 ];
 
 /**
+ * What she did about a log channel, said out loud.
+ *
+ * Creating a channel in somebody's server is a visible act and is announced as
+ * one; adopting an existing channel is announced too, because a server that
+ * keeps a `#mod-log` for a different bot should find out that a second one has
+ * started writing there. Silence only when nothing happened.
+ *
+ * @param {{ channelId: string | null, created: boolean }} log
+ * @returns {string}
+ */
+const logChannelNotice = ({ channelId, created }) => {
+  if (!channelId) return `\n${content.commands.setup.logChannelMissing}`;
+  const template = created
+    ? content.commands.setup.logChannelCreated
+    : content.commands.setup.logChannelAdopted;
+  return `\n${fill(template, { channel: `<#${channelId}>` })}`;
+};
+
+/**
  * @param {import('discord.js').Guild} guild
  * @returns {string} The permission paragraph, or an empty string when there is
  *   nothing to say.
@@ -113,7 +133,12 @@ export async function onGuildCreate(guild) {
     return;
   }
 
-  const body = `${content.commands.setup.introduction}${permissionNotice(guild)}`;
+  // Before the introduction, so it can say what she did. `log-channel` is the
+  // one setting with no working default, and without it reports, appeals and
+  // the outage notice all have nowhere to land.
+  const log = await ensureLogChannel(guild);
+
+  const body = `${content.commands.setup.introduction}${logChannelNotice(log)}${permissionNotice(guild)}`;
 
   try {
     await channel.send({

@@ -1,0 +1,24 @@
+-- When Mai switched escalation off herself, so she can switch it back on.
+--
+-- Without Moderate Members every timeout the ladder hands out fails, and the
+-- failure path is deliberately loud: `error` level, which reaches the operator's
+-- alert channel, plus an entry in the guild's log. That is right for one
+-- incident and wrong for a permanent state. A server that never granted the
+-- permission produces one of those every time anybody reaches the second strike,
+-- forever, and an alert that fires forever is an alert nobody reads.
+--
+-- So she stops trying: escalation goes off, the log channel is told why, and
+-- the strike record keeps filling up (escalation off has always meant "strikes
+-- still count, they just cost nothing yet"), so nothing is lost and switching it
+-- back on picks up where it left off.
+--
+-- This column is what makes it reversible without overruling anybody. It holds
+-- *when she did it*, which is the only way to tell her decision apart from
+-- staff's: on finding the permission restored she clears the override only when
+-- this is set, and any human writing `escalation` clears it, because after that
+-- the setting is theirs and hers to leave alone.
+--
+-- Bookkeeping like `onboarded_at` and `shadow_until`: not in the SETTINGS map,
+-- so `/mod config` can neither set nor reset it, and it does not make a server
+-- count as configured.
+ALTER TABLE guild_settings ADD COLUMN escalation_suspended_at TEXT;

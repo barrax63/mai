@@ -186,7 +186,14 @@ function fieldsFor(event) {
       // Setting names and their new values: all of them ids, numbers, booleans
       // and category slugs, so this stays inside the metadata-only rule.
       return [
-        { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
+        // No actor means Mai changed it herself (she stops handing out timeouts
+        // she has lost the permission for). Saying so is the point of the entry:
+        // staff have to be able to tell her decision from a colleague's.
+        {
+          name: labels.actor,
+          value: event.actorId ? `<@${event.actorId}>` : content.moderation.log.selfActor,
+          inline: true,
+        },
         { name: labels.changes, value: event.changes || none, inline: false },
       ];
 

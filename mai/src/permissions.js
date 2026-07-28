@@ -19,8 +19,11 @@
  * sentence around them is in the content file, the names are not.
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { effectiveSettings } from './db/settings.js';
+import { content } from './content.js';
+import { effectiveSettings, resumeEscalation, suspendEscalation } from './db/settings.js';
+import { getGatewayClient } from './gateway/client.js';
 import { logger } from './logger.js';
+import { LOG_CONFIG, postModerationLog } from './moderation/log.js';
 
 /** Needed everywhere, for the pipeline to work at all. */
 const ALWAYS = Object.freeze([
@@ -102,6 +105,7 @@ const reported = new Set();
  */
 export function auditPermissions(guild, { force = false } = {}) {
   const report = missingPermissions(guild);
+  reconcileEscalation(guild, report);
 
   if (!force && reported.has(guild.id)) return report;
   reported.add(guild.id);
@@ -125,6 +129,67 @@ export function auditPermissions(guild, { force = false } = {}) {
   );
 
   return report;
+}
+
+/**
+ * Stops handing out timeouts she cannot hand out, and starts again when she can.
+ *
+ * Every failed timeout is logged at `error`, which reaches the operator's alert
+ * channel, and posts an entry in the guild's log. That is the right noise for an
+ * incident and the wrong noise for a permanent state: a server that never
+ * granted Moderate Members produces one every time anybody reaches the second
+ * strike, forever, and an alert that fires forever is an alert nobody reads.
+ *
+ * Switching escalation off is not giving up on the ladder: strikes still
+ * accumulate (that has always been what escalation-off means), so nothing is
+ * lost and the moment the permission appears she picks up where she left off.
+ * `escalation_suspended_at` is what makes the second half safe: she only
+ * restores a suspension of her own, and any human touching `escalation` ends it.
+ *
+ * Reported once per transition rather than once per audit, in the guild's log
+ * as well as the process log: staff are the ones who can grant the permission,
+ * and a ladder that has quietly stopped is exactly the kind of silence this
+ * whole file exists to break.
+ *
+ * @param {import('discord.js').Guild} guild
+ * @param {{ guild: string[], known: boolean }} report
+ */
+function reconcileEscalation(guild, report) {
+  // An unknown report is not evidence of anything: her own member object is
+  // simply not cached, and acting on that would switch the ladder off on every
+  // cold start.
+  if (!report.known) return;
+
+  const settings = effectiveSettings(guild.id);
+  const canTimeOut = !report.guild.includes('ModerateMembers');
+
+  if (!canTimeOut && settings.escalationEnabled) {
+    if (suspendEscalation(guild.id)) {
+      logger.warn(
+        { guildId: guild.id },
+        'Escalation switched off: Moderate Members is missing, so every timeout would fail',
+      );
+      announce(guild.id, content.moderation.log.escalationSuspended);
+    }
+    return;
+  }
+
+  if (canTimeOut && settings.escalationSuspendedAt && resumeEscalation(guild.id)) {
+    logger.info({ guildId: guild.id }, 'Escalation switched back on: Moderate Members is back');
+    announce(guild.id, content.moderation.log.escalationResumed);
+  }
+}
+
+/**
+ * The guild's own log, best effort and detached: a permission audit must not
+ * wait on two Discord round trips, and it runs on a path (`/mod status`) with a
+ * three-second budget.
+ *
+ * @param {string} guildId
+ * @param {string} changes
+ */
+function announce(guildId, changes) {
+  void postModerationLog(getGatewayClient(), { type: LOG_CONFIG, guildId, changes });
 }
 
 /** Test seam: the once-per-process set is module state. */

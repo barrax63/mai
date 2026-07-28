@@ -12,7 +12,7 @@ import './setup-onboarding.js';
 import { interaction, openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PermissionFlagsBits } from 'discord.js';
+import { ChannelType, PermissionFlagsBits } from 'discord.js';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
 import { config } from '../src/config.js';
 import { content } from '../src/content.js';
@@ -23,6 +23,7 @@ import {
   effectiveSettings,
   expireShadowWindows,
   markOnboarded,
+  rawSettings,
   resetSettings,
   updateSettings,
   wasOnboarded,
@@ -39,6 +40,8 @@ await openTestDatabase();
 const SYSTEM_CHANNEL = '830000000000000001';
 const OTHER_CHANNEL = '830000000000000002';
 const LOG_CHANNEL = '830000000000000003';
+const ADOPTED_CHANNEL = '830000000000000004';
+const CREATED_CHANNEL = '830000000000000005';
 const STAFF = { user: { id: TEST_USER, username: 'tester' }, permissions: String(1n << 13n) };
 
 const wipe = () => {
@@ -56,23 +59,32 @@ function fakeGuild({
   writableOther = true,
   guildId = TEST_GUILD,
   uncachedMe = false,
+  // A channel Mai could adopt as the moderation log, by name.
+  existingLogName = null,
+  // ...and whether she may actually write in it.
+  existingLogWritable = true,
+  // Whether creating one succeeds, for the guild where she may not.
+  canCreate = true,
 } = {}) {
-  const record = { sent: [] };
+  const record = { sent: [], created: [] };
+
+  const holds = (bit) =>
+    permissions === PermissionFlagsBits.Administrator || (permissions & bit) === bit;
 
   const me = {
     id: 'bot-1',
     permissions: {
       // discord.js answers `missing` from a bitfield; the Administrator bit
       // covers everything, which is what a normally invited bot has.
-      missing: (required) =>
-        required
-          .filter((bit) => (permissions & bit) !== bit && permissions !== PermissionFlagsBits.Administrator)
-          .map((bit) => nameOf(bit)),
+      missing: (required) => required.filter((bit) => !holds(bit)).map((bit) => nameOf(bit)),
+      has: (bit) => holds(bit),
     },
   };
 
-  const channel = (id, writable) => ({
+  const channel = (id, writable, { name = `channel-${id}`, type = ChannelType.GuildText } = {}) => ({
     id,
+    name,
+    type,
     isTextBased: () => true,
     isThread: () => false,
     permissionsFor: () => ({
@@ -84,6 +96,12 @@ function fakeGuild({
 
   const channels = new Map([[OTHER_CHANNEL, channel(OTHER_CHANNEL, writableOther)]]);
   channels.set(LOG_CHANNEL, channel(LOG_CHANNEL, writableOther));
+  if (existingLogName) {
+    channels.set(
+      ADOPTED_CHANNEL,
+      channel(ADOPTED_CHANNEL, existingLogWritable, { name: existingLogName }),
+    );
+  }
 
   return {
     record,
@@ -92,7 +110,17 @@ function fakeGuild({
       memberCount: 12,
       systemChannel: systemChannel ? channel(SYSTEM_CHANNEL, true) : null,
       members: { me: uncachedMe ? null : me },
-      channels: { cache: channels },
+      roles: { everyone: { id: 'everyone-1' } },
+      channels: {
+        cache: channels,
+        create: async (options) => {
+          if (!canCreate) throw new Error('Missing Permissions');
+          record.created.push(options);
+          const made = channel(CREATED_CHANNEL, true, { name: options.name });
+          channels.set(CREATED_CHANNEL, made);
+          return made;
+        },
+      },
     },
   };
 }
@@ -196,11 +224,75 @@ test('a bot that cannot see itself says so instead of reporting all clear', () =
 test('the audit reports once per guild per process', () => {
   wipe();
   resetPermissionAudit();
+  // Escalation off, so the timeout permission is out of the picture and the
+  // report is the same list twice: both calls answer, the second simply does
+  // not log again.
+  updateSettings(TEST_GUILD, { escalation: false }, 'admin-1');
   const { guild } = fakeGuild({ permissions: PermissionFlagsBits.SendMessages });
 
-  // Both calls answer; the second simply does not log again. What matters here
-  // is that the answer never changes shape.
   assert.deepEqual(auditPermissions(guild).guild, auditPermissions(guild).guild);
+});
+
+test('a ladder she cannot carry out is switched off, not retried forever', () => {
+  wipe();
+  resetPermissionAudit();
+  const { guild } = fakeGuild({ permissions: PermissionFlagsBits.SendMessages });
+
+  const first = auditPermissions(guild);
+  assert.ok(first.guild.includes('ModerateMembers'), 'reported once, so staff can grant it');
+
+  // Every timeout would have failed at `error` level, which reaches the alert
+  // channel, on every second strike, forever.
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.escalationEnabled, false);
+  assert.ok(settings.escalationSuspendedAt, 'and it is recorded as hers to undo');
+  // Strikes keep counting: this is a pause, not an amnesty.
+  assert.equal(rawSettings(TEST_GUILD).escalation_enabled, 0);
+});
+
+test('the ladder comes back by itself when the permission does', () => {
+  wipe();
+  resetPermissionAudit();
+  auditPermissions(fakeGuild({ permissions: PermissionFlagsBits.SendMessages }).guild);
+  assert.equal(effectiveSettings(TEST_GUILD).escalationEnabled, false);
+
+  auditPermissions(fakeGuild().guild);
+
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.escalationEnabled, true);
+  assert.equal(settings.escalationSuspendedAt, null);
+  assert.equal(settings.inherited.escalation, true, 'back to the profile, not to an override');
+});
+
+test('she does not overrule staff who switched escalation off themselves', () => {
+  wipe();
+  resetPermissionAudit();
+  updateSettings(TEST_GUILD, { escalation: false }, 'admin-1');
+
+  // Permission present, escalation off: that is a decision, not a suspension.
+  auditPermissions(fakeGuild().guild);
+  assert.equal(effectiveSettings(TEST_GUILD).escalationEnabled, false, 'left alone');
+});
+
+test('a human deciding about escalation ends her suspension of it', () => {
+  wipe();
+  resetPermissionAudit();
+  auditPermissions(fakeGuild({ permissions: PermissionFlagsBits.SendMessages }).guild);
+  assert.ok(effectiveSettings(TEST_GUILD).escalationSuspendedAt);
+
+  // Staff say "on" while she still cannot do it. Their call: the marker goes,
+  // so finding the permission restored later cannot undo what they typed.
+  updateSettings(TEST_GUILD, { escalation: true }, 'admin-1');
+  assert.equal(effectiveSettings(TEST_GUILD).escalationSuspendedAt, null);
+});
+
+test('an uncached member is not evidence of a missing permission', () => {
+  wipe();
+  resetPermissionAudit();
+  auditPermissions(fakeGuild({ uncachedMe: true }).guild);
+
+  // Acting on `known: false` would switch the ladder off on every cold start.
+  assert.equal(effectiveSettings(TEST_GUILD).escalationEnabled, true);
 });
 
 test('joining a server produces one introduction with the presets on it', async () => {
@@ -211,7 +303,10 @@ test('joining a server produces one introduction with the presets on it', async 
 
   assert.equal(record.sent.length, 1);
   assert.equal(record.sent[0].channelId, SYSTEM_CHANNEL, 'the server\'s own system channel first');
-  assert.equal(record.sent[0].content, content.commands.setup.introduction);
+  assert.ok(
+    record.sent[0].content.startsWith(content.commands.setup.introduction),
+    'the introduction itself is unchanged, with what she set up appended',
+  );
   assert.deepEqual(record.sent[0].allowedMentions, { parse: [] }, 'an introduction pings nobody');
 
   const buttons = record.sent[0].components[0].components;
@@ -236,7 +331,9 @@ test('she says hello exactly once, whatever the gateway does', async () => {
 
 test('a greeting alone does not make a server look configured', async () => {
   wipe();
-  const { guild } = fakeGuild();
+  // No adoptable channel and no permission to make one, so the greeting is the
+  // only thing that happens: `onboarded_at` is bookkeeping, not a setting.
+  const { guild } = fakeGuild({ canCreate: false });
 
   await onGuildCreate(guild);
   assert.equal(configuredGuildCount(), 0, 'the row exists, but nothing was set');
@@ -408,4 +505,91 @@ test('a preset is a starting point, not a mode', () => {
   assert.equal(effectiveSettings(TEST_GUILD).gracePeriodMinutes, 30);
   resetSettings(TEST_GUILD, 'grace');
   assert.equal(effectiveSettings(TEST_GUILD).inherited.grace, true);
+});
+
+// --- Finding somewhere to write -------------------------------------------
+//
+// `log-channel` is the only setting with no working default, and four features
+// are silently absent without one. She looks for it herself on join.
+
+test('an existing mod-log channel is adopted rather than duplicated', async () => {
+  wipe();
+  const { guild, record } = fakeGuild({ existingLogName: 'mod-log' });
+
+  await onGuildCreate(guild);
+
+  assert.equal(effectiveSettings(TEST_GUILD).logChannelId, ADOPTED_CHANNEL);
+  assert.deepEqual(record.created, [], 'the server already had one');
+  assert.match(record.sent[0].content, new RegExp(`<#${ADOPTED_CHANNEL}>`), 'and she says so');
+});
+
+test('only names that mean a moderation log are adopted', async () => {
+  for (const name of ['mod-log', 'mod_logs', 'moderation-log', 'mai-log', 'ModLog']) {
+    wipe();
+    const { guild } = fakeGuild({ existingLogName: name });
+    await onGuildCreate(guild);
+    assert.equal(effectiveSettings(TEST_GUILD).logChannelId, ADOPTED_CHANNEL, `missed ${name}`);
+  }
+
+  // Adopting one of these would start posting member ids and category slugs
+  // into a channel nobody meant for that, which is a decision she does not get
+  // to make on a guess.
+  for (const name of ['changelog', 'logs', 'general', 'mod-chat', 'blog']) {
+    wipe();
+    const { guild, record } = fakeGuild({ existingLogName: name, canCreate: false });
+    await onGuildCreate(guild);
+    assert.equal(effectiveSettings(TEST_GUILD).logChannelId, null, `adopted ${name}`);
+    assert.deepEqual(record.created, []);
+  }
+});
+
+test('a channel she cannot write in is not an answer', async () => {
+  wipe();
+  // Named right, but no permission there: adopting it would move the problem
+  // rather than solve it, so she makes her own instead.
+  const { guild, record } = fakeGuild({
+    existingLogName: 'mod-log',
+    existingLogWritable: false,
+  });
+
+  await onGuildCreate(guild);
+
+  assert.equal(record.created.length, 1);
+  assert.equal(effectiveSettings(TEST_GUILD).logChannelId, CREATED_CHANNEL);
+});
+
+test('a created log channel starts closed, not open', async () => {
+  wipe();
+  const { guild, record } = fakeGuild();
+
+  await onGuildCreate(guild);
+
+  const [options] = record.created;
+  assert.equal(options.name, content.moderation.log.channelName);
+  // A moderation log names members and what they were flagged for. A server
+  // that has not chosen who reads that has not agreed to everyone reading it.
+  const everyone = options.permissionOverwrites.find((entry) => entry.id === 'everyone-1');
+  assert.ok(everyone.deny.includes(PermissionFlagsBits.ViewChannel));
+});
+
+test('without Manage Channels she asks instead of failing', async () => {
+  wipe();
+  const { guild, record } = fakeGuild({ permissions: PermissionFlagsBits.SendMessages });
+
+  await onGuildCreate(guild);
+
+  assert.deepEqual(record.created, [], 'she may not, so she does not try');
+  assert.equal(effectiveSettings(TEST_GUILD).logChannelId, null);
+  assert.match(record.sent[0].content, new RegExp(content.commands.setup.logChannelMissing.slice(0, 20)));
+});
+
+test('a server that already chose a log channel is not overruled', async () => {
+  wipe();
+  updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL });
+  const { guild, record } = fakeGuild({ existingLogName: 'mod-log' });
+
+  await onGuildCreate(guild);
+
+  assert.equal(effectiveSettings(TEST_GUILD).logChannelId, LOG_CHANNEL);
+  assert.deepEqual(record.created, []);
 });

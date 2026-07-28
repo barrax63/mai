@@ -125,6 +125,15 @@ moderation:
   # Staff-facing moderation log (per guild: /mod config set log-channel).
   # Metadata only. No message content is ever posted here.
   log:
+    # Name und Thema des Kanals, den Mai anlegt, wenn ein Server keinen hat.
+    channelName: 'mai-log'
+    channelTopic: 'Moderations-Log von Mai: nur IDs, Kategorien und Zeitstempel, nie der Text einer Nachricht.'
+    # Steht im Feld "Geändert von", wenn niemand den Befehl getippt hat, sondern
+    # Mai selbst etwas umgestellt hat.
+    selfActor: 'Mai selbst'
+    # Sie kann keine Timeouts mehr vergeben und hört deshalb auf, es zu versuchen.
+    escalationSuspended: 'Ich schalte die Eskalation ab: mir fehlt `Mitglieder timeouten`, jede Verwarnung mit Timeout würde fehlschlagen. Verstöße zähle ich weiter mit, es passiert nur nichts. Gebt mir das Recht, dann mache ich von selbst weiter.'
+    escalationResumed: 'Ich habe `Mitglieder timeouten` wieder und schalte die Eskalation zurück an. Die Verstöße, die inzwischen dazugekommen sind, zählen ganz normal mit.'
     titles:
       flagged: '🟡 Nachricht markiert'
       deleted: '🔴 Nachricht gelöscht'
@@ -323,7 +332,7 @@ commands:
       • **Standard**: dasselbe, aber ich handle wirklich.
       • **Streng**: schärfere Schwelle, kürzere Schonfrist, Spitznamen werden moderiert und zurückgesetzt.
 
-      Sag mir mit `/mod config set log-channel:#kanal` noch, wo ich hinschreiben darf: ohne Log-Kanal gibt es keine Meldungen und keine Einsprüche. Mit `/mod off` schaltet ihr mich hier komplett ab.
+      Mit `/mod off` schaltet ihr mich hier komplett ab.
     # Angehängt, wenn Mai Rechte fehlen. {permissions} = Discord-Namen.
     missingPermissions: '⚠️ Mir fehlen noch Rechte, sonst läuft das oben nur halb: `{permissions}`'
     # Antwort auf /mod setup (nur für die Person sichtbar, die es ausführt).
@@ -332,6 +341,12 @@ commands:
     # ganze Server sieht, was gewählt wurde, und niemand nochmal klickt.
     appliedPublic: '*schnurrt* <@{userId}> hat mich eingerichtet: {summary}'
     needsLogChannel: '⚠️ Fehlt noch: `/mod config set log-channel:#kanal`. Ohne den gibt es kein Moderations-Log, keine Meldungen und keine Einsprüche.'
+    # Mai hat sich selbst einen Log-Kanal gesucht. {channel} = der Kanal.
+    logChannelAdopted: '📓 Ich schreibe mein Moderations-Log nach {channel}, den hattet ihr schon. Passt das nicht: `/mod config set log-channel:#kanal`.'
+    # Weder gefunden noch anlegbar: dann muss es doch jemand von Hand tun.
+    logChannelMissing: '📓 Einen Log-Kanal habe ich nicht gefunden und auch keinen anlegen dürfen. Sagt mir mit `/mod config set log-channel:#kanal`, wo ich hinschreiben darf: ohne den gibt es kein Moderations-Log, keine Meldungen und keine Einsprüche.'
+    # Neu angelegt, und zwar erst mal nur für Admins sichtbar.
+    logChannelCreated: '📓 Ich habe {channel} angelegt und schreibe mein Moderations-Log dorthin. Sichtbar ist er erst mal nur für Admins: gebt eurer Mod-Rolle Zugriff, damit alle mitlesen können.'
     unknownPreset: 'Das Preset kenne ich nicht.'
     # Angehängt, wenn ein Preset eine Beobachtungszeit startet. {until} ist ein
     # Discord-Zeitstempel, jede*r sieht ihn in der eigenen Zeitzone.
