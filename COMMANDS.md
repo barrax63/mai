@@ -264,7 +264,7 @@ setting to the inherited default, or all of them when the setting is omitted.
 | `welcome` | Greet new members at all. Needs `DISCORD_MEMBER_EVENTS` on the bot |
 | `welcome-channel` | Where new members are greeted (default: the server's system channel) |
 | `grace` | Minutes an author has to delete a flagged message themselves (1 to 1440) |
-| `timeout-ladder` | Timeout minutes per strike, e.g. `0,5,15,30,60`; the last step repeats |
+| `timeout-ladder` | `gentle`, `normal` or `firm`, or minutes per strike (`0,5,15,30,60`); the last step repeats |
 | `strike-window` | Days an enforced deletion counts towards escalation (1 to 365) |
 | `escalation` | Hand out timeouts at all. Off still records strikes |
 | `enabled` | The same switch as `/mod off` / `/mod on` |

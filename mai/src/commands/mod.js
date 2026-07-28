@@ -445,6 +445,37 @@ export const setupComponents = {
       })}${observationNote(until)}${note}`,
     );
   },
+
+  /**
+   * Takes back the threshold Mai read off an observation period.
+   *
+   * She applies that number rather than proposing it, because a suggestion in a
+   * log channel is a task somebody has to come back to. Applying it is only
+   * defensible if undoing it is one click, which is this: the guild goes back to
+   * whatever its profile or the base says, exactly like
+   * `/mod config reset threshold`.
+   *
+   * The guild id in the `custom_id` names a target and never authorizes one:
+   * proven against `interaction.guild_id` before anything is written, because
+   * the entry lives in a channel and any Manage Messages holder anywhere could
+   * otherwise aim it at another server.
+   */
+  'threshold-undo': (interaction, [guildId]) => {
+    if (!mayModerate(interaction)) return ephemeralResponse(content.commands.forbidden);
+    if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+    if (guildId !== interaction.guild_id) {
+      return ephemeralResponse(content.commands.forbidden);
+    }
+
+    const actorId = interaction.member?.user?.id;
+    resetSettings(interaction.guild_id, 'threshold', actorId);
+    logger.info({ guildId, byUserId: actorId }, 'Learned threshold taken back');
+    announceConfigChange(interaction.guild_id, actorId, describeChanges({ threshold: null }));
+
+    // Replaces the entry's buttons for everyone: a decision about the server's
+    // moderation belongs in the channel, not in one moderator's ephemeral reply.
+    return updateResponse(content.moderation.log.thresholdUndone, { components: [] });
+  },
 };
 
 /**
@@ -1220,7 +1251,7 @@ export const mod = {
               },
               {
                 name: 'timeout-ladder',
-                description: 'Timeout minutes per strike, e.g. 0,10,60,1440 (last step repeats)',
+                description: 'gentle | normal | firm, or minutes per strike (0,5,15,30,60)',
                 type: 3, // STRING
               },
               {

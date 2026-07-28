@@ -134,6 +134,12 @@ moderation:
     # Sie kann keine Timeouts mehr vergeben und hört deshalb auf, es zu versuchen.
     escalationSuspended: 'Ich schalte die Eskalation ab: mir fehlt `Mitglieder timeouten`, jede Verwarnung mit Timeout würde fehlschlagen. Verstöße zähle ich weiter mit, es passiert nur nichts. Gebt mir das Recht, dann mache ich von selbst weiter.'
     escalationResumed: 'Ich habe `Mitglieder timeouten` wieder und schalte die Eskalation zurück an. Die Verstöße, die inzwischen dazugekommen sind, zählen ganz normal mit.'
+    # Nach der Beobachtungszeit: die Schwelle, abgelesen am echten Verkehr dieses
+    # Servers. {threshold} = der Wert, {samples} = wie viele Nachrichten dahinter
+    # stecken.
+    thresholdLearned: 'Ich habe die Schwelle auf **{threshold}** gesetzt, abgelesen an {samples} Nachrichten aus dieser Woche: das sind die schärfsten rund 1 % von dem, was hier wirklich geschrieben wird. Passt das nicht: Knopf unten, oder `/mod config set threshold:…`.'
+    thresholdUndo: 'Schwelle zurücknehmen'
+    thresholdUndone: '🔄 Schwelle zurückgenommen: es gilt wieder, was Profil oder Standard sagen.'
     titles:
       flagged: '🟡 Nachricht markiert'
       deleted: '🔴 Nachricht gelöscht'
@@ -174,6 +180,7 @@ moderation:
       message: 'Nachricht'
       actor: 'Ausgeführt von'
       count: 'Anzahl'
+      threshold: 'Schwelle'
       reporter: 'Gemeldet von'
       reason: 'Begründung'
       attempts: 'Versuche'

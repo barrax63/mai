@@ -12,7 +12,7 @@
  * logging is off for that guild and every call here is a no-op.
  */
 import { effectiveSettings } from '../db/settings.js';
-import { content } from '../content.js';
+import { content, fill } from '../content.js';
 import { logger } from '../logger.js';
 
 /** Event kinds, matching the title keys in the content config. */
@@ -253,7 +253,24 @@ function fieldsFor(event) {
     // during it, which is the number the week was run to find out. Per guild,
     // never per member: nobody was told, and nothing happened to them.
     case LOG_SHADOW_ENDED:
-      return [{ name: labels.count, value: String(event.count ?? 0), inline: true }];
+      return [
+        { name: labels.count, value: String(event.count ?? 0), inline: true },
+        // Only when the week actually supported a number. Both values are
+        // aggregates of that guild's own traffic: a threshold and how many
+        // messages it was read off, never a score belonging to anybody.
+        ...(event.threshold === undefined
+          ? []
+          : [
+              {
+                name: labels.threshold,
+                value: fill(content.moderation.log.thresholdLearned, {
+                  threshold: String(event.threshold),
+                  samples: String(event.samples ?? 0),
+                }),
+                inline: false,
+              },
+            ]),
+      ];
 
     // Staff acting through Mai: who did it, and (for a warning) why.
     case LOG_MANUAL_DELETE:

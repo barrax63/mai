@@ -174,6 +174,10 @@ function loadContent() {
         selfActor: str(log, ['moderation', 'log', 'selfActor']),
         escalationSuspended: str(log, ['moderation', 'log', 'escalationSuspended']),
         escalationResumed: str(log, ['moderation', 'log', 'escalationResumed']),
+        // The threshold read off an observation period, and taking it back.
+        thresholdLearned: str(log, ['moderation', 'log', 'thresholdLearned']),
+        thresholdUndo: str(log, ['moderation', 'log', 'thresholdUndo']),
+        thresholdUndone: str(log, ['moderation', 'log', 'thresholdUndone']),
         titles: Object.freeze({
           flagged: str(logTitles, ['moderation', 'log', 'titles', 'flagged']),
           deleted: str(logTitles, ['moderation', 'log', 'titles', 'deleted']),
@@ -206,6 +210,7 @@ function loadContent() {
           message: str(logFields, ['moderation', 'log', 'fields', 'message']),
           actor: str(logFields, ['moderation', 'log', 'fields', 'actor']),
           count: str(logFields, ['moderation', 'log', 'fields', 'count']),
+          threshold: str(logFields, ['moderation', 'log', 'fields', 'threshold']),
           reporter: str(logFields, ['moderation', 'log', 'fields', 'reporter']),
           reason: str(logFields, ['moderation', 'log', 'fields', 'reason']),
           attempts: str(logFields, ['moderation', 'log', 'fields', 'attempts']),

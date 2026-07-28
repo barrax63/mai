@@ -28,6 +28,7 @@ import { config, isGuildAllowed } from '../config.js';
 import { content, pick } from '../content.js';
 import { enqueue, findRow, remove, updateCategories } from '../db/queue.js';
 import { countShadowHit, effectiveSettings } from '../db/settings.js';
+import { recordScore } from '../db/shadow-scores.js';
 import { ACTION_EDITED, ACTION_SELF_DELETED, recordViolation } from '../db/violations.js';
 import { explainError } from '../errors.js';
 import { logger } from '../logger.js';
@@ -270,6 +271,22 @@ async function flagMessage(message, categories) {
  * @param {number} [topScore]
  * @returns {{ action: 'ok' }} Nothing happened, so the caller must see nothing.
  */
+/**
+ * One classified message into the guild's histogram, never allowed to break the
+ * pipeline: a counter that fails must not cost a verdict.
+ *
+ * @param {string} guildId
+ * @param {number} [topScore]
+ */
+function countScore(guildId, topScore) {
+  if (!Number.isFinite(topScore)) return;
+  try {
+    recordScore(guildId, topScore);
+  } catch (error) {
+    logger.warn({ guildId, err: error }, 'Could not record a shadow score');
+  }
+}
+
 function shadowReport(message, categories, topScore) {
   // Counted per guild so the closing entry can say how much the week was
   // actually about. Never allowed to break the pipeline over a counter.
@@ -419,6 +436,13 @@ export async function checkMessage(message) {
 
   const verdict = await classifySafely(message, settings);
   if (!verdict) return OK;
+
+  // During an observation period every classified message is counted into the
+  // guild's score histogram, flagged or not. Only-the-flagged would be useless
+  // for the thing it exists for: a histogram of what already cleared the line
+  // cannot show that the line is too high, and "too high for German" is exactly
+  // the case this is meant to catch.
+  if (settings.shadowMode) countScore(message.guildId, verdict.topScore);
 
   if (!verdict.flagged) {
     logger.info({ messageId: message.id, flagged: false }, 'Message classified');

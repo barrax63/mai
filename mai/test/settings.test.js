@@ -392,3 +392,19 @@ test('a guild that only picked a profile counts as configured', () => {
   setProfile(guild(), 'standard');
   assert.equal(configuredGuildCount(), before + 1);
 });
+
+test('a ladder can be named instead of spelled out', () => {
+  const id = guild();
+
+  // The names are values the existing option accepts, not a new setting: what
+  // is stored and what `/mod config view` shows are still the minutes.
+  assert.deepEqual(updateSettings(id, { 'timeout-ladder': 'firm' }).timeoutLadder, [0, 15, 60, 360, 1440]);
+  assert.equal(rawSettings(id).timeout_ladder, '0,15,60,360,1440');
+  assert.deepEqual(updateSettings(id, { 'timeout-ladder': ' Gentle ' }).timeoutLadder, [0, 5, 10, 30]);
+
+  // Still a raw list, and still refused when it is neither.
+  assert.deepEqual(updateSettings(id, { 'timeout-ladder': '0,7' }).timeoutLadder, [0, 7]);
+  for (const bad of ['streng', 'constructor', 'toString']) {
+    assert.throws(() => updateSettings(id, { 'timeout-ladder': bad }), RangeError, `accepted ${bad}`);
+  }
+});

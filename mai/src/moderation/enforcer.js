@@ -25,7 +25,9 @@ import {
   expireShadowWindows,
   isGuildActive,
   pausedGuildIds,
+  updateSettings,
 } from '../db/settings.js';
+import { clearScores, histogram, suggestThreshold } from '../db/shadow-scores.js';
 import {
   ACTION_DELETED,
   pruneOlderThan as pruneViolations,
@@ -560,10 +562,90 @@ async function endObservationPeriods(client) {
     // window is already closed in the database, which is the right state.
     if (!isGuildAllowed(guildId)) continue;
 
-    logger.info({ guildId, hits }, 'Observation period ended, enforcing from now on');
-    await postModerationLog(client, { type: LOG_SHADOW_ENDED, guildId, count: hits });
+    const learned = learnThreshold(guildId);
+
+    logger.info(
+      { guildId, hits, threshold: learned?.threshold, samples: learned?.samples },
+      'Observation period ended, enforcing from now on',
+    );
+    await postModerationLog(
+      client,
+      {
+        type: LOG_SHADOW_ENDED,
+        guildId,
+        count: hits,
+        threshold: learned?.threshold,
+        samples: learned?.samples,
+      },
+      // The undo lives on the entry itself, where staff are already reading
+      // about it, rather than in a command they would have to be told about.
+      learned ? { components: thresholdUndoButton(guildId) } : {},
+    );
   }
 }
+
+/**
+ * Reads a threshold off the week's own traffic and applies it.
+ *
+ * This is the number `/mod setup observe` was run to find out. It was picked by
+ * hand before, from a documentation line that amounted to "start around 0.2 and
+ * watch", which meant finding out you were wrong by deleting things people
+ * meant. The provider scores the same insult 0.88 in English and 0.20 in
+ * German, so there is no right constant to ship, only a right way to measure.
+ *
+ * Applied rather than proposed, deliberately. A suggestion in a log channel is
+ * a task somebody has to come back to, and a moderation bot that needs somebody
+ * to come back to it is the thing the whole observation period exists to
+ * replace. It is written as an ordinary explicit setting, announced with the
+ * sample count behind it, and undone by one button or `/mod config reset
+ * threshold`.
+ *
+ * Silence when the week does not support a number: too few messages, or a
+ * distribution whose percentile lands outside the sane band. Nothing is written
+ * and the entry simply does not mention a threshold.
+ *
+ * @param {string} guildId
+ * @returns {{ threshold: number, samples: number } | null}
+ */
+function learnThreshold(guildId) {
+  try {
+    const suggestion = suggestThreshold(histogram(guildId));
+    // Read once and dropped either way: the histogram belongs to the window it
+    // was collected in, and keeping it would let the next observation period
+    // inherit the last one's traffic.
+    clearScores(guildId);
+
+    if (!suggestion) return null;
+
+    // Never overrule a server that has already decided where its line is.
+    if (!effectiveSettings(guildId).inherited.threshold) return null;
+
+    updateSettings(guildId, { threshold: suggestion.threshold });
+    return suggestion;
+  } catch (error) {
+    // A failed measurement must not cost the guild the end of its observation
+    // period: that switch is the promise, this is the bonus.
+    logger.warn({ guildId, err: error }, 'Could not learn a threshold from the observation period');
+    return null;
+  }
+}
+
+/**
+ * @param {string} guildId
+ */
+const thresholdUndoButton = (guildId) => [
+  {
+    type: 1, // ACTION_ROW
+    components: [
+      {
+        type: 2, // BUTTON
+        style: 2, // SECONDARY
+        label: content.moderation.log.thresholdUndo,
+        custom_id: `threshold-undo:${guildId}`,
+      },
+    ],
+  },
+];
 
 /**
  * The overlap guard turns a *hung* tick into permanent silence: a Discord call

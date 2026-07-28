@@ -74,22 +74,55 @@ const int = (name, fallback, { min = 0 } = {}) => {
 export const MAX_TIMEOUT_MINUTES = 28 * 24 * 60;
 
 /**
- * Parses a comma-separated escalation ladder ("0,10,60,1440") into minutes per
- * strike. Exported so `/mod config set timeout-ladder` validates identically.
+ * Ladders with names, because "0,5,15,30,60" is a sentence in a language nobody
+ * speaks and every server was being asked to write one.
+ *
+ * Deliberately *not* a new setting. A `severity` knob that quietly rewrote the
+ * ladder would be a second named-bundle mechanism sitting next to profiles,
+ * which is the layer this project spent two changes removing. These are values
+ * the existing option accepts, so `/mod config view` still shows the minutes
+ * that are actually in force and `/mod config reset timeout-ladder` still means
+ * one thing.
+ *
+ * The names describe the shape rather than a verdict on the member: each starts
+ * at 0 (the deletion is the message on a first offence) and differs in how fast
+ * it climbs and where it stops.
+ */
+export const NAMED_LADDERS = Object.freeze({
+  // Barely a ladder: a nudge that never reaches an hour.
+  gentle: '0,5,10,30',
+  normal: '0,5,15,30,60',
+  // Reaches a day, for a server that has already decided it needs one.
+  firm: '0,15,60,360,1440',
+});
+
+/**
+ * Parses a comma-separated escalation ladder ("0,5,15,30,60") into minutes per
+ * strike, or one of the names above. Exported so `/mod config set timeout-ladder`
+ * validates identically.
  *
  * @param {string} raw
  * @param {string} [label] Used in the error message.
  * @returns {number[]}
  */
 export function parseTimeoutLadder(raw, label = 'timeout ladder') {
-  const steps = String(raw ?? '')
+  // The value comes from a moderator or from a `.env`, so the lookup is
+  // `Object.hasOwn`: a bare read also answers for everything on
+  // `Object.prototype`, and `constructor` would arrive here as a ladder.
+  const key = String(raw ?? '').trim().toLowerCase();
+  const named = Object.hasOwn(NAMED_LADDERS, key) ? NAMED_LADDERS[key] : null;
+
+  const steps = String(named ?? raw ?? '')
     .split(',')
     .map((step) => step.trim())
     .filter(Boolean)
     .map((step) => wholeNumber(step));
 
   if (steps.length === 0 || steps.some((step) => !Number.isInteger(step))) {
-    throw new RangeError(`${label} must be comma-separated whole minutes, e.g. 0,10,60,1440`);
+    throw new RangeError(
+      `${label} must be comma-separated whole minutes (e.g. 0,5,15,30,60) or one of: `
+        + `${Object.keys(NAMED_LADDERS).join(', ')}`,
+    );
   }
   if (steps.some((step) => step < 0 || step > MAX_TIMEOUT_MINUTES)) {
     throw new RangeError(`${label} steps must be between 0 and ${MAX_TIMEOUT_MINUTES} minutes`);
