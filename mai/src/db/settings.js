@@ -14,6 +14,7 @@ import {
   parseDomainList,
   parseFloodRule,
   parseLinkPolicy,
+  parseNameCheck,
   parseThreshold,
   parseTimeoutLadder,
   wholeNumber,
@@ -153,6 +154,18 @@ export const SETTINGS = Object.freeze({
       return cap;
     },
   },
+  evidence: {
+    // Whether an enforced message's text is kept (encrypted, for hours) so
+    // staff can review an appeal about it. Off unless the operator set a
+    // retention window too: `MODERATION_EVIDENCE_HOURS` is the availability
+    // switch, this flag is the guild's own consent to it.
+    column: 'evidence_enabled',
+    parse: (value) => (value === null ? null : toFlag(value, 'evidence')),
+  },
+  'name-check': {
+    column: 'name_check',
+    parse: (value) => (value === null ? null : parseNameCheck(value, 'name-check')),
+  },
   flood: {
     column: 'flood_rule',
     parse: (value) => {
@@ -222,6 +235,12 @@ export function effectiveSettings(guildId) {
     floodRule: row?.flood_rule == null
       ? config.moderation.floodRule
       : parseFloodRule(row.flood_rule, 'flood'),
+    // Keeping a member's deleted words is a decision each guild makes for
+    // itself, so this one inherits `false` rather than a process default: the
+    // operator's knob (`MODERATION_EVIDENCE_HOURS`) decides whether it is
+    // available at all, not whether it is on.
+    evidenceEnabled: flag('evidence_enabled', false) && config.moderation.evidenceHours > 0,
+    nameCheck: row?.name_check ?? config.moderation.nameCheck,
     inherited: {
       enabled: row?.enabled == null,
       escalation: row?.escalation_enabled == null,
@@ -238,6 +257,8 @@ export function effectiveSettings(guildId) {
       'link-domains': row?.link_domains == null,
       'mention-cap': row?.mention_cap == null,
       flood: row?.flood_rule == null,
+      evidence: row?.evidence_enabled == null,
+      'name-check': row?.name_check == null,
     },
   };
 }

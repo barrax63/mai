@@ -137,6 +137,9 @@ moderation:
       # Die Klassifizierung schlägt in Folge fehl: Mai lässt gerade alles durch.
       degraded: '🟠 Moderation fällt aus'
       recovered: '🟢 Moderation läuft wieder'
+      # Der Name selbst steht nicht im Eintrag: die Erwähnung im Feld
+      # "Mitglied" zeigt ihn ohnehin an, und zwar immer den aktuellen.
+      nameFlagged: '🏷️ Name beanstandet'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -183,6 +186,29 @@ moderation:
     deniedDm: '*schaut dich lange an* Dein Einspruch wurde geprüft und abgelehnt. Die Verwarnung bleibt.'
     decisionSent: 'Entscheidung ist raus.'
     decisionNotSent: 'Entscheidung notiert, die DM kam nicht an (DMs zu?).'
+    # Beweis-Ansicht: nur für Moderator*innen, nur ephemeral (sichtbar für die
+    # Person, die klickt), nur der Vorfall, um den es geht. Existiert nur, wenn
+    # der Server `evidence` eingeschaltet hat und der Betreiber eine
+    # Aufbewahrungsdauer gesetzt hat.
+    evidenceButton: 'Beweis ansehen'
+    evidenceHeader: '**Gelöschte Nachrichten zu diesem Vorfall** (nur für dich sichtbar, wird automatisch gelöscht):'
+    # {when} = Zeitpunkt, {categories} = Kategorien, {text} = die Nachricht.
+    evidenceLine: '> [{when}] `{categories}` {text}'
+    evidenceEmpty: 'Dazu ist nichts gespeichert: entweder ist die Aufbewahrung abgelaufen, oder dieser Server bewahrt nichts auf.'
+    evidenceAttachment: '(Bild oder Datei)'
+    evidenceEmptyMessage: '(Leere Nachricht)'
+
+  # Namensprüfung: der Anzeigename eines Mitglieds, den keine Nachrichtenregel
+  # je zu sehen bekommt.
+  names:
+    # Grund im Discord-Audit-Log, wenn Mai einen Spitznamen entfernt.
+    resetReason: 'Mai: Anzeigename beanstandet ({categories})'
+    unknownCategory: 'Regelverstoß'
+    # Was mit dem Namen passiert ist, für den Log-Eintrag.
+    reportedOnly: 'Nur gemeldet (name-check steht auf `log`).'
+    nicknameReset: 'Server-Spitzname entfernt.'
+    globalName: 'Das ist der globale Benutzername, den kann Mai nicht ändern. Bitte von Hand entscheiden.'
+    resetFailed: 'Spitzname konnte nicht entfernt werden:'
 
   # DM sent after the grace period expired and messages were deleted.
   # One DM per user per tick, listing every message removed in that tick.
@@ -368,6 +394,8 @@ commands:
       **Erlaubte Domains:** {linkDomains}{linkDomainsSource}
       **Mention-Limit:** {mentionCap}{mentionCapSource}
       **Flut-Regel:** {flood}{floodSource}
+      **Namensprüfung:** {nameCheck}{nameCheckSource}
+      **Beweis-Aufbewahrung:** {evidence}{evidenceSource}
     inherited: '_(Standard)_'
     on: 'ja'
     off: 'nein'
@@ -387,6 +415,12 @@ commands:
     noDomains: '_keine_'
     # Die Flut-Regel in Worten. {messages} Nachrichten in {seconds} Sekunden.
     floodRule: 'mehr als {messages} Nachrichten in {seconds} s'
+    # Beweis-Aufbewahrung ist an. {hours} = Stunden, die der Betreiber gesetzt hat.
+    evidenceOn: 'an, {hours} Stunden'
+    # Zwei Einstellungen brauchen etwas, das nur der Betreiber einschalten kann.
+    # Der Wert wird trotzdem gespeichert und greift, sobald das passiert.
+    nameCheckUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (MODERATION_NAME_CHECK ist aus). Sag der Person Bescheid, die den Bot betreibt.'
+    evidenceUnavailable: '⚠️ Gespeichert, aber es wird nichts aufbewahrt: der Betreiber hat MODERATION_EVIDENCE_HOURS auf 0 stehen.'
     nothing: 'Nichts angegeben, nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'
     guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'

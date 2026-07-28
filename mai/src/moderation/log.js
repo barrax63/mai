@@ -37,6 +37,8 @@ export const LOG_WARNING_UNDELIVERED = 'warningUndelivered';
 /** Classification keeps failing: moderation is passing everything through. */
 export const LOG_DEGRADED = 'degraded';
 export const LOG_RECOVERED = 'recovered';
+/** A member's display name is the violation, which no message rule can see. */
+export const LOG_NAME_FLAGGED = 'nameFlagged';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
@@ -56,6 +58,7 @@ const COLORS = {
   [LOG_WARNING_UNDELIVERED]: 0xe67e22,
   [LOG_DEGRADED]: 0xe67e22,
   [LOG_RECOVERED]: 0x2ecc71,
+  [LOG_NAME_FLAGGED]: 0xd35400,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -207,6 +210,12 @@ function fieldsFor(event) {
         categoryField,
         ...reason,
       ];
+
+    // The member's *name*. No copy of it here and none needed: the mention in
+    // the head renders as their current display name for whoever reads this,
+    // which is both the evidence and always up to date.
+    case LOG_NAME_FLAGGED:
+      return [...head, categoryField, ...resolution];
 
     // Moderation is failing open in this guild: `attempts` is the streak of
     // consecutive failures, `reason` the error in words (never its message).

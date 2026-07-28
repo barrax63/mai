@@ -7,7 +7,7 @@
  * channel type, missing permission, failed send) has to end in silence rather
  * than in an exception on the gateway.
  */
-import './setup.js';
+import './setup-welcome.js';
 import { openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';

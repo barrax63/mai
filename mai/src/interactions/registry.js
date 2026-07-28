@@ -11,7 +11,12 @@
  */
 import { forgetComponents } from '../commands/mai.js';
 import { reportComponents, reportModals } from '../commands/report.js';
-import { appealButtons, appealDecisions, appealModals } from '../moderation/appeal.js';
+import {
+  appealButtons,
+  appealDecisions,
+  appealEvidence,
+  appealModals,
+} from '../moderation/appeal.js';
 
 /** @type {Map<string, (interaction: object, args: string[]) => object | Promise<object>>} */
 export const componentHandlers = new Map(
@@ -20,6 +25,7 @@ export const componentHandlers = new Map(
     ...reportComponents,
     ...appealButtons,
     ...appealDecisions,
+    ...appealEvidence,
   }),
 );
 

@@ -39,6 +39,8 @@ test('a guild without a row inherits every default', () => {
     'link-domains': true,
     'mention-cap': true,
     flood: true,
+    evidence: true,
+    'name-check': true,
   });
 });
 
@@ -183,6 +185,8 @@ test('reset without a name clears everything', () => {
     'link-domains': true,
     'mention-cap': true,
     flood: true,
+    evidence: true,
+    'name-check': true,
   });
 });
 
@@ -230,6 +234,30 @@ test('the mention cap and the link policy take only what they can act on', () =>
 
   assert.equal(updateSettings(id, { 'link-policy': 'allowlist' }).linkPolicy, 'allowlist');
   assert.throws(() => updateSettings(id, { 'link-policy': 'blocklist' }), RangeError);
+});
+
+test('name-check takes only the three modes it can act on', () => {
+  const id = guild();
+
+  assert.equal(updateSettings(id, { 'name-check': 'reset' }).nameCheck, 'reset');
+  assert.equal(updateSettings(id, { 'name-check': 'off' }).nameCheck, 'off');
+  assert.equal(updateSettings(id, { 'name-check': ' LOG ' }).nameCheck, 'log', 'normalized');
+
+  for (const bad of ['ban', 'kick', 'löschen']) {
+    assert.throws(() => updateSettings(id, { 'name-check': bad }), RangeError, `accepted ${bad}`);
+  }
+});
+
+test('evidence stays off while the operator keeps no retention window', () => {
+  const id = guild();
+  const settings = updateSettings(id, { evidence: true });
+
+  // The guild's consent is stored, but MODERATION_EVIDENCE_HOURS is 0 here, so
+  // nothing is kept: whether the database holds a member's deleted words is not
+  // a decision one server gets to make on its own.
+  assert.equal(settings.evidenceEnabled, false);
+  assert.equal(settings.inherited.evidence, false, 'the guild did decide, it just has no effect');
+  assert.equal(rawSettings(id).evidence_enabled, 1);
 });
 
 test('reset rejects an unknown setting name', () => {

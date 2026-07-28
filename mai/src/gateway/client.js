@@ -4,9 +4,10 @@
  *
  * Requires the "Message Content Intent" to be enabled for the application in
  * the Discord Developer Portal (Bot -> Privileged Gateway Intents). Welcome
- * messages additionally require the "Server Members Intent"; the GuildMembers
- * intent is only requested when DISCORD_WELCOME_ENABLED=true, because logging
- * in with a privileged intent that is not enabled in the portal fails.
+ * messages and name screening additionally require the "Server Members Intent";
+ * the GuildMembers intent is only requested when DISCORD_WELCOME_ENABLED=true or
+ * MODERATION_NAME_CHECK is not "off", because logging in with a privileged
+ * intent that is not enabled in the portal fails.
  *
  * Direct messages arrive via the (non-privileged) DirectMessages intent plus
  * the Partials.Channel below: without the partial, discord.js drops events
@@ -20,6 +21,7 @@ import { onMessageCreate } from './events/message-create.js';
 import { onMessageUpdate } from './events/message-update.js';
 import { onMessageDelete } from './events/message-delete.js';
 import { onGuildMemberAdd } from './events/guild-member-add.js';
+import { onGuildMemberUpdate } from './events/guild-member-update.js';
 import { startPresenceRotation } from './presence.js';
 
 /** @type {import('discord.js').Client | null} */
@@ -61,7 +63,11 @@ export function createGatewayClient() {
     GatewayIntentBits.DirectMessages,
     GatewayIntentBits.MessageContent,
   ];
-  if (config.discord.welcomeEnabled) {
+  // Welcome messages and name screening are the two features that need member
+  // events. An intent is a process-wide decision made once, at login, so a
+  // guild's own `name-check` setting cannot turn this on: that is what
+  // MODERATION_NAME_CHECK is for, and `/mod config set name-check` says so.
+  if (config.discord.memberEventsEnabled) {
     intents.push(GatewayIntentBits.GuildMembers);
   }
 
@@ -117,12 +123,25 @@ export function createGatewayClient() {
     });
   });
 
-  if (config.discord.welcomeEnabled) {
+  // Welcomes and name screening both ride on the privileged GuildMembers
+  // intent, so both handlers are registered together and each checks its own
+  // flag: the join handler welcomes only when welcomes are on, and screens the
+  // name only where the guild asked for it.
+  if (config.discord.memberEventsEnabled) {
     client.on(Events.GuildMemberAdd, (member) => {
       onGuildMemberAdd(member).catch((error) => {
         logger.error(
           { err: error, guildId: member.guild?.id, userId: member.id },
           'guildMemberAdd handler failed',
+        );
+      });
+    });
+
+    client.on(Events.GuildMemberUpdate, (oldMember, newMember) => {
+      onGuildMemberUpdate(oldMember, newMember).catch((error) => {
+        logger.error(
+          { err: error, guildId: newMember?.guild?.id, userId: newMember?.id },
+          'guildMemberUpdate handler failed',
         );
       });
     });

@@ -189,6 +189,22 @@ export function parseDomainList(raw, label = 'link domains') {
   return [...new Set(hosts)];
 }
 
+/** What Mai does about a display name that is itself the violation. */
+export const NAME_CHECKS = Object.freeze(['off', 'log', 'reset']);
+
+/**
+ * @param {unknown} raw
+ * @param {string} [label]
+ * @returns {'off' | 'log' | 'reset'}
+ */
+export function parseNameCheck(raw, label = 'name check') {
+  const value = String(raw ?? '').trim().toLowerCase() || 'off';
+  if (!NAME_CHECKS.includes(value)) {
+    throw new RangeError(`${label} must be one of: ${NAME_CHECKS.join(', ')}`);
+  }
+  return value;
+}
+
 /** Bounds for the flood rule, so a typo cannot arm a guard nobody survives. */
 const FLOOD_MIN_MESSAGES = 2;
 const FLOOD_MAX_MESSAGES = 50;
@@ -271,17 +287,32 @@ const parsed = (parse) => (name, fallback) => {
 const linkPolicy = parsed(parseLinkPolicy);
 const domains = parsed(parseDomainList);
 const flood = parsed(parseFloodRule);
+const nameCheck = parsed(parseNameCheck);
 
 const moderationEnabled = bool('MODERATION_ENABLED', 'true');
 const chatEnabled = bool('CHAT_ENABLED', 'true');
 const needsOpenAi = moderationEnabled || chatEnabled;
+// 0 = no appeal evidence anywhere, which is the default. Read before the key,
+// because keeping evidence is the second thing that needs one.
+const evidenceHours = hours('MODERATION_EVIDENCE_HOURS', '0');
+
+// Both of these decide whether the privileged GuildMembers intent is requested,
+// so they are read here rather than inside the config object: `discord` is built
+// before `moderation` and cannot look forward into it.
+const welcomeEnabled = bool('DISCORD_WELCOME_ENABLED', 'false');
+const nameCheckMode = nameCheck('MODERATION_NAME_CHECK', 'off');
 
 /**
- * The chat history encryption key: base64 of exactly 32 bytes (AES-256-GCM).
+ * The database content key: base64 of exactly 32 bytes (AES-256-GCM).
  * Generate with `openssl rand -base64 32`.
+ *
+ * Named for the chat history because that was the only encrypted table when it
+ * was introduced; appeal evidence uses the same key, so either feature makes it
+ * required. Renaming the variable would break every existing deployment for no
+ * gain, so the name stays and this comment carries the truth.
  */
 const readHistoryKey = () => {
-  if (!chatEnabled) return null;
+  if (!chatEnabled && evidenceHours === 0) return null;
 
   const raw = required('CHAT_HISTORY_KEY');
   const key = Buffer.from(raw, 'base64');
@@ -310,7 +341,12 @@ export const config = Object.freeze({
     // Welcome messages need the privileged "Server Members Intent": keep the
     // GuildMembers intent out of the login unless it is enabled in the
     // Developer Portal, otherwise the gateway connection is refused.
-    welcomeEnabled: bool('DISCORD_WELCOME_ENABLED', 'false'),
+    welcomeEnabled,
+    // Member events (joins, nickname changes) all ride on that one intent, and
+    // two features want them now. A guild setting cannot turn an intent on:
+    // intents are decided once, at login, for the whole process, so this is the
+    // operator's switch and `/mod config set name-check` says so when it is off.
+    memberEventsEnabled: welcomeEnabled || nameCheckMode !== 'off',
     // Whoever runs the bot itself, as opposed to whoever moderates a server
     // that uses it. Only these ids see process-wide numbers in `/mod status`
     // and `/mod spend`; everyone else sees their own guild. Empty = nobody, so
@@ -400,6 +436,16 @@ export const config = Object.freeze({
     // in the log channel that Mai is currently letting everything through.
     // Moderation fails open, which is deliberate but invisible from Discord.
     degradedAfter: int('MODERATION_DEGRADED_AFTER', '3', { min: 1 }),
+    // How long an enforced message's text is kept, encrypted, so staff can
+    // review an appeal against it. 0 = never, and the whole feature is off:
+    // this is the operator's switch, and each guild still has to opt in
+    // (`/mod config set evidence:true`). Hours, not days: it exists for the
+    // appeal window, not as an archive.
+    evidenceHours,
+    // What to do about a member whose *name* is the violation: 'off', 'log',
+    // or 'reset' (also removes the guild nickname). Needs the GuildMembers
+    // intent, which is why anything but 'off' requests it (see `discord` above).
+    nameCheck: nameCheckMode,
   },
   chat: {
     enabled: chatEnabled,

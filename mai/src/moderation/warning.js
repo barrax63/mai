@@ -13,10 +13,14 @@ const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
  * Message content is rendered as plain text in the DM: neutralize mentions,
  * collapse newlines so one message stays one quoted line.
  *
+ * Exported because the appeal evidence view quotes the same messages back to
+ * staff and has to neutralize them the same way; two copies of this would be
+ * two chances to forget the zero-width space.
+ *
  * @param {string} value
  * @returns {string}
  */
-const sanitize = (value) =>
+export const sanitize = (value) =>
   String(value ?? '')
     .replaceAll('@', `@${ZERO_WIDTH_SPACE}`)
     .replace(/\r?\n/g, ' ')

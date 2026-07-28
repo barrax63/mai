@@ -11,6 +11,7 @@
  */
 import { PermissionFlagsBits } from 'discord.js';
 import { content, fill } from '../content.js';
+import { evidenceFor } from '../db/evidence.js';
 import { effectiveSettings } from '../db/settings.js';
 import { overturnSince } from '../db/violations.js';
 import { getGatewayClient } from '../gateway/client.js';
@@ -24,6 +25,7 @@ import {
 } from '../interactions/respond.js';
 import { logger } from '../logger.js';
 import { LOG_APPEALED, postModerationLog } from './log.js';
+import { sanitize } from './warning.js';
 import { createRateLimiter } from '../rate-limit.js';
 
 const ACTION_ROW = 1;
@@ -142,9 +144,16 @@ export const appealButtons = {
  * guild channel, and by the time somebody clicks, the DM that produced the
  * appeal is long gone.
  *
+ * The evidence button is only attached where there is evidence to show, which
+ * is a per-guild decision (`/mod config set evidence:true`) on top of the
+ * operator's retention window. Never a promise Mai cannot keep: a button that
+ * always says "nothing stored" would just be noise on every entry.
+ *
  * @param {string} userId
+ * @param {string | number} since
+ * @param {string} guildId
  */
-const decisionButtons = (userId, since) => [
+const decisionButtons = (userId, since, guildId) => [
   {
     type: ACTION_ROW,
     components: [
@@ -160,6 +169,16 @@ const decisionButtons = (userId, since) => [
         label: content.moderation.appeal.denyButton,
         custom_id: `appeal-deny:${userId}:${since}`,
       },
+      ...(effectiveSettings(guildId).evidenceEnabled
+        ? [
+            {
+              type: BUTTON,
+              style: STYLE_SECONDARY,
+              label: content.moderation.appeal.evidenceButton,
+              custom_id: `appeal-evidence:${userId}:${since}`,
+            },
+          ]
+        : []),
     ],
   },
 ];
@@ -234,6 +253,70 @@ export const appealDecisions = {
   },
 };
 
+/** Discord's message limit, minus room for the header. */
+const EVIDENCE_MAX_LENGTH = 1900;
+const EVIDENCE_MAX_CHARS_PER_MESSAGE = 500;
+
+/**
+ * Shows the moderator deciding an appeal what the deleted messages said.
+ *
+ * The one read path of the evidence store, and its shape is the point:
+ *
+ *   - **ephemeral**, always. The whole reason a deleted message may be kept at
+ *     all is that one moderator needs to read it once; posting it into the
+ *     channel would put the text back in front of everyone with access, which
+ *     is exactly what deleting it was for.
+ *   - **staff only**, checked in code. The button sits on a message in a staff
+ *     channel, but a channel is not an authorization boundary.
+ *   - **this guild only**: `interaction.guild_id`, never the id in the
+ *     `custom_id`. The clicker names a member and an incident; they do not get
+ *     to name a server.
+ *   - **that incident only**: the same `since` the decision buttons carry, so
+ *     reviewing one appeal does not open the member's back catalogue.
+ *
+ * Not deferred: a SQLite read and a string, well inside Discord's window.
+ */
+export const appealEvidence = {
+  'appeal-evidence'(interaction, [userId, since]) {
+    if (!mayModerate(interaction)) return ephemeralResponse(content.commands.forbidden);
+    if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
+    const { appeal } = content.moderation;
+    const entries = evidenceFor(interaction.guild_id, userId, incidentIso(since));
+
+    // Count only, never the text: it is stored deliberately and briefly, and
+    // repeating it into the container log would be a second copy with a
+    // different lifetime.
+    logger.info(
+      {
+        guildId: interaction.guild_id,
+        userId,
+        entries: entries.length,
+        byUserId: actor(interaction).id,
+      },
+      'Appeal evidence viewed',
+    );
+
+    if (entries.length === 0) return ephemeralResponse(appeal.evidenceEmpty);
+
+    const lines = [];
+    const header = appeal.evidenceHeader;
+    for (const entry of entries) {
+      const text = sanitize(entry.content).slice(0, EVIDENCE_MAX_CHARS_PER_MESSAGE);
+      const line = fill(appeal.evidenceLine, {
+        when: `<t:${Math.floor(new Date(entry.createdAt).getTime() / 1000)}:f>`,
+        categories: entry.categories.join(', ') || content.moderation.log.none,
+        text: text || (entry.attachments > 0 ? appeal.evidenceAttachment : appeal.evidenceEmptyMessage),
+      });
+
+      if (`${header}\n${[...lines, line].join('\n')}`.length > EVIDENCE_MAX_LENGTH) break;
+      lines.push(line);
+    }
+
+    return ephemeralResponse(`${header}\n${lines.join('\n')}`);
+  },
+};
+
 /**
  * @param {object} interaction
  * @param {string} userId The appealing member.
@@ -294,7 +377,7 @@ export const appealModals = {
         // appealed without hunting through the log.
         since: incidentIso(since),
       },
-      { components: decisionButtons(member.id, since ?? 0) },
+      { components: decisionButtons(member.id, since ?? 0, guildId) },
     );
 
     // Metadata at info, the statement itself only at debug: same rule as

@@ -6,8 +6,9 @@
  * is a UI default a server admin can widen.
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { config, isOperator, LINK_POLICIES } from '../config.js';
+import { config, isOperator, LINK_POLICIES, NAME_CHECKS } from '../config.js';
 import { content, fill } from '../content.js';
+import { clearForUser as clearEvidenceFor } from '../db/evidence.js';
 import { stats as historyStats } from '../db/history.js';
 import { depth, forgiveUser } from '../db/queue.js';
 import { effectiveSettings, resetSettings, SETTINGS, updateSettings } from '../db/settings.js';
@@ -305,9 +306,12 @@ function forgiveResponse(interaction) {
   cleanUpScolds(rows);
 
   // Optional second step: also wipe the strike record, so the escalation ladder
-  // starts from zero for this member in this guild.
+  // starts from zero for this member in this guild. Any evidence kept for an
+  // appeal goes with it: a pardon that leaves the member's deleted words in the
+  // database is not a pardon.
   const clearStrikes = optionValue(options, 'strikes') === true;
   const strikesCleared = clearStrikes ? clearForUser(interaction.guild_id, String(userId)) : 0;
+  if (clearStrikes) clearEvidenceFor(interaction.guild_id, String(userId));
 
   const actorId = interaction.member?.user?.id;
   logger.info(
@@ -390,6 +394,14 @@ function configView(guildId) {
         ? fill(content.commands.config.floodRule, settings.floodRule)
         : guardOff,
       floodSource: inherited('flood'),
+      nameCheck: settings.nameCheck === 'off' ? guardOff : settings.nameCheck,
+      nameCheckSource: inherited('name-check'),
+      // `effectiveSettings` already folds in the operator's retention window,
+      // so this line is what actually happens, not what was asked for.
+      evidence: settings.evidenceEnabled
+        ? fill(content.commands.config.evidenceOn, { hours: config.moderation.evidenceHours })
+        : guardOff,
+      evidenceSource: inherited('evidence'),
     }),
   );
 }
@@ -465,7 +477,35 @@ function configSet(interaction, guildId) {
   logger.info({ guildId, changed: Object.keys(patch), byUserId: actorId }, 'Updated guild settings');
   announceConfigChange(guildId, actorId, describeChanges(patch));
 
-  return configView(guildId);
+  // Two settings need something only the operator can switch on. The value is
+  // stored either way (so it takes effect the moment they do), but staff have
+  // to be told that nothing is happening yet: silently storing a setting that
+  // does nothing is how a server ends up believing it is protected.
+  const notes = unavailableNotes(patch);
+  const view = configView(guildId);
+  return notes.length > 0
+    ? ephemeralResponse(`${notes.join('\n')}\n\n${view.data.content}`)
+    : view;
+}
+
+/**
+ * @param {Record<string, unknown>} patch
+ * @returns {string[]}
+ */
+function unavailableNotes(patch) {
+  const notes = [];
+
+  // An intent is requested once, at login, for the whole process: a guild
+  // cannot turn on the member events its name check needs.
+  if (patch['name-check'] && patch['name-check'] !== 'off' && !config.discord.memberEventsEnabled) {
+    notes.push(content.commands.config.nameCheckUnavailable);
+  }
+  // Retention is the operator's call, because it is their database.
+  if (patch.evidence === true && config.moderation.evidenceHours === 0) {
+    notes.push(content.commands.config.evidenceUnavailable);
+  }
+
+  return notes;
 }
 
 /**
@@ -757,6 +797,17 @@ export const mod = {
                 name: 'flood',
                 description: 'Message burst rule as count/seconds, e.g. 6/10 (or off)',
                 type: 3, // STRING
+              },
+              {
+                name: 'name-check',
+                description: 'Screen display names: off, log, or reset (removes the nickname)',
+                type: 3, // STRING
+                choices: NAME_CHECKS.map((value) => ({ name: value, value })),
+              },
+              {
+                name: 'evidence',
+                description: 'Keep deleted messages briefly, encrypted, so staff can review appeals',
+                type: 5, // BOOLEAN
               },
             ],
           },

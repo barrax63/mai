@@ -63,6 +63,7 @@ Every non-bot guild message with text content is classified when it is posted **
   - classification unavailable → an unqueued message passes as usual, but a queued one **keeps its row**: no verdict is not the same as innocent.
 
   Discord also fires `messageUpdate` for link previews resolving, pins and flag changes; those are filtered out by `edited_timestamp` plus a content comparison, so they never cost a classification call. Edits are moderation-only: retrofitting a mention into a message does not make Mai answer it. No extra intent or Developer Portal toggle is needed.
+- **Display names are screened separately** ([src/moderation/names.js](src/moderation/names.js)), because a nickname is on every message its owner sends and no message rule can ever see it: Mai was deleting a word out of a member's sentences while it sat in their name untouched. `name-check` is `off`, `log` (an entry in the moderation log) or `reset` (the same entry, plus the *server* nickname is removed). A global username is not Mai's to change and she never kicks or bans over a name, so `reset` falling back to a flagged global name ends in an entry and a human decision. The entry carries **no copy of the name**: `<@id>` renders as that member's current display name for whoever reads it, which is both the evidence and always up to date. Screened on join (a flagged name is not welcomed, since a welcome would put it in front of the whole server in Mai's own words) and on rename, filtered to actual name changes because MEMBER_UPDATE also fires for roles, avatars and every timeout Mai hands out. Bounded at 3 checks per member per 10 minutes: renaming is free and instant. Fails open like the rest of the pipeline, which here means an API timeout can never strip somebody's nickname. Needs `MODERATION_NAME_CHECK` (the process-wide switch that requests the privileged **Server Members Intent**) plus the per-guild setting.
 - **Self-deletion resolves immediately** ([src/gateway/events/message-delete.js](src/gateway/events/message-delete.js)): the moment the author removes a flagged message, the scold reply goes with it, the queue row is dropped and the log gets its entry: no waiting out a grace period that has nothing left to enforce. Deletions Mai performs herself (enforcement, an approved report) are registered beforehand and skipped, or her own work would be recorded as the author having fixed it. The enforcer keeps the same handling as a fallback for a deletion that happened while the gateway was down.
 - **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the channel and then the message are looked up. Gone (author deleted it, or the channel is) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, a strike is recorded, the row dropped, and the author gets one DM per tick and guild listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient, a channel that holds no messages) keeps the row for the next tick and counts an attempt.
 
@@ -82,7 +83,7 @@ Every non-bot guild message with text content is classified when it is posted **
 - **Chat** ([src/gateway/events/mai-chat.js](src/gateway/events/mai-chat.js), [src/chat/reply.js](src/chat/reply.js)): mentioning the bot, replying to one of its messages, or sending it a direct message makes Mai answer in character (`OPENAI_CHAT_MODEL` via `POST /chat/completions`). A typing indicator runs while the model call is in flight, and all pings inside the reply are suppressed via `allowedMentions` plus `@everyone`/`@here` neutralization.
   - Guild messages addressed to Mai are moderated **first**: a flagged message gets no chat answer: the scold reply takes its place, and the message never reaches the chat pipeline or the history table.
   - **Direct messages** are always treated as addressed to Mai (no mention needed) and skip moderation, but only from an author who shares at least one `DISCORD_GUILD_IDS` guild with the bot (`isDmAuthorInAllowedGuild`, a per-guild `members.fetch`; empty allowlist = open). A DM has a `null` guild id; history is keyed per channel (a DM channel is stable per user). The check runs before any chat rate limit, so its answer is cached per user (10 minutes for a yes, 30 for a no) with a small per-user limiter behind the cache; otherwise a stranger's DM spam is a free Discord round trip per guild per message.
-  - **Memory**: the last `CHAT_HISTORY_TURNS` turns of the channel are sent as a real `messages[]` array: one entry per turn with its own role, user turns prefixed with the speaker's name because a channel has many. Turns are stored in SQLite with `content` and `username` encrypted (AES-256-GCM, `CHAT_HISTORY_KEY`) and pruned after `CHAT_HISTORY_MAX_AGE_HOURS`. This is the only place message content is stored.
+  - **Memory**: the last `CHAT_HISTORY_TURNS` turns of the channel are sent as a real `messages[]` array: one entry per turn with its own role, user turns prefixed with the speaker's name because a channel has many. Turns are stored in SQLite with `content` and `username` encrypted (AES-256-GCM, `CHAT_HISTORY_KEY`) and pruned after `CHAT_HISTORY_MAX_AGE_HOURS`. One of only two places message content is stored (see *Storage*).
   - **Context Discord hides**: what a message replies to (quoted, truncated) and the thread it sits in are resolved and put in front of the current turn. Without them a reply reads as a non-sequitur. Neither is persisted: only what the member wrote themselves.
   - **Prompt injection**: only the system message carries instructions, and it says so. Text the speaker merely *chose* to pull in (the quoted message, the thread title) is wrapped in `⟪…⟫`, with those characters stripped from the value first so it cannot close its own fence. Speaker labels have newlines and colons removed, so a username cannot forge a second `Name:` turn. The speaker's own message is deliberately not fenced: it is the thing being answered.
   - **Vision** (`CHAT_VISION_ENABLED`): image attachments on messages addressed to her are passed to the model as content parts, at most `CHAT_VISION_MAX_IMAGES` per message. Images are never stored; a picture-only message is remembered as a placeholder.
@@ -107,7 +108,7 @@ Every non-bot guild message with text content is classified when it is posted **
 | `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
 | `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month **for this server**, per purpose and model. The budget's figures are process-wide, so staff only learn whether it is exhausted |
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
-| `/mod config set [log-channel] [welcome-channel] [grace] [timeout-ladder] [strike-window] [escalation] [enabled] [threshold] [categories] [invite-filter] [link-policy] [link-domains] [mention-cap] [flood]` | Manage Messages | Sets any subset for this server |
+| `/mod config set [log-channel] [welcome-channel] [grace] [timeout-ladder] [strike-window] [escalation] [enabled] [threshold] [categories] [invite-filter] [link-policy] [link-domains] [mention-cap] [flood] [name-check] [evidence]` | Manage Messages | Sets any subset for this server |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
 | `/mod exempt add\|remove\|list [channel]` | Manage Messages | Channels Mai does not moderate; chat and reactions keep working there |
 | `/mod off` / `/mod on` | Manage Messages | Kill switch: switches Mai off in this server completely, and back on |
@@ -177,6 +178,33 @@ Reports and appeals are the only paths where member-written text reaches the log
 channel, and only because that member typed it and pressed submit. The reported
 message itself is still just linked, never copied.
 
+**Evidence** ([src/db/evidence.js](src/db/evidence.js)) answers the question the
+record could not: *what did the deleted message actually say?* Staff deciding an
+appeal had ids and category slugs, the message was gone, and the only place its
+text was ever quoted is the offender's own DM, so "das war doch nur ein Zitat"
+came down to the member's word against Mai's.
+
+This is the second deliberate exception to the no-content rule, and every limit
+around it is deliberate:
+
+- **off** unless the operator set `MODERATION_EVIDENCE_HOURS` *and* the guild ran
+  `/mod config set evidence:true`. Two switches, because it is the operator's
+  database and the guild's members;
+- only messages Mai **enforced**, captured at the moment she deletes them (the
+  text is in hand anyway: the warning DM quotes it);
+- **encrypted** at rest with the same AES-256-GCM key as the chat history;
+- **hours, not days**, pruned by the same tick as everything else. Setting the
+  window back to 0 clears what is left on the next tick, and `/mod forgive
+  <user> strikes:true` clears that member's;
+- read back through a *Beweis ansehen* button on the appeal entry that is
+  Manage Messages-only, answers **ephemerally** (one moderator, once: posting it
+  into the channel would put the text back in front of everyone, which is what
+  deleting it was for), and is scoped to the **incident** being appealed rather
+  than to the member's back catalogue. The guild comes from the interaction, not
+  from the `custom_id`: the clicker names a member, not a server;
+- the button is only attached where evidence is actually kept, so it is never a
+  promise Mai cannot keep.
+
 ## Per-guild settings
 
 One process serves several servers, and they disagree about where Mai should log
@@ -203,16 +231,26 @@ inherited.
 | `link-domains` | `MODERATION_LINK_DOMAINS` | Allowed host names, comma-separated (max 50); subdomains of a listed host are covered |
 | `mention-cap` | `MODERATION_MENTION_CAP` | Most mentions one message may carry, `@everyone` included (0–100, 0 = off) |
 | `flood` | `MODERATION_FLOOD` | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
+| `name-check` | `MODERATION_NAME_CHECK` | Display names: `off`, `log`, or `reset` (also removes the server nickname) |
+| `evidence` | off | Keep enforced messages (encrypted, `MODERATION_EVIDENCE_HOURS`) so staff can review an appeal |
 
 A setting whose value is a *list* still lives in the `SETTINGS` map as one
 comma-separated column, but gets its own subcommands for editing: nobody types
 channel ids into `/mod config set`. `link-domains` is the exception that proves
 the rule: host names are read and written by humans, so it stays a plain option.
 
-For the last five, "off" and "not configured" are different answers, and the
+For the local rules, "off" and "not configured" are different answers, and the
 column keeps them apart: `/mod config set flood:off` stores an explicit *no
 flood rule here* rather than reverting to whatever `.env` says, which is what
 `/mod config reset flood` is for.
+
+Two settings need something only the operator can switch on, because a guild
+cannot: `name-check` rides on a gateway intent (requested once, at login, for
+the whole process) and `evidence` on a retention window in the operator's
+database. Both are stored anyway, so they take effect the moment that changes,
+and `/mod config set` says plainly that nothing is happening yet. Silently
+accepting a setting that does nothing is how a server ends up believing it is
+protected.
 
 ### Kill switch
 
@@ -247,6 +285,7 @@ With `log-channel` set, every moderation action is posted as an embed
 | `config` | slate | `/mod config`, `/mod exempt` or `/mod off` / `/mod on` changed the rules |
 | `warningUndelivered` | orange | The warning DM bounced: the member was enforced without ever being told, and never saw the appeal button |
 | `degraded` / `recovered` | orange / green | Classification started failing (moderation is passing everything through here), and started working again |
+| `nameFlagged` | dark orange | A member's display name was classified as a violation, and what happened to it |
 
 **Every entry starts with the same head**: member, channel, message, in that
 order, and each kind appends its own fields. Following one incident across
@@ -418,6 +457,7 @@ SQLite via the builtin `node:sqlite` module (no native dependency), at `DATABASE
 | `moderation_queue` | Pending enforcement: ids, category slugs, timestamps, `attempts`: no content | until the row resolves (enforced, forgiven, self-deleted or edited clean) |
 | `violations` | The long-term strike record: ids, category slugs, action, timestamp: no content | `VIOLATION_RETENTION_DAYS` |
 | `chat_history` | Mai's short-term memory; `content`/`username` encrypted | `CHAT_HISTORY_MAX_AGE_HOURS` |
+| `evidence` | Enforced messages, for reviewing an appeal; `content` encrypted. Off by default | `MODERATION_EVIDENCE_HOURS` (0 = never stored) |
 | `guild_settings` | Per-guild overrides of the process defaults; NULL = inherit | until changed |
 | `usage_daily` | Call and token counters per day, guild, model and purpose | kept |
 | `schema_migrations` | Which numbered migration files have been applied | kept |
@@ -428,11 +468,17 @@ Mai's chat tone reads the queue (an *open* violation makes her hiss), escalation
 counts the record. A member with an empty queue and ten strikes is friendly-Mai
 but next-step-on-the-ladder.
 
-`chat_history` is the one deliberate exception to the no-content rule, limited to
-messages addressed to Mai. `content` and `username` are ciphertext
+`chat_history` is the first deliberate exception to the no-content rule, limited
+to messages addressed to Mai. `content` and `username` are ciphertext
 ([src/db/crypto.js](src/db/crypto.js)); `channel_id` and `sent_at` stay plaintext
 because they are the lookup and pruning keys. Rotating `CHAT_HISTORY_KEY` makes
 older rows undecryptable: they are skipped and pruned, never crash a reply.
+
+`evidence` is the second and the narrower one: enforced messages only, two
+switches to turn on (operator *and* guild), the same key, hours rather than
+hours-times-forty-eight, and one ephemeral reader. See *Reports and appeals*.
+Both tables use the same key, so `CHAT_HISTORY_KEY` is required as soon as
+either feature is on.
 
 ## Operations
 
@@ -499,7 +545,7 @@ docker run --rm -v mai_mai-data:/data -v "$PWD:/backup" alpine tar czf /backup/m
 
 1. **Discord Developer Portal** (<https://discord.com/developers/applications>):
    - *Bot* → enable **Message Content Intent** (privileged; required for reading message content).
-   - *Bot* → enable **Server Members Intent** (privileged) **only if** you set `DISCORD_WELCOME_ENABLED=true`: the flag makes the bot request the `GuildMembers` intent, and login fails when the portal toggle is off.
+   - *Bot* → enable **Server Members Intent** (privileged) **only if** you set `DISCORD_WELCOME_ENABLED=true` or `MODERATION_NAME_CHECK` to anything but `off`: either flag makes the bot request the `GuildMembers` intent, and login fails when the portal toggle is off. Screening display names also wants **Manage Nicknames** on the invite if you use `name-check: reset`.
    - Direct-message replies need **no** portal toggle: the non-privileged `DirectMessages` intent is requested in code. Users can DM Mai once they share a server with her (subject to their Discord privacy settings).
    - Copy *Application ID*, *Public Key* (General Information) and *Bot Token* (Bot) into `.env`.
    - Invite the bot with the `bot` + `applications.commands` scopes. Permissions needed: Read Messages, Send Messages, Embed Links (moderation log), Add Reactions, Manage Messages (deleting flagged messages), and **Moderate Members** for the escalation timeouts. Mai's role must sit above the members she is expected to time out: Discord refuses otherwise, and admins and the owner can never be timed out.

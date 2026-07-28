@@ -80,6 +80,7 @@ function loadContent() {
   const logTitles = section(log, 'titles');
   const logFields = section(log, 'fields');
   const appeal = section(moderation, 'appeal');
+  const names = section(moderation, 'names');
   const commands = section(parsed, 'commands');
   const ask = section(commands, 'ask');
   const appealCommand = section(commands, 'appeal');
@@ -167,6 +168,7 @@ function loadContent() {
           warningUndelivered: str(logTitles, ['moderation', 'log', 'titles', 'warningUndelivered']),
           degraded: str(logTitles, ['moderation', 'log', 'titles', 'degraded']),
           recovered: str(logTitles, ['moderation', 'log', 'titles', 'recovered']),
+          nameFlagged: str(logTitles, ['moderation', 'log', 'titles', 'nameFlagged']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -209,6 +211,23 @@ function loadContent() {
         decisionSent: str(appeal, ['moderation', 'appeal', 'decisionSent']),
         decisionNotSent: str(appeal, ['moderation', 'appeal', 'decisionNotSent']),
         strikesOverturned: str(appeal, ['moderation', 'appeal', 'strikesOverturned']),
+        // The evidence view: staff only, ephemeral, one incident.
+        evidenceButton: str(appeal, ['moderation', 'appeal', 'evidenceButton']),
+        evidenceHeader: str(appeal, ['moderation', 'appeal', 'evidenceHeader']),
+        evidenceLine: str(appeal, ['moderation', 'appeal', 'evidenceLine']),
+        evidenceEmpty: str(appeal, ['moderation', 'appeal', 'evidenceEmpty']),
+        evidenceAttachment: str(appeal, ['moderation', 'appeal', 'evidenceAttachment']),
+        evidenceEmptyMessage: str(appeal, ['moderation', 'appeal', 'evidenceEmptyMessage']),
+      }),
+      names: Object.freeze({
+        // Shown in Discord's audit log next to a nickname reset, so it is text
+        // Mai "says" and belongs here.
+        resetReason: str(names, ['moderation', 'names', 'resetReason']),
+        unknownCategory: str(names, ['moderation', 'names', 'unknownCategory']),
+        reportedOnly: str(names, ['moderation', 'names', 'reportedOnly']),
+        nicknameReset: str(names, ['moderation', 'names', 'nicknameReset']),
+        globalName: str(names, ['moderation', 'names', 'globalName']),
+        resetFailed: str(names, ['moderation', 'names', 'resetFailed']),
       }),
       warningDm: Object.freeze({
         maxLength: num(warningDm, ['moderation', 'warningDm', 'maxLength'], { min: 100, max: 2000 }),
@@ -334,6 +353,10 @@ function loadContent() {
         guardOff: str(configSection, ['commands', 'config', 'guardOff']),
         noDomains: str(configSection, ['commands', 'config', 'noDomains']),
         floodRule: str(configSection, ['commands', 'config', 'floodRule']),
+        evidenceOn: str(configSection, ['commands', 'config', 'evidenceOn']),
+        // Stored, but waiting on something only the operator can switch on.
+        nameCheckUnavailable: str(configSection, ['commands', 'config', 'nameCheckUnavailable']),
+        evidenceUnavailable: str(configSection, ['commands', 'config', 'evidenceUnavailable']),
         nothing: str(configSection, ['commands', 'config', 'nothing']),
         invalid: str(configSection, ['commands', 'config', 'invalid']),
         guildOnly: str(configSection, ['commands', 'config', 'guildOnly']),

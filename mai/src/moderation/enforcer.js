@@ -16,9 +16,10 @@
  */
 import { config, isGuildAllowed } from '../config.js';
 import { content, fill } from '../content.js';
+import { pruneOlderThan as pruneEvidence, recordEvidence } from '../db/evidence.js';
 import { pruneOlderThan } from '../db/history.js';
 import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
-import { isGuildActive, pausedGuildIds } from '../db/settings.js';
+import { effectiveSettings, isGuildActive, pausedGuildIds } from '../db/settings.js';
 import {
   ACTION_DELETED,
   pruneOlderThan as pruneViolations,
@@ -256,6 +257,8 @@ async function processRow(client, row) {
     action: ACTION_DELETED,
   });
 
+  keepEvidence(row, record);
+
   logger.info(
     { messageId: row.messageId, guildId: row.guildId, userId: row.userId, categories: row.categories },
     'Deleted flagged message after grace period',
@@ -271,6 +274,38 @@ async function processRow(client, row) {
   });
 
   return { enforced: record, keepRow: false };
+}
+
+/**
+ * Keeps what the deleted message said, if this guild asked for that.
+ *
+ * The text is in hand anyway (the warning DM quotes it), and this is the only
+ * moment it still exists: a minute later the message is gone from Discord and
+ * nobody, staff included, can find out what an appeal is actually about.
+ *
+ * Never allowed to break enforcement: the message is already deleted and the
+ * strike already recorded, so a failure here costs a review, not a moderation
+ * decision.
+ *
+ * @param {ReturnType<typeof dueRows>[number]} row
+ * @param {{ content: string, attachments: number }} record
+ */
+function keepEvidence(row, record) {
+  if (!effectiveSettings(row.guildId).evidenceEnabled) return;
+
+  try {
+    recordEvidence({
+      messageId: row.messageId,
+      guildId: row.guildId,
+      userId: row.userId,
+      channelId: row.channelId,
+      content: record.content,
+      attachments: record.attachments,
+      categories: row.categories,
+    });
+  } catch (error) {
+    logger.error({ messageId: row.messageId, err: error }, 'Could not keep appeal evidence');
+  }
 }
 
 /**
@@ -449,18 +484,25 @@ export async function runTick(client) {
     now.getTime() - config.moderation.violationRetentionDays * 86_400_000,
   ).toISOString();
   const violationsPruned = pruneViolations(violationCutoff);
+  // Hours, and unconditional: with MODERATION_EVIDENCE_HOURS at 0 the cutoff is
+  // *now*, so switching the feature off also clears what is left behind instead
+  // of leaving quoted messages in the database indefinitely.
+  const evidencePruned = pruneEvidence(
+    new Date(now.getTime() - config.moderation.evidenceHours * 3_600_000).toISOString(),
+  );
 
   status.lastTickAt = now.toISOString();
   status.lastTickMs = Date.now() - startedAt;
   status.lastError = null;
 
-  if (enforced.length > 0 || pruned > 0 || violationsPruned > 0) {
+  if (enforced.length > 0 || pruned > 0 || violationsPruned > 0 || evidencePruned > 0) {
     logger.info(
       {
         enforced: enforced.length,
         timeouts: timeouts.size,
         historyRowsPruned: pruned,
         violationsPruned,
+        evidencePruned,
         ms: status.lastTickMs,
       },
       'Moderation tick finished',
