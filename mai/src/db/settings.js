@@ -247,7 +247,13 @@ export function effectiveSettings(guildId) {
     // available at all, not whether it is on.
     evidenceEnabled: flag('evidence_enabled', false) && config.moderation.evidenceHours > 0,
     nameCheck: row?.name_check ?? config.moderation.nameCheck,
-    shadowMode: flag('shadow_mode', config.moderation.shadow),
+    // No process default: shadow mode is a server's decision about its own
+    // moderation, and the only shapeless version of it (on everywhere, forever,
+    // announced nowhere) was the one an environment flag could produce.
+    shadowMode: flag('shadow_mode', false),
+    // When an observation period ends by itself. NULL = shadow mode with no
+    // end, which is what an explicit `/mod config set shadow:true` means.
+    shadowUntil: row?.shadow_until ?? null,
     inherited: {
       enabled: row?.enabled == null,
       escalation: row?.escalation_enabled == null,
@@ -319,6 +325,92 @@ export function configuredGuildCount() {
   return getDb()
     .prepare(`SELECT COUNT(*) AS count FROM guild_settings WHERE ${anySetting}`)
     .get().count;
+}
+
+/**
+ * Starts an observation period: shadow mode with an end date.
+ *
+ * The difference to `/mod config set shadow:true` is the whole point. That is
+ * an open-ended decision somebody made and will remember; this is a promise
+ * Mai made in her introduction ("I watch, then you decide"), and a promise
+ * nobody has to remember to collect on.
+ *
+ * @param {string} guildId
+ * @param {number} days Fractions allowed, so a deployment can test the ending.
+ * @param {Date} [now]
+ */
+export function startShadowWindow(guildId, days, now = new Date()) {
+  const until = new Date(now.getTime() + days * 86_400_000).toISOString();
+  getDb()
+    .prepare(
+      `INSERT INTO guild_settings (guild_id, shadow_mode, shadow_until, shadow_hits, updated_at)
+       VALUES (?, 1, ?, 0, ?)
+       ON CONFLICT (guild_id) DO UPDATE SET
+         shadow_mode = 1, shadow_until = excluded.shadow_until, shadow_hits = 0,
+         updated_at = excluded.updated_at`,
+    )
+    .run(String(guildId), until, now.toISOString());
+
+  return until;
+}
+
+/**
+ * Ends any pending observation period without touching `shadow` itself.
+ *
+ * Called whenever somebody states their own intent about shadow mode (another
+ * preset, `/mod config set shadow:…`): a leftover end date would otherwise fire
+ * days later and announce the end of an observation that nobody was running.
+ *
+ * @param {string} guildId
+ */
+export function clearShadowWindow(guildId) {
+  getDb()
+    .prepare('UPDATE guild_settings SET shadow_until = NULL WHERE guild_id = ?')
+    .run(String(guildId));
+}
+
+/**
+ * Counts one verdict Mai would have acted on. A count per guild, never a row
+ * per member: see the migration.
+ *
+ * @param {string} guildId
+ */
+export function countShadowHit(guildId) {
+  getDb()
+    .prepare('UPDATE guild_settings SET shadow_hits = shadow_hits + 1 WHERE guild_id = ?')
+    .run(String(guildId));
+}
+
+/**
+ * Observation periods that have run out, switched back to enforcing in the
+ * same statement they are reported by.
+ *
+ * Read *and* write, deliberately: two ticks overlapping (or two processes
+ * against one database) would otherwise both find the same expired window and
+ * both announce it. The UPDATE returns only what it actually changed, so the
+ * announcement happens once.
+ *
+ * @param {Date} [now]
+ * @returns {{ guildId: string, hits: number }[]}
+ */
+export function expireShadowWindows(now = new Date()) {
+  const db = getDb();
+  const due = db
+    .prepare('SELECT guild_id, shadow_hits FROM guild_settings WHERE shadow_until IS NOT NULL AND shadow_until <= ?')
+    .all(now.toISOString());
+
+  const ended = [];
+  const finish = db.prepare(
+    `UPDATE guild_settings SET shadow_mode = 0, shadow_until = NULL, shadow_hits = 0, updated_at = ?
+     WHERE guild_id = ? AND shadow_until IS NOT NULL AND shadow_until <= ?`,
+  );
+
+  for (const row of due) {
+    const { changes } = finish.run(now.toISOString(), row.guild_id, now.toISOString());
+    if (changes > 0) ended.push({ guildId: row.guild_id, hits: row.shadow_hits });
+  }
+
+  return ended;
 }
 
 /**

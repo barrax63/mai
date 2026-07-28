@@ -41,6 +41,8 @@ export const LOG_RECOVERED = 'recovered';
 export const LOG_NAME_FLAGGED = 'nameFlagged';
 /** Shadow mode: what Mai *would* have done, with the score that decided it. */
 export const LOG_SHADOW = 'shadow';
+/** The observation period ran out: she is enforcing from now on. */
+export const LOG_SHADOW_ENDED = 'shadowEnded';
 /** Staff acted through Mai themselves: a manual deletion or warning. */
 export const LOG_MANUAL_DELETE = 'manualDelete';
 export const LOG_WARNED = 'warned';
@@ -65,6 +67,7 @@ const COLORS = {
   [LOG_RECOVERED]: 0x2ecc71,
   [LOG_NAME_FLAGGED]: 0xd35400,
   [LOG_SHADOW]: 0x95a5a6,
+  [LOG_SHADOW_ENDED]: 0x16a085,
   [LOG_MANUAL_DELETE]: 0xc0392b,
   [LOG_WARNED]: 0xf39c12,
 };
@@ -238,6 +241,12 @@ function fieldsFor(event) {
           inline: true,
         },
       ];
+
+    // The observation period is over. `count` is what she would have acted on
+    // during it, which is the number the week was run to find out. Per guild,
+    // never per member: nobody was told, and nothing happened to them.
+    case LOG_SHADOW_ENDED:
+      return [{ name: labels.count, value: String(event.count ?? 0), inline: true }];
 
     // Staff acting through Mai: who did it, and (for a warning) why.
     case LOG_MANUAL_DELETE:

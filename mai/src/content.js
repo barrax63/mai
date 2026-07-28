@@ -187,6 +187,7 @@ function loadContent() {
           recovered: str(logTitles, ['moderation', 'log', 'titles', 'recovered']),
           nameFlagged: str(logTitles, ['moderation', 'log', 'titles', 'nameFlagged']),
           shadow: str(logTitles, ['moderation', 'log', 'titles', 'shadow']),
+          shadowEnded: str(logTitles, ['moderation', 'log', 'titles', 'shadowEnded']),
           manualDelete: str(logTitles, ['moderation', 'log', 'titles', 'manualDelete']),
           warned: str(logTitles, ['moderation', 'log', 'titles', 'warned']),
         }),
@@ -320,6 +321,7 @@ function loadContent() {
         appliedPublic: str(setupSection, ['commands', 'setup', 'appliedPublic']),
         needsLogChannel: str(setupSection, ['commands', 'setup', 'needsLogChannel']),
         unknownPreset: str(setupSection, ['commands', 'setup', 'unknownPreset']),
+        observationEnds: str(setupSection, ['commands', 'setup', 'observationEnds']),
         // One entry per preset, checked against the presets themselves: a new
         // bundle without its wording would otherwise ship a nameless button.
         presets: Object.freeze(
@@ -443,6 +445,7 @@ function loadContent() {
         noDomains: str(configSection, ['commands', 'config', 'noDomains']),
         floodRule: str(configSection, ['commands', 'config', 'floodRule']),
         evidenceOn: str(configSection, ['commands', 'config', 'evidenceOn']),
+        shadowUntil: str(configSection, ['commands', 'config', 'shadowUntil']),
         // Stored, but waiting on something only the operator can switch on.
         nameCheckUnavailable: str(configSection, ['commands', 'config', 'nameCheckUnavailable']),
         evidenceUnavailable: str(configSection, ['commands', 'config', 'evidenceUnavailable']),

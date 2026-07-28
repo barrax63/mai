@@ -14,7 +14,14 @@ import { clearForUser as clearEvidenceFor } from '../db/evidence.js';
 import { stats as historyStats } from '../db/history.js';
 import { addNote, clearForUser as clearNotesFor, MAX_NOTE_LENGTH, notesFor } from '../db/notes.js';
 import { depth, forgiveUser } from '../db/queue.js';
-import { effectiveSettings, resetSettings, SETTINGS, updateSettings } from '../db/settings.js';
+import {
+  clearShadowWindow,
+  effectiveSettings,
+  resetSettings,
+  SETTINGS,
+  startShadowWindow,
+  updateSettings,
+} from '../db/settings.js';
 import { breakdownFor, budgetState, dayKey, monthKey, totalsFor } from '../db/usage.js';
 import {
   ACTION_WARNED,
@@ -25,7 +32,7 @@ import {
   totalsFor as violationTotals,
 } from '../db/violations.js';
 import { contentViolations } from '../moderation/heuristics.js';
-import { PRESET_NAMES, presetPatch } from '../moderation/presets.js';
+import { preset, PRESET_NAMES } from '../moderation/presets.js';
 import { buildManualWarning } from '../moderation/warning.js';
 import { missingPermissions, permissionsComplete } from '../permissions.js';
 import { createRateLimiter } from '../rate-limit.js';
@@ -328,17 +335,31 @@ function historyResponse(interaction) {
  * @returns {{ applied: boolean, needsLogChannel: boolean }}
  */
 function applyPreset(guildId, name, actorId, logChannelId) {
-  const patch = presetPatch(name);
-  if (!patch) return { applied: false, needsLogChannel: false };
+  const chosen = preset(name);
+  if (!chosen) return { applied: false, needsLogChannel: false };
 
+  const patch = chosen.settings;
   if (logChannelId) patch['log-channel'] = logChannelId;
 
   updateSettings(guildId, patch, actorId);
-  logger.info({ guildId, preset: name, byUserId: actorId }, 'Applied a settings preset');
+
+  // `observe` is a period, not a state: it ends by itself and says so. Every
+  // other preset is a statement of intent about shadow mode, so a window left
+  // over from an earlier `observe` has to go, or it fires days later and
+  // announces the end of an observation nobody was running.
+  let until = null;
+  if (chosen.observing && config.moderation.shadowDays > 0) {
+    until = startShadowWindow(guildId, config.moderation.shadowDays);
+  } else {
+    clearShadowWindow(guildId);
+  }
+
+  logger.info({ guildId, preset: name, byUserId: actorId, until }, 'Applied a settings preset');
   announceConfigChange(guildId, actorId, describeChanges(patch));
 
   return {
     applied: true,
+    until,
     // Everything else has a working default; this one does not, and staff have
     // to be told rather than left wondering why reports go nowhere.
     needsLogChannel: !effectiveSettings(guildId).logChannelId,
@@ -354,13 +375,14 @@ function setupResponse(interaction) {
   if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
 
   const { options } = resolveSubcommand(interaction);
-  const preset = String(optionValue(options, 'preset') ?? '');
+  // `name` here, not `preset`: that identifier is the imported lookup.
+  const name = String(optionValue(options, 'preset') ?? '');
   const logChannelId = optionValue(options, 'log-channel');
   const actorId = interaction.member?.user?.id;
 
-  const { applied, needsLogChannel } = applyPreset(
+  const { applied, needsLogChannel, until } = applyPreset(
     interaction.guild_id,
-    preset,
+    name,
     actorId,
     logChannelId ? String(logChannelId) : undefined,
   );
@@ -370,10 +392,24 @@ function setupResponse(interaction) {
   const note = needsLogChannel ? `\n${setup.needsLogChannel}` : '';
 
   return ephemeralResponse(
-    `${fill(setup.applied, { summary: setup.presets[preset].summary })}${note}\n\n`
+    `${fill(setup.applied, { summary: setup.presets[name].summary })}${observationNote(until)}${note}\n\n`
       + `${configView(interaction.guild_id).data.content}`,
   );
 }
+
+/**
+ * The end of an observation period, as a Discord timestamp so every reader
+ * sees it in their own timezone.
+ *
+ * @param {string | null} until
+ * @returns {string}
+ */
+const observationNote = (until) =>
+  until
+    ? ` ${fill(content.commands.setup.observationEnds, {
+        until: `<t:${Math.floor(new Date(until).getTime() / 1000)}:R>`,
+      })}`
+    : '';
 
 /**
  * The same thing from the introduction message Mai posts when she joins.
@@ -385,12 +421,12 @@ function setupResponse(interaction) {
  * it stops a second admin from picking a different one an hour later.
  */
 export const setupComponents = {
-  setup(interaction, [preset]) {
+  setup(interaction, [name]) {
     if (!mayModerate(interaction)) return ephemeralResponse(content.commands.forbidden);
     if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
 
     const actorId = interaction.member?.user?.id;
-    const { applied, needsLogChannel } = applyPreset(interaction.guild_id, preset, actorId);
+    const { applied, needsLogChannel, until } = applyPreset(interaction.guild_id, name, actorId);
     if (!applied) return ephemeralResponse(content.commands.setup.unknownPreset);
 
     const { setup } = content.commands;
@@ -399,8 +435,8 @@ export const setupComponents = {
     return updateResponse(
       `${fill(setup.appliedPublic, {
         userId: actorId,
-        summary: setup.presets[preset].summary,
-      })}${note}`,
+        summary: setup.presets[name].summary,
+      })}${observationNote(until)}${note}`,
     );
   },
 };
@@ -715,7 +751,17 @@ function configView(guildId) {
         ? fill(content.commands.config.evidenceOn, { hours: config.moderation.evidenceHours })
         : guardOff,
       evidenceSource: inherited('evidence'),
-      shadow: yesNo(settings.shadowMode),
+      // An observation period says when it ends; an open-ended one does not,
+      // and the difference is the whole point of having both.
+      shadow: settings.shadowMode
+        ? `${content.commands.config.on}${
+            settings.shadowUntil
+              ? ` ${fill(content.commands.config.shadowUntil, {
+                  until: `<t:${Math.floor(new Date(settings.shadowUntil).getTime() / 1000)}:R>`,
+                })}`
+              : ''
+          }`
+        : content.commands.config.off,
       shadowSource: inherited('shadow'),
     }),
   );
@@ -778,6 +824,11 @@ function configSet(interaction, guildId) {
   if (Object.keys(patch).length === 0) {
     return ephemeralResponse(content.commands.config.nothing);
   }
+
+  // Saying what shadow mode should be is a decision of its own, so it ends any
+  // observation period that was running: otherwise the window fires later and
+  // announces the end of something this moderator already settled by hand.
+  if ('shadow' in patch) clearShadowWindow(guildId);
 
   try {
     updateSettings(guildId, patch, interaction.member?.user?.id);

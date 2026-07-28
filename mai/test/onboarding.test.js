@@ -18,7 +18,9 @@ import { content } from '../src/content.js';
 import { getDb } from '../src/db/index.js';
 import {
   configuredGuildCount,
+  countShadowHit,
   effectiveSettings,
+  expireShadowWindows,
   markOnboarded,
   resetSettings,
   updateSettings,
@@ -28,7 +30,7 @@ import { onGuildCreate } from '../src/gateway/events/guild-create.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { routeInteraction } from '../src/interactions/router.js';
 import { isWedged } from '../src/moderation/enforcer.js';
-import { PRESETS, PRESET_NAMES, presetPatch } from '../src/moderation/presets.js';
+import { preset, PRESETS, PRESET_NAMES } from '../src/moderation/presets.js';
 import { auditPermissions, missingPermissions, resetPermissionAudit } from '../src/permissions.js';
 
 await openTestDatabase();
@@ -122,6 +124,16 @@ const setupCommand = (preset, logChannelId) =>
           ],
         },
       ],
+    },
+  });
+
+const configSet = (options) =>
+  interaction({
+    type: InteractionType.APPLICATION_COMMAND,
+    member: STAFF,
+    data: {
+      name: 'mod',
+      options: [{ name: 'config', type: 2, options: [{ name: 'set', type: 1, options }] }],
     },
   });
 
@@ -309,22 +321,85 @@ test('/mod setup does the same thing, with the log channel in one go', async () 
 
 test('a preset never touches the kill switch or the threshold it cannot know', () => {
   for (const name of PRESET_NAMES) {
-    const patch = presetPatch(name);
-    assert.equal('enabled' in patch, false, `${name} must not undo /mod off`);
+    assert.equal('enabled' in preset(name).settings, false, `${name} must not undo /mod off`);
   }
 
   // Only the preset that has already decided its line is lower sets one:
   // guessing a threshold for a server nobody has looked at is the tuning by
   // deletion that shadow mode exists to replace.
-  assert.equal('threshold' in PRESETS.observe, false);
-  assert.equal('threshold' in PRESETS.standard, false);
-  assert.equal(PRESETS.strict.threshold, 0.3);
+  assert.equal('threshold' in PRESETS.observe.settings, false);
+  assert.equal('threshold' in PRESETS.standard.settings, false);
+  assert.equal(PRESETS.strict.settings.threshold, 0.3);
+
+  // And exactly one of them is a period rather than a state.
+  assert.deepEqual(PRESET_NAMES.filter((name) => preset(name).observing), ['observe']);
+});
+
+test('observe starts a window that ends by itself', async () => {
+  wipe();
+  await route(setupCommand('observe'));
+
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.shadowMode, true);
+  assert.ok(settings.shadowUntil, 'a promise with a date on it');
+
+  const days = (new Date(settings.shadowUntil).getTime() - Date.now()) / 86_400_000;
+  assert.ok(Math.abs(days - config.moderation.shadowDays) < 0.01, `window was ${days} days`);
+});
+
+test('any other statement about shadow mode cancels the window', async () => {
+  // A leftover end date would otherwise fire days later and announce the end of
+  // an observation nobody was running.
+  for (const cancel of [
+    () => route(setupCommand('standard')),
+    () => route(configSet([{ name: 'shadow', value: true }])),
+    () => route(configSet([{ name: 'shadow', value: false }])),
+  ]) {
+    wipe();
+    await route(setupCommand('observe'));
+    assert.ok(effectiveSettings(TEST_GUILD).shadowUntil, 'window open');
+
+    await cancel();
+    assert.equal(effectiveSettings(TEST_GUILD).shadowUntil, null);
+  }
+});
+
+test('an explicit shadow:true is open ended, and stays that way', async () => {
+  wipe();
+  await route(configSet([{ name: 'shadow', value: true }]));
+
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.shadowMode, true);
+  assert.equal(settings.shadowUntil, null, 'a decision somebody made, not a period');
+  assert.deepEqual(expireShadowWindows(new Date(Date.now() + 400 * 86_400_000)), []);
+  assert.equal(effectiveSettings(TEST_GUILD).shadowMode, true, 'and it is never ended for them');
+});
+
+test('when the window runs out she switches herself back to enforcing', async () => {
+  wipe();
+  await route(setupCommand('observe'));
+  countShadowHit(TEST_GUILD);
+  countShadowHit(TEST_GUILD);
+
+  // Nothing happens a minute in.
+  assert.deepEqual(expireShadowWindows(new Date(Date.now() + 60_000)), []);
+  assert.equal(effectiveSettings(TEST_GUILD).shadowMode, true);
+
+  const after = new Date(Date.now() + (config.moderation.shadowDays + 1) * 86_400_000);
+  assert.deepEqual(expireShadowWindows(after), [{ guildId: TEST_GUILD, hits: 2 }]);
+
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.shadowMode, false, 'enforcing from now on, without anybody remembering');
+  assert.equal(settings.shadowUntil, null);
+
+  // Once, not once per tick: the switch is made by the statement that finds it.
+  assert.deepEqual(expireShadowWindows(after), []);
 });
 
 test('a preset is a starting point, not a mode', () => {
   wipe();
   markOnboarded(TEST_GUILD);
-  updateSettings(TEST_GUILD, presetPatch('strict'), 'admin-1');
+  updateSettings(TEST_GUILD, preset('strict').settings, 'admin-1');
 
   // Everything it wrote is an ordinary override, changeable and resettable.
   assert.equal(effectiveSettings(TEST_GUILD).gracePeriodMinutes, 5);

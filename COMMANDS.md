@@ -106,14 +106,24 @@ resettable with `/mod config reset`.
 
 | Preset | What it sets |
 |---|---|
-| `observe` | Shadow mode on, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off. Everything detects, nothing acts |
+| `observe` | An observation period: shadow mode, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off. Everything detects, nothing acts, and it **ends by itself** |
 | `standard` | The same detection, enforced: shadow off, escalation on |
 | `strict` | Enforced, plus threshold `0.3`, mention cap 5, flood `5/10`, grace 5 minutes, name check `reset` |
 
 `observe` is the recommended first step and the reason shadow mode exists: a
-week of it tells a server what Mai would have done to its own traffic, which is
-the only honest way to find out whether her line sits where theirs does. Then
-`/mod simulate` and `/mod config set threshold`.
+period of it tells a server what Mai would have done to its own traffic, which
+is the only honest way to find out whether her line sits where theirs does.
+
+It is a **period**, not a state. The window is `MODERATION_SHADOW_DAYS` long
+(seven by default), and when it runs out Mai switches herself back to enforcing
+and posts a *Beobachtungszeit vorbei* entry saying how much she would have acted
+on during it. Nobody has to remember to end it, which is the only reason it is
+safe to recommend to a server that has just installed a bot. Read that number,
+then `/mod simulate` and `/mod config set threshold` if her line needs moving.
+
+`/mod config set shadow:true` is the other shape: shadow mode with no end date,
+for somebody who decided it deliberately and will decide when it stops. Any
+statement about shadow mode, including another preset, cancels a running period.
 
 No preset touches `enabled`, so applying one cannot quietly undo somebody's
 `/mod off`, and only `strict` sets a `threshold`: guessing that number for a
@@ -266,7 +276,7 @@ setting to the inherited default, or all of them when the setting is omitted.
 | `flood` | Burst rule as `count/seconds`, e.g. `6/10`. `off` disables it here |
 | `name-check` | Display names: `off`, `log`, or `reset` (also removes the server nickname) |
 | `evidence` | Keep enforced messages briefly, encrypted, so staff can review an appeal |
-| `shadow` | Report every verdict in the log and act on none of them |
+| `shadow` | Report every verdict in the log and act on none of them, open-ended. `/mod setup observe` is the version that ends by itself |
 
 Two of these need something only the operator can switch on: `name-check` rides
 on a gateway intent and `evidence` on a retention window. Both are stored anyway

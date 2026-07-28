@@ -27,7 +27,7 @@ import { classify } from '../ai/moderation.js';
 import { config, isGuildAllowed } from '../config.js';
 import { content, pick } from '../content.js';
 import { enqueue, findRow, remove, updateCategories } from '../db/queue.js';
-import { effectiveSettings } from '../db/settings.js';
+import { countShadowHit, effectiveSettings } from '../db/settings.js';
 import { ACTION_EDITED, ACTION_SELF_DELETED, recordViolation } from '../db/violations.js';
 import { explainError } from '../errors.js';
 import { logger } from '../logger.js';
@@ -271,6 +271,14 @@ async function flagMessage(message, categories) {
  * @returns {{ action: 'ok' }} Nothing happened, so the caller must see nothing.
  */
 function shadowReport(message, categories, topScore) {
+  // Counted per guild so the closing entry can say how much the week was
+  // actually about. Never allowed to break the pipeline over a counter.
+  try {
+    countShadowHit(message.guildId);
+  } catch (error) {
+    logger.warn({ guildId: message.guildId, err: error }, 'Could not count a shadow verdict');
+  }
+
   logger.info(
     {
       messageId: message.id,

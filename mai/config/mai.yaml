@@ -151,6 +151,9 @@ moderation:
       nameFlagged: '🏷️ Name beanstandet'
       # Schattenmodus: Mai hätte etwas getan, hat es aber nicht.
       shadow: '👻 Nur beobachtet'
+      # Die Beobachtungszeit ist um, Mai handelt ab jetzt von selbst. Das Feld
+      # "Anzahl" sagt, was sie in der Zeit beanstandet hätte.
+      shadowEnded: '🏁 Beobachtungszeit vorbei, ich handle ab jetzt'
       # Das Team hat selbst durch Mai gehandelt.
       manualDelete: '🔴 Vom Team gelöscht'
       warned: '🟨 Verwarnung vom Team'
@@ -312,15 +315,15 @@ commands:
       # 🐾 Miau!
       Ich bin **Mai**, die Moderations-Katze für diesen Server. Was ich tue:
       • Ich lese mit und markiere Nachrichten, die gegen die Regeln verstoßen. Wer seine Nachricht selbst löscht, bevor die Schonfrist um ist, kommt ohne Eintrag davon.
-      • Danach lösche ich sie, schicke eine Verwarnung per DM und zähle mit. Wer immer weiter macht, bekommt einen Timeout. Rauswürfe und Banns überlasse ich euch.
-      • Nebenbei bin ich eine Katze: erwähnt mich, antwortet mir oder schreibt mir direkt.
+      • Danach lösche ich sie, schicke eine Verwarnung per DM und zähle mit. Wer immer weiter macht, bekommt einen Timeout. Rauswürfe und Banns überlasse ich den Admins.
+      • Nebenbei bin ich sehr Interaktiv: Erwähnt mich, antwortet mir oder schreibt mir direkt. Manchmal reagiere ich auch so auf eure Nachrichten.
 
       **Womit fangen wir an?** Ein Klick genügt, alles Weitere geht später mit `/mod config`.
-      • **Erst mal nur beobachten** (empfohlen): Ich schaue eine Woche zu und schreibe in den Log-Kanal, was ich getan *hätte*. Niemand wird gelöscht oder verwarnt. Danach wisst ihr, ob meine Linie zu eurem Server passt.
+      • **Erst mal nur beobachten** (empfohlen): Ich schaue eine Weile zu und schreibe in den Log-Kanal, was ich getan *hätte*. Nichts wird gelöscht oder verwarnt. Wenn die Zeit um ist, sage ich Bescheid und fange von selbst an zu handeln: bis dahin wisst ihr, ob meine Linie zu eurem Server passt.
       • **Standard**: dasselbe, aber ich handle wirklich.
-      • **Streng**: schärfere Schwelle, kürzere Schonfrist, Spitznamen werden zurückgesetzt.
+      • **Streng**: schärfere Schwelle, kürzere Schonfrist, Spitznamen werden moderiert und zurückgesetzt.
 
-      Sag mir mit `/mod config set log-channel:#kanal` noch, wo ich hinschreiben darf: ohne Log-Kanal gibt es keine Meldungen und keine Einsprüche. Mit `/mod off` schalte ich mich hier komplett ab.
+      Sag mir mit `/mod config set log-channel:#kanal` noch, wo ich hinschreiben darf: ohne Log-Kanal gibt es keine Meldungen und keine Einsprüche. Mit `/mod off` schaltet ihr mich hier komplett ab.
     # Angehängt, wenn Mai Rechte fehlen. {permissions} = Discord-Namen.
     missingPermissions: '⚠️ Mir fehlen noch Rechte, sonst läuft das oben nur halb: `{permissions}`'
     # Antwort auf /mod setup (nur für die Person sichtbar, die es ausführt).
@@ -330,6 +333,9 @@ commands:
     appliedPublic: '*schnurrt* <@{userId}> hat mich eingerichtet: {summary}'
     needsLogChannel: '⚠️ Fehlt noch: `/mod config set log-channel:#kanal`. Ohne den gibt es kein Moderations-Log, keine Meldungen und keine Einsprüche.'
     unknownPreset: 'Das Preset kenne ich nicht.'
+    # Angehängt, wenn ein Preset eine Beobachtungszeit startet. {until} ist ein
+    # Discord-Zeitstempel, jede*r sieht ihn in der eigenen Zeitzone.
+    observationEnds: 'Ich schaue bis {until} zu und fange dann von selbst an zu handeln.'
     presets:
       observe:
         button: 'Erst mal nur beobachten'
@@ -339,7 +345,7 @@ commands:
         summary: 'Normale Moderation mit Schonfrist, Verwarnungen und Timeout-Leiter.'
       strict:
         button: 'Streng'
-        summary: 'Schärfere Schwelle, kürzere Schonfrist, Spitznamen werden zurückgesetzt.'
+        summary: 'Schärfere Schwelle, kürzere Schonfrist, Spitznamen werden moderiert und zurückgesetzt.'
 
   # /mod status
   status:
@@ -526,7 +532,7 @@ commands:
     # … while no welcome channel just falls back to the guild's system channel.
     systemChannel: '_System-Kanal_'
     # threshold 0 = the provider's own flagged decides, no score comparison.
-    thresholdOff: '_Anbieter entscheidet_'
+    thresholdOff: '_Standard (OpenAI)_'
     # Empty category allowlist = every category the provider reports counts.
     allCategories: '_alle_'
     # No channel is exempt from moderation.
@@ -539,6 +545,8 @@ commands:
     floodRule: 'mehr als {messages} Nachrichten in {seconds} s'
     # Beweis-Aufbewahrung ist an. {hours} = Stunden, die der Betreiber gesetzt hat.
     evidenceOn: 'an, {hours} Stunden'
+    # Schattenmodus mit Enddatum (Beobachtungszeit) statt auf Dauer.
+    shadowUntil: '(Beobachtungszeit, endet {until})'
     # Zwei Einstellungen brauchen etwas, das nur der Betreiber einschalten kann.
     # Der Wert wird trotzdem gespeichert und greift, sobald das passiert.
     nameCheckUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (MODERATION_NAME_CHECK ist aus). Sag der Person Bescheid, die den Bot betreibt.'

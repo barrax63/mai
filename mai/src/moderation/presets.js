@@ -31,37 +31,54 @@
  * undo somebody's `/mod off`.
  */
 
-/** Public preset names, as used by `/mod setup` and the onboarding buttons. */
+/**
+ * Public preset names, as used by `/mod setup` and the onboarding buttons.
+ *
+ * `settings` is an ordinary patch of public setting names. `observing` marks
+ * the one preset that is a *period* rather than a state: it starts a window
+ * that ends by itself, because "I watch for a week and then you decide" is what
+ * Mai's introduction promises, and a promise nobody has to remember to collect
+ * on is the only kind worth making to a server that has just installed a bot.
+ */
 export const PRESETS = Object.freeze({
   observe: Object.freeze({
-    shadow: true,
-    escalation: false,
-    'invite-filter': true,
-    'mention-cap': 6,
-    flood: '6/10',
-    'name-check': 'log',
+    observing: true,
+    settings: Object.freeze({
+      shadow: true,
+      escalation: false,
+      'invite-filter': true,
+      'mention-cap': 6,
+      flood: '6/10',
+      'name-check': 'log',
+    }),
   }),
 
   standard: Object.freeze({
-    shadow: false,
-    escalation: true,
-    'invite-filter': true,
-    'mention-cap': 6,
-    flood: '6/10',
-    'name-check': 'log',
+    observing: false,
+    settings: Object.freeze({
+      shadow: false,
+      escalation: true,
+      'invite-filter': true,
+      'mention-cap': 6,
+      flood: '6/10',
+      'name-check': 'log',
+    }),
   }),
 
   strict: Object.freeze({
-    shadow: false,
-    escalation: true,
-    'invite-filter': true,
-    'mention-cap': 5,
-    flood: '5/10',
-    'name-check': 'reset',
-    // The one preset that takes the decision away from the provider, because a
-    // server asking for `strict` has already decided its line is lower.
-    threshold: 0.3,
-    grace: 5,
+    observing: false,
+    settings: Object.freeze({
+      shadow: false,
+      escalation: true,
+      'invite-filter': true,
+      'mention-cap': 5,
+      flood: '5/10',
+      'name-check': 'reset',
+      // The one preset that takes the decision away from the provider, because
+      // a server asking for `strict` has already decided its line is lower.
+      threshold: 0.3,
+      grace: 5,
+    }),
   }),
 });
 
@@ -69,12 +86,15 @@ export const PRESET_NAMES = Object.freeze(Object.keys(PRESETS));
 
 /**
  * @param {string} name
- * @returns {Record<string, unknown> | null} A fresh patch, or null when the
- *   name is not one of ours (it can arrive from a `custom_id`).
+ * @returns {{ settings: Record<string, unknown>, observing: boolean } | null}
+ *   A fresh patch, or null when the name is not one of ours (it can arrive
+ *   from a `custom_id`).
  */
-export function presetPatch(name) {
+export function preset(name) {
   // Own properties only: the name comes off a component id, and a plain lookup
   // would also answer for everything on Object.prototype.
   if (!Object.hasOwn(PRESETS, String(name))) return null;
-  return { ...PRESETS[name] };
+
+  const found = PRESETS[name];
+  return { settings: { ...found.settings }, observing: found.observing };
 }

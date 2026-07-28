@@ -250,17 +250,49 @@ const ratio = (name, fallback) => {
   }
 };
 
-/** A non-negative number of hours, fractional allowed. 0 = disabled. */
-const hours = (name, fallback) => {
+/** A non-negative number, fractional allowed. 0 = disabled. */
+const amount = (name, fallback, unit) => {
   const raw = optional(name, fallback);
   const value = decimalNumber(raw);
   if (!Number.isFinite(value) || value < 0) {
     throw new Error(
-      `Environment variable ${name} must be a non-negative number of hours, got: ${raw}`,
+      `Environment variable ${name} must be a non-negative number of ${unit}, got: ${raw}`,
     );
   }
   return value;
 };
+
+const hours = (name, fallback) => amount(name, fallback, 'hours');
+const days = (name, fallback) => amount(name, fallback, 'days');
+
+/**
+ * Environment variables that used to do something and no longer do.
+ *
+ * Reported at startup by index.js rather than thrown on: refusing to boot over
+ * a stale line in someone's `.env` is worse than telling them. But it has to be
+ * *said*, because the failure mode of silence here is a deployment that starts
+ * behaving differently after an update and cannot see why.
+ *
+ * config.js deliberately does not import the logger (the logger imports this),
+ * so the list is collected here and logged there.
+ *
+ * @type {{ name: string, message: string }[]}
+ */
+export const deprecatedEnv = [];
+
+const deprecate = (name, message) => {
+  if (process.env[name]?.trim()) deprecatedEnv.push({ name, message });
+};
+
+// Shadow mode became a per-guild decision with a shape: an observation window
+// that ends by itself and says so. A process-wide flag could only ever produce
+// the shapeless version, on everywhere and forever, so it is gone rather than
+// left to mean something subtly different from the setting of the same name.
+deprecate(
+  'MODERATION_SHADOW',
+  'Shadow mode is per server now: /mod setup observe (a window that ends by itself) '
+    + 'or /mod config set shadow:true (open-ended). This variable is ignored.',
+);
 
 const ladder = (name, fallback) => {
   try {
@@ -446,9 +478,11 @@ export const config = Object.freeze({
     // or 'reset' (also removes the guild nickname). Needs the GuildMembers
     // intent, which is why anything but 'off' requests it (see `discord` above).
     nameCheck: nameCheckMode,
-    // Classify and report, but never act: the way to pick a threshold without
-    // tuning it by deletion. Per server: /mod config set shadow.
-    shadow: bool('MODERATION_SHADOW', 'false'),
+    // How long `/mod setup observe` watches before switching itself back to
+    // enforcing. Days, fractions allowed so a deployment can test the ending
+    // without waiting a week. 0 = no automatic end, which turns the preset
+    // back into an open-ended flag somebody has to remember.
+    shadowDays: days('MODERATION_SHADOW_DAYS', '7'),
     // Missed ticks before the process gives up on itself and exits, so the
     // container restarts it. A tick that hangs (a Discord call that never
     // settles) is skipped by the overlap guard forever after, which /healthz

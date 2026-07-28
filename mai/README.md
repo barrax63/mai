@@ -54,7 +54,9 @@ Every non-bot guild message with text content is classified when it is posted **
 
   What they produce is an ordinary list of category slugs, so a trip goes through the same path as a classified violation: warning reaction, scold reply, grace period, queue row, log entry, strike. There is deliberately no separate "delete it instantly" route. Content rules also run on **edits** (posting clean and editing an invite in afterwards would otherwise walk past all of them); the flood rule does not, because editing a message is not sending one.
 - **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
-- **Shadow mode** (`/mod config set shadow:true`) runs both layers and acts on neither: no warning reaction, no scold reply, no queue row, no strike, no timeout. Every verdict goes to the log channel as a *Nur beobachtet* entry carrying the categories, the **top score** and a working jump link, so a server picks its threshold by reading a week of its own traffic instead of by deleting the wrong messages and apologising. It is not a pause: rows queued before it was switched on are still enforced (`/mod off` is the pause). `/mod simulate <text>` answers the same question for one string on demand, including which local rule would have caught it, and is the only place a full score vector is shown: the text is the moderator's own, the answer is ephemeral to them, and nothing is stored or logged.
+- **Shadow mode** runs both layers and acts on neither: no warning reaction, no scold reply, no queue row, no strike, no timeout. Every verdict goes to the log channel as a *Nur beobachtet* entry carrying the categories, the **top score** and a working jump link, so a server picks its threshold by reading its own traffic instead of by deleting the wrong messages and apologising. It is not a pause: rows queued before it was switched on are still enforced (`/mod off` is the pause).
+
+  It comes in two shapes, and the difference matters. `/mod setup observe` starts an **observation period**: `shadow_until` is set `MODERATION_SHADOW_DAYS` out, the enforcer tick switches the guild back to enforcing when it passes, and the log channel gets a *Beobachtungszeit vorbei* entry with the count of what she would have acted on. That is the promise her introduction makes, and it is kept without anybody remembering to collect on it. `/mod config set shadow:true` is the other shape: open-ended, because somebody decided it deliberately and will decide when it ends. Any statement about shadow mode (another preset, a manual `shadow:…`) cancels a running period, so a leftover end date cannot fire days later and announce the end of an observation nobody was running. There is deliberately **no process-wide shadow switch**: it is a server's decision about its own moderation, and an environment flag could only produce the shapeless version, on everywhere and forever. `/mod simulate <text>` answers the same question for one string on demand, including which local rule would have caught it, and is the only place a full score vector is shown: the text is the moderator's own, the answer is ephemeral to them, and nothing is stored or logged.
 - **Where the line sits is per server.** The endpoint answers twice (a `flagged` boolean and a `category_scores` map), and `MODERATION_THRESHOLD` (`/mod config set threshold`) decides which one counts. At `0` the provider decides, as before. Above `0`, a category counts when it scores at least that much and the provider's own boolean is ignored entirely (otherwise raising the threshold could never make anything pass). This exists for a measured reason: omni-moderation scores the same insult **0.88 in English and 0.20 in German**, so on a German-speaking server its default line lets most abuse through. `MODERATION_CATEGORIES` (`/mod config set categories`) narrows things the other way: only the listed categories count at all.
 - **Exempt channels** (`/mod exempt add|remove|list`): a vent channel, an NSFW channel, a staff channel. Moderation only: chat and reactions keep working there, which is usually the point. Exempting a channel covers its threads, and any pending queue rows in it are dropped on the next tick rather than enforced later: "Mai does not moderate here" should not be followed by her deleting something there ten minutes on.
 - **Edits** ([src/gateway/events/message-update.js](src/gateway/events/message-update.js)) run through the same classifier via `recheckMessage`, because otherwise "post something harmless, then edit it" walks straight past the check. The verdict cuts both ways, since the message may already have a queue row:
@@ -241,7 +243,7 @@ Three things Mai does about her own setup, because nobody else will:
 
 | Preset | What it sets |
 |---|---|
-| `observe` | Shadow mode on, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off: everything detects, nothing acts |
+| `observe` | An observation period: shadow mode until `MODERATION_SHADOW_DAYS` are up, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off. Everything detects, nothing acts, and she switches herself back to enforcing when the window ends |
 | `standard` | The same detection, enforced |
 | `strict` | Enforced, plus threshold `0.3`, mention cap 5, flood `5/10`, grace 5 minutes, name check `reset` |
 
@@ -279,7 +281,7 @@ inherited.
 | `mention-cap` | `MODERATION_MENTION_CAP` | Most mentions one message may carry, `@everyone` included (0–100, 0 = off) |
 | `flood` | `MODERATION_FLOOD` | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
 | `name-check` | `MODERATION_NAME_CHECK` | Display names: `off`, `log`, or `reset` (also removes the server nickname) |
-| `shadow` | `MODERATION_SHADOW` | Report every verdict in the log and act on none of them |
+| `shadow` | off | Report every verdict in the log and act on none of them. No process default: `/mod setup observe` for a window that ends by itself, `/mod config set shadow:true` for an open-ended one |
 | `evidence` | off | Keep enforced messages (encrypted, `MODERATION_EVIDENCE_HOURS`) so staff can review an appeal |
 
 A setting whose value is a *list* still lives in the `SETTINGS` map as one
@@ -335,6 +337,7 @@ With `log-channel` set, every moderation action is posted as an embed
 | `degraded` / `recovered` | orange / green | Classification started failing (moderation is passing everything through here), and started working again |
 | `nameFlagged` | dark orange | A member's display name was classified as a violation, and what happened to it |
 | `shadow` | grey | Shadow mode: what Mai *would* have done, with the score that decided it |
+| `shadowEnded` | teal | An observation period ran out: she is enforcing from now on, and this is how much she would have acted on during it |
 | `manualDelete` / `warned` | red / amber | Staff acting through Mai: a message deleted by hand, or `/mod warn` |
 
 **Every entry starts with the same head**: member, channel, message, in that

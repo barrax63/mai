@@ -20,7 +20,12 @@ import { pruneOlderThan as pruneEvidence, recordEvidence } from '../db/evidence.
 import { pruneOlderThan } from '../db/history.js';
 import { pruneOlderThan as pruneNotes } from '../db/notes.js';
 import { bumpAttempts, dueCount, dueRows, remove } from '../db/queue.js';
-import { effectiveSettings, isGuildActive, pausedGuildIds } from '../db/settings.js';
+import {
+  effectiveSettings,
+  expireShadowWindows,
+  isGuildActive,
+  pausedGuildIds,
+} from '../db/settings.js';
 import {
   ACTION_DELETED,
   pruneOlderThan as pruneViolations,
@@ -35,6 +40,7 @@ import { applyTimeout, decideEscalation } from './escalation.js';
 import {
   LOG_ABANDONED,
   LOG_DELETED,
+  LOG_SHADOW_ENDED,
   LOG_STUCK,
   LOG_TIMEOUT,
   LOG_TIMEOUT_FAILED,
@@ -481,6 +487,8 @@ export async function runTick(client) {
     }
   }
 
+  await endObservationPeriods(client);
+
   // One grouping pass for both: a member enforced in two guilds this tick is
   // two incidents, and gets one DM per guild with that guild's own appeal
   // button. Escalate first, so each warning can name its own timeout.
@@ -529,6 +537,31 @@ export async function runTick(client) {
       },
       'Moderation tick finished',
     );
+  }
+}
+
+/**
+ * Ends the observation periods that have run out, and tells each guild.
+ *
+ * This is the half of `/mod setup observe` that makes it a promise rather than
+ * a flag: Mai said she would watch and then start acting, so the switch happens
+ * without anybody remembering it, and the entry says how much she would have
+ * done, which is the number the week was run to find out.
+ *
+ * On the tick because the tick is the only thing that already runs on its own.
+ * The switch is made by the same statement that finds the expired window, so
+ * two overlapping runs cannot both announce it.
+ *
+ * @param {import('discord.js').Client} client
+ */
+async function endObservationPeriods(client) {
+  for (const { guildId, hits } of expireShadowWindows()) {
+    // An un-allowlisted guild gets no behaviour at all, including this. Its
+    // window is already closed in the database, which is the right state.
+    if (!isGuildAllowed(guildId)) continue;
+
+    logger.info({ guildId, hits }, 'Observation period ended, enforcing from now on');
+    await postModerationLog(client, { type: LOG_SHADOW_ENDED, guildId, count: hits });
   }
 }
 

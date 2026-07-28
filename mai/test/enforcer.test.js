@@ -19,7 +19,13 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bumpAttempts, enqueue, findRow, remove } from '../src/db/queue.js';
 import { content } from '../src/content.js';
-import { resetSettings, updateSettings } from '../src/db/settings.js';
+import {
+  countShadowHit,
+  effectiveSettings,
+  resetSettings,
+  startShadowWindow,
+  updateSettings,
+} from '../src/db/settings.js';
 import { historyFor } from '../src/db/violations.js';
 import { explainError } from '../src/errors.js';
 import { clearOwnDeletions } from '../src/moderation/cleanup.js';
@@ -231,6 +237,48 @@ test('a member enforced in two guilds gets one DM per guild, not one merged one'
   } finally {
     resetSettings(TEST_GUILD, 'log-channel');
     resetSettings(OTHER_GUILD, 'log-channel');
+  }
+});
+
+test('the tick ends an observation period and says what it saw', async () => {
+  clearOwnDeletions();
+  updateSettings(TEST_GUILD, { 'log-channel': '940000000000000103' });
+  // A window that ran out while nobody was looking, which is the whole point:
+  // the promise was "I watch, then I start acting", and collecting on it must
+  // not depend on somebody remembering.
+  startShadowWindow(TEST_GUILD, -1);
+  countShadowHit(TEST_GUILD);
+  countShadowHit(TEST_GUILD);
+  countShadowHit(TEST_GUILD);
+
+  try {
+    const { client, record } = fakeClient();
+    await runTick(client);
+
+    const settings = effectiveSettings(TEST_GUILD);
+    assert.equal(settings.shadowMode, false, 'enforcing from now on');
+    assert.equal(settings.shadowUntil, null);
+
+    const entry = record.posted.find(
+      (post) => post.embeds?.[0]?.title === content.moderation.log.titles.shadowEnded,
+    );
+    assert.ok(entry, 'the server is told, in the channel it reads');
+    assert.equal(
+      entry.embeds[0].fields.find((field) => field.name === content.moderation.log.fields.count).value,
+      '3',
+      'and how much it would have acted on, which is why the week was run',
+    );
+
+    // Once, not once per tick.
+    record.posted.length = 0;
+    await runTick(client);
+    assert.equal(
+      record.posted.some((post) => post.embeds?.[0]?.title === content.moderation.log.titles.shadowEnded),
+      false,
+    );
+  } finally {
+    resetSettings(TEST_GUILD, 'log-channel');
+    resetSettings(TEST_GUILD, 'shadow');
   }
 });
 

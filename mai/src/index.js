@@ -6,6 +6,7 @@
  * A database that cannot be opened or migrated is fatal: running with a broken
  * queue would silently drop moderation.
  */
+import { deprecatedEnv } from './config.js';
 import { closeDatabase, openDatabase } from './db/index.js';
 import { logger } from './logger.js';
 import { startServer } from './http/server.js';
@@ -32,6 +33,13 @@ async function main() {
     logger.fatal({ err: error }, 'Uncaught exception, exiting');
     setTimeout(() => process.exit(1), 1_000);
   });
+
+  // A stale line in `.env` that no longer does anything is not worth refusing
+  // to boot over, but it is worth saying out loud: the alternative is a
+  // deployment that quietly behaves differently after an update.
+  for (const { name, message } of deprecatedEnv) {
+    logger.warn({ variable: name }, `${name} is no longer used. ${message}`);
+  }
 
   openDatabase();
 

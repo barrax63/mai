@@ -128,6 +128,26 @@ test('shadow mode reports the verdict and touches nothing', async () => {
   }
 });
 
+test('every shadow verdict is counted, so the week can report a number', async () => {
+  getDb().exec('UPDATE guild_settings SET shadow_hits = 0');
+  updateSettings(TEST_GUILD, { shadow: true });
+  const restore = flagging();
+
+  try {
+    const hits = () => getDb().prepare('SELECT shadow_hits h FROM guild_settings WHERE guild_id = ?').get(TEST_GUILD).h;
+    await checkMessage(fakeMessage().message);
+    await checkMessage(fakeMessage().message);
+    await settle();
+
+    // A count per guild, never a row per member: nobody was told, and nothing
+    // happened to them.
+    assert.equal(hits(), 2);
+  } finally {
+    restore();
+    resetSettings(TEST_GUILD, 'shadow');
+  }
+});
+
 test('a local rule in shadow mode is reported, not enforced', async () => {
   updateSettings(TEST_GUILD, { shadow: true, 'invite-filter': true });
   const restore = stubFetch(() => {
