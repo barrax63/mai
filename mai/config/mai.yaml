@@ -97,6 +97,7 @@ moderation:
     '10004': 'Mai ist nicht mehr auf diesem Server.'
     '10007': 'Das Mitglied ist nicht mehr auf diesem Server.'
     '10008': 'Diese Nachricht gibt es nicht mehr.'
+    '50007': 'Mai darf diesem Mitglied keine DM schicken (DMs für Server-Mitglieder aus oder Mai blockiert).'
     '50001': 'Mai hat keinen Zugriff auf diesen Kanal.'
     '50013': 'Mai fehlt die nötige Berechtigung, oder ihre Rolle steht unter der des Mitglieds.'
     '50021': 'Systemnachrichten kann Mai nicht bearbeiten.'
@@ -130,6 +131,12 @@ moderation:
       config: '⚙️ Einstellung geändert'
       appealGranted: '🟩 Einspruch stattgegeben'
       appealDenied: '⬛ Einspruch abgelehnt'
+      # Die Verwarnung kam nicht an (DMs zu): das Mitglied weiß nicht, warum
+      # seine Nachricht weg ist, und hat den Einspruchs-Button nie gesehen.
+      warningUndelivered: '📪 Verwarnung nicht zugestellt'
+      # Die Klassifizierung schlägt in Folge fehl: Mai lässt gerade alles durch.
+      degraded: '🟠 Moderation fällt aus'
+      recovered: '🟢 Moderation läuft wieder'
     fields:
       user: 'Mitglied'
       channel: 'Kanal'
@@ -228,6 +235,13 @@ commands:
     # wiederholt Mai sie nicht.
     refused: '*legt die Ohren an* Das wiederhole ich nicht.'
 
+  # /mai appeal: der zweite Weg in den Einspruch, für Mitglieder, deren
+  # Verwarnungs-DM nicht ankam (DMs zu). Der Button unter der DM ist der erste.
+  appeal:
+    guildOnly: 'Einspruch geht nur auf dem Server, auf dem die Verwarnung war.'
+    nothing: '*legt den Kopf schief* Ich habe nichts gegen dich vorliegen, wogegen du Einspruch einlegen könntest.'
+    unavailable: 'Auf diesem Server ist kein Moderations-Log eingerichtet, ein Einspruch käme nirgendwo an. Sag einem Admin Bescheid.'
+
   # /mai forget: self-service wipe of Mai's memory about the caller.
   forget:
     confirm: 'Soll ich wirklich vergessen, was du mir erzählt hast? *legt den Kopf schief*'
@@ -243,9 +257,16 @@ commands:
       **Offene Verstöße:** {queueDepth}
       **Chat-Verlauf:** {historyRows} Zeilen in {historyChannels} Kanälen
       **Letzter Moderationslauf:** {lastTick}
+      **Klassifizierung:** {classifier}
       **OpenAI Modelle:** {openai}
       **Uptime:** {uptime}
     never: 'noch nie'
+    # Ob die Moderations-API gerade antwortet. Fällt sie aus, lässt Mai alles
+    # durch (das ist Absicht), und ohne diese Zeile merkt das niemand.
+    healthy: 'läuft'
+    degraded: '⚠️ fällt gerade aus, es wird nichts moderiert'
+    # Betreiber-Sicht: dieselbe Frage über alle Server. {count} = betroffene Server.
+    degradedGuilds: '⚠️ fällt auf {count} Server(n) aus'
     # Angehängt an die Überschrift, wenn die Zahlen *alle* Server umfassen:
     # das sehen nur Betreiber (OPERATOR_USER_IDS), nicht Server-Moderatoren.
     allGuilds: '(alle Server)'
@@ -342,6 +363,11 @@ commands:
       **Schwelle:** {threshold}{thresholdSource}
       **Kategorien:** {categories}{categoriesSource}
       **Ausgenommene Kanäle:** {exemptChannels}{exemptChannelsSource}
+      **Einladungs-Filter:** {inviteFilter}{inviteFilterSource}
+      **Link-Regel:** {linkPolicy}{linkPolicySource}
+      **Erlaubte Domains:** {linkDomains}{linkDomainsSource}
+      **Mention-Limit:** {mentionCap}{mentionCapSource}
+      **Flut-Regel:** {flood}{floodSource}
     inherited: '_(Standard)_'
     on: 'ja'
     off: 'nein'
@@ -355,6 +381,12 @@ commands:
     allCategories: '_alle_'
     # No channel is exempt from moderation.
     noExemptChannels: '_keine_'
+    # Eine der Regeln, die Mai ohne Klassifizierung selbst prüft, ist aus.
+    guardOff: '_aus_'
+    # Link-Allowlist ohne einen einzigen Eintrag: dann ist jeder Link ein Verstoß.
+    noDomains: '_keine_'
+    # Die Flut-Regel in Worten. {messages} Nachrichten in {seconds} Sekunden.
+    floodRule: 'mehr als {messages} Nachrichten in {seconds} s'
     nothing: 'Nichts angegeben, nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'
     guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'

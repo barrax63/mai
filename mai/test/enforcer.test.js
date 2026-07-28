@@ -41,8 +41,8 @@ updateSettings(OTHER_GUILD, { escalation: false });
  *   `parents` maps a channel id to its parent, which is how a thread is
  *   represented; `onFetchMessage` replaces the message object for one id.
  */
-function fakeClient({ parents = {}, onFetchMessage } = {}) {
-  const record = { deleted: [], dms: [] };
+function fakeClient({ parents = {}, onFetchMessage, dmFails = false } = {}) {
+  const record = { deleted: [], dms: [], posted: [] };
 
   const message = (channelId, messageId) => ({
     id: messageId,
@@ -60,8 +60,11 @@ function fakeClient({ parents = {}, onFetchMessage } = {}) {
       fetch: async (channelId) => ({
         id: channelId,
         parentId: parents[channelId] ?? null,
+        // Every fetched channel claims the guild the row is in, so a log entry
+        // passes `postModerationLog`'s own-guild proof.
+        guildId: TEST_GUILD,
         isTextBased: () => true,
-        send: async () => {},
+        send: async (payload) => record.posted.push({ channelId, ...payload }),
         messages: {
           fetch: async (messageId) =>
             (onFetchMessage?.(messageId) ?? message(channelId, messageId)),
@@ -71,7 +74,12 @@ function fakeClient({ parents = {}, onFetchMessage } = {}) {
     },
     users: {
       fetch: async (userId) => ({
-        send: async (payload) => record.dms.push({ userId, ...payload }),
+        send: async (payload) => {
+          // Discord's "cannot send messages to this user": the member has DMs
+          // from server members switched off, or has blocked Mai.
+          if (dmFails) throw Object.assign(new Error('Cannot send messages to this user'), { code: 50007 });
+          record.dms.push({ userId, ...payload });
+        },
       }),
     },
   };
@@ -223,6 +231,42 @@ test('a member enforced in two guilds gets one DM per guild, not one merged one'
   } finally {
     resetSettings(TEST_GUILD, 'log-channel');
     resetSettings(OTHER_GUILD, 'log-channel');
+  }
+});
+
+test('a warning nobody could deliver is reported to the guild instead', async () => {
+  clearOwnDeletions();
+  const messageId = '950000000000000012';
+  updateSettings(TEST_GUILD, { 'log-channel': '940000000000000102' });
+
+  try {
+    seed(messageId);
+
+    const { client, record } = fakeClient({ dmFails: true });
+    await runTick(client);
+
+    assert.equal(record.deleted.length, 1, 'the message is still enforced');
+    assert.equal(record.dms.length, 0, 'the member was never told');
+
+    // Without this the log shows a clean `deleted` entry and nothing else: the
+    // member does not know why their message went, has no appeal button, and
+    // staff have no way to find out that any of that happened.
+    const entry = record.posted.find(
+      (post) => post.embeds?.[0]?.title === content.moderation.log.titles.warningUndelivered,
+    );
+    assert.ok(entry, `no undelivered entry in: ${record.posted.map((p) => p.embeds?.[0]?.title)}`);
+
+    const value = (label) => entry.embeds[0].fields.find((field) => field.name === label)?.value;
+    assert.equal(value(content.moderation.log.fields.user), `<@${TEST_USER}> \`${TEST_USER}\``);
+    assert.equal(value(content.moderation.log.fields.count), '1');
+    // The code in words, never the exception's own message.
+    assert.equal(
+      value(content.moderation.log.fields.reason),
+      explainError(Object.assign(new Error('anything'), { code: 50007 })),
+    );
+    assert.equal(JSON.stringify(entry).includes('Cannot send messages'), false);
+  } finally {
+    resetSettings(TEST_GUILD, 'log-channel');
   }
 });
 

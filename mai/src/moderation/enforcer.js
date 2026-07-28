@@ -5,7 +5,9 @@
  *   - author deleted the message themselves -> drop the orphaned scold reply,
  *     drop the row, no DM. The grace period did its job.
  *   - message still there -> delete it and its scold reply, drop the row, and
- *     DM the author (one grouped DM per author per tick).
+ *     DM the author (one grouped DM per author per tick). A DM that bounces is
+ *     reported in the guild's log: the member was enforced without ever being
+ *     told, and never saw the appeal button (`/mai appeal` is their way back).
  *   - message lookup failed for any other reason -> keep the row and retry on
  *     the next tick.
  *
@@ -34,6 +36,7 @@ import {
   LOG_STUCK,
   LOG_TIMEOUT,
   LOG_TIMEOUT_FAILED,
+  LOG_WARNING_UNDELIVERED,
   postModerationLog,
 } from './log.js';
 import { buildWarning, groupByMember, memberKey } from './warning.js';
@@ -348,11 +351,26 @@ async function warnAuthor(client, group, timeout, sinceIso) {
       'Sent warning DM',
     );
   } catch (error) {
-    // Closed DMs are a normal outcome, not an error worth alerting on.
+    // Closed DMs are a normal outcome, not an error worth alerting on: this
+    // stays at `info` and never reaches the alert hook.
     logger.info(
       { userId: group.userId, err: error },
       'Could not deliver warning DM',
     );
+
+    // But it is not a normal outcome for the *member*: their messages were
+    // deleted, they may have been timed out, and the one channel that would
+    // have told them why (and carried the appeal button) never opened. Staff
+    // are the only remaining route, so the guild's log says so explicitly
+    // rather than leaving a `deleted` entry that looks fully handled.
+    await postModerationLog(client, {
+      type: LOG_WARNING_UNDELIVERED,
+      guildId: group.guildId,
+      userId: group.userId,
+      count: group.violations.length,
+      categories: group.categories,
+      reason: explainError(error),
+    });
   }
   logger.debug({ userId: group.userId, warning: body }, 'Warning DM content');
 }

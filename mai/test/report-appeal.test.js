@@ -7,7 +7,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
 import { content } from '../src/content.js';
-import { updateSettings } from '../src/db/settings.js';
+import { effectiveSettings, updateSettings } from '../src/db/settings.js';
+import { ACTION_DELETED, recordViolation } from '../src/db/violations.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { routeInteraction } from '../src/interactions/router.js';
 import { appealComponents } from '../src/moderation/appeal.js';
@@ -389,6 +390,93 @@ test('an empty appeal is rejected before it reaches staff', async () => {
 
   assert.equal(sent.length, 0);
   assert.equal(edits.at(-1).body.content, content.moderation.appeal.empty);
+});
+
+/**
+ * `/mai appeal`: the same appeal, for a member whose warning DM bounced.
+ *
+ * Everything the button carries in its `custom_id` has to be reconstructed
+ * from the strike record here, and the scope is the whole point: an appeal
+ * against one incident must not overturn the strikes before it.
+ */
+const appealCommand = (userId) =>
+  interaction({
+    type: InteractionType.APPLICATION_COMMAND,
+    member: member(userId),
+    data: { name: 'mai', type: 1, options: [{ name: 'appeal', type: 1, options: [] }] },
+  });
+
+const strikeAt = (userId, iso, messageId) =>
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId,
+    messageId,
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+    createdAt: iso,
+  });
+
+test('/mai appeal has nothing to open for a member with a clean record', async () => {
+  const body = await route(appealCommand('860000000000000001'));
+
+  assert.equal(body.type, InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE);
+  assert.equal(body.data.content, content.commands.appeal.nothing);
+});
+
+test('/mai appeal opens the same modal, scoped to the last enforcement pass', async () => {
+  const userId = '860000000000000002';
+  const now = Date.now();
+  // Two passes: one a week ago, one a moment ago (two messages, seconds apart,
+  // the way a single tick writes them).
+  strikeAt(userId, new Date(now - 7 * 86_400_000).toISOString(), '861000000000000001');
+  strikeAt(userId, new Date(now - 4000).toISOString(), '861000000000000002');
+  strikeAt(userId, new Date(now - 2000).toISOString(), '861000000000000003');
+
+  const body = await route(appealCommand(userId));
+
+  assert.equal(body.type, InteractionResponseType.MODAL);
+  const [, guildId, since] = body.data.custom_id.split(':');
+  assert.equal(guildId, TEST_GUILD);
+  assert.ok(body.data.custom_id.length <= 100, 'Discord caps custom_id at 100');
+
+  // The pass, not the record: the older strike is a different incident and this
+  // appeal says nothing about it.
+  const scoped = Number(since) * 1000;
+  assert.ok(scoped <= now - 4000, 'the oldest strike of the pass is included');
+  assert.ok(scoped > now - 86_400_000, 'last week is not');
+});
+
+test('/mai appeal is refused where an appeal would land nowhere', async () => {
+  updateSettings(TEST_GUILD, { 'log-channel': null });
+  try {
+    const userId = '860000000000000003';
+    strikeAt(userId, new Date().toISOString(), '861000000000000004');
+
+    const body = await route(appealCommand(userId));
+    assert.equal(body.data.content, content.commands.appeal.unavailable);
+  } finally {
+    updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL });
+  }
+});
+
+test('/mai appeal is refused in a DM: an appeal names a guild', async () => {
+  const payload = appealCommand('860000000000000004');
+  const body = await route({ ...payload, guild_id: undefined, member: undefined, user: { id: '860000000000000004' } });
+
+  assert.equal(body.data.content, content.commands.appeal.guildOnly);
+});
+
+test('a strike that no longer counts has nothing left to appeal', async () => {
+  const userId = '860000000000000005';
+  const settings = effectiveSettings(TEST_GUILD);
+  strikeAt(
+    userId,
+    new Date(Date.now() - (settings.strikeWindowDays + 1) * 86_400_000).toISOString(),
+    '861000000000000005',
+  );
+
+  const body = await route(appealCommand(userId));
+  assert.equal(body.data.content, content.commands.appeal.nothing);
 });
 
 test('reports are rate limited per member', async () => {

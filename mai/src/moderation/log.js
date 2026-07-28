@@ -32,6 +32,11 @@ export const LOG_TIMEOUT_FAILED = 'timeoutFailed';
 export const LOG_CONFIG = 'config';
 export const LOG_APPEAL_GRANTED = 'appealGranted';
 export const LOG_APPEAL_DENIED = 'appealDenied';
+/** The warning DM bounced (closed DMs), so the member was never told. */
+export const LOG_WARNING_UNDELIVERED = 'warningUndelivered';
+/** Classification keeps failing: moderation is passing everything through. */
+export const LOG_DEGRADED = 'degraded';
+export const LOG_RECOVERED = 'recovered';
 
 const COLORS = {
   [LOG_FLAGGED]: 0xf1c40f,
@@ -48,6 +53,9 @@ const COLORS = {
   [LOG_CONFIG]: 0x34495e,
   [LOG_APPEAL_GRANTED]: 0x27ae60,
   [LOG_APPEAL_DENIED]: 0x2c3e50,
+  [LOG_WARNING_UNDELIVERED]: 0xe67e22,
+  [LOG_DEGRADED]: 0xe67e22,
+  [LOG_RECOVERED]: 0x2ecc71,
 };
 
 const unixSeconds = (value) => Math.floor(new Date(value).getTime() / 1000);
@@ -185,6 +193,25 @@ function fieldsFor(event) {
     case LOG_ABANDONED:
       return [
         ...head,
+        { name: labels.attempts, value: String(event.attempts ?? 0), inline: true },
+        { name: labels.reason, value: event.reason ?? none, inline: false },
+      ];
+
+    // The member was enforced but never told, so nobody has answered for the
+    // deletion and the appeal button never reached them. Staff are the only
+    // remaining route: `count` is how many messages the DM would have listed.
+    case LOG_WARNING_UNDELIVERED:
+      return [
+        ...head,
+        { name: labels.count, value: String(event.count ?? 0), inline: true },
+        categoryField,
+        ...reason,
+      ];
+
+    // Moderation is failing open in this guild: `attempts` is the streak of
+    // consecutive failures, `reason` the error in words (never its message).
+    case LOG_DEGRADED:
+      return [
         { name: labels.attempts, value: String(event.attempts ?? 0), inline: true },
         { name: labels.reason, value: event.reason ?? none, inline: false },
       ];

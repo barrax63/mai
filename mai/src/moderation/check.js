@@ -1,6 +1,13 @@
 /**
- * Moderation for a single message: classify, react, scold, enqueue, and, when
- * an edit changes the verdict, take all of it back again.
+ * Moderation for a single message: apply the guild's own rules, classify,
+ * react, scold, enqueue, and, when an edit changes the verdict, take all of it
+ * back again.
+ *
+ * Two layers decide, in this order. The guild's local rules (heuristics.js:
+ * invites, links, mass mentions, floods) run first because they are free and
+ * catch what a score cannot; the classifier runs only on what they let past.
+ * Both produce the same thing, a list of category slugs, and everything after
+ * that point treats them identically.
  *
  * `checkMessage` is called inline from the gateway handler, so the verdict is
  * available immediately: a flagged message that also addressed Mai gets the
@@ -18,9 +25,19 @@ import { content, pick } from '../content.js';
 import { enqueue, findRow, remove, updateCategories } from '../db/queue.js';
 import { effectiveSettings } from '../db/settings.js';
 import { ACTION_EDITED, ACTION_SELF_DELETED, recordViolation } from '../db/violations.js';
+import { explainError } from '../errors.js';
 import { logger } from '../logger.js';
 import { deleteMessageById, removeWarningReaction } from './cleanup.js';
-import { LOG_CLEARED, LOG_FLAGGED, LOG_SELF_DELETED, postModerationLog } from './log.js';
+import { recordClassifierFailure, recordClassifierSuccess } from './health.js';
+import { localViolations } from './heuristics.js';
+import {
+  LOG_CLEARED,
+  LOG_DEGRADED,
+  LOG_FLAGGED,
+  LOG_RECOVERED,
+  LOG_SELF_DELETED,
+  postModerationLog,
+} from './log.js';
 
 const OK = Object.freeze({ action: 'ok' });
 
@@ -86,30 +103,69 @@ const hasClassifiableContent = (message) =>
 
 /**
  * @param {import('discord.js').Message} message
+ * @param {ReturnType<typeof effectiveSettings>} settings
  * @returns {Promise<{ flagged: boolean, categories: string[] } | null>} null when
  *   classification was unavailable: the caller decides what that means.
  */
-async function classifySafely(message) {
+async function classifySafely(message, settings) {
   const attachments = message.attachments.map((attachment) => ({
     url: attachment.url,
     contentType: attachment.contentType,
   }));
 
-  // The guild's own line on what counts, not just the provider's default.
-  const { threshold, categories } = effectiveSettings(message.guildId);
-
   try {
-    return await classify(message.content, attachments, {
+    const verdict = await classify(message.content, attachments, {
       guildId: message.guildId,
-      policy: { threshold, categories },
+      // The guild's own line on what counts, not just the provider's default.
+      policy: { threshold: settings.threshold, categories: settings.categories },
     });
+    announceRecovery(message);
+    return verdict;
   } catch (error) {
     logger.error(
       { messageId: message.id, err: error },
       'Classification failed, letting the message pass',
     );
+    announceOutage(message, error);
     return null;
   }
+}
+
+/**
+ * Tells the guild's staff that moderation is currently letting everything
+ * through. Fires once per outage (health.js counts the streak), detached and
+ * best effort like every other log entry.
+ *
+ * The reason goes through `explainError`: this lands in a Discord channel, so
+ * an exception message never does.
+ *
+ * @param {import('discord.js').Message} message
+ * @param {unknown} error
+ */
+function announceOutage(message, error) {
+  const { announce, failures } = recordClassifierFailure(message.guildId);
+  if (!announce) return;
+
+  logger.error(
+    { guildId: message.guildId, failures },
+    'Classification keeps failing; moderation is passing everything through in this guild',
+  );
+  void postModerationLog(message.client, {
+    type: LOG_DEGRADED,
+    guildId: message.guildId,
+    attempts: failures,
+    reason: explainError(error),
+  });
+}
+
+/**
+ * @param {import('discord.js').Message} message
+ */
+function announceRecovery(message) {
+  if (!recordClassifierSuccess(message.guildId)) return;
+
+  logger.info({ guildId: message.guildId }, 'Classification works again');
+  void postModerationLog(message.client, { type: LOG_RECOVERED, guildId: message.guildId });
 }
 
 /**
@@ -286,12 +342,24 @@ export async function recordSelfDeletion(client, row) {
 export async function checkMessage(message) {
   if (!isModeratable(message)) return OK;
 
+  const settings = effectiveSettings(message.guildId);
+
+  // The guild's own rules first: they cost no tokens and judge things a score
+  // cannot (an invite link, a mass ping, a burst). A message they trip on is
+  // never sent to the provider at all. The rate rule runs before the content
+  // gate below, because an image-only message is still a message for a flood.
+  const local = localViolations(message, settings);
+  if (local.length > 0) {
+    logger.info({ messageId: message.id, categories: local }, 'Message broke a local rule');
+    return flagMessage(message, local);
+  }
+
   if (!hasClassifiableContent(message)) {
     logger.debug({ messageId: message.id }, 'Skipping moderation: empty content');
     return OK;
   }
 
-  const verdict = await classifySafely(message);
+  const verdict = await classifySafely(message, settings);
   if (!verdict) return OK;
 
   if (!verdict.flagged) {
@@ -319,7 +387,19 @@ export async function checkMessage(message) {
 export async function recheckMessage(message) {
   if (!isModeratable(message)) return OK;
 
+  const settings = effectiveSettings(message.guildId);
   const row = findRow(message.id);
+
+  // The guild's own rules, minus the flood one: editing a message is not
+  // sending one, and counting it would let a member's own correction of a
+  // burst trip the rule again. An edit that adds an invite link is exactly
+  // what this catches: without it, posting clean and editing afterwards walks
+  // straight past every local rule.
+  const local = localViolations(message, settings, { rate: false });
+  if (local.length > 0) {
+    logger.info({ messageId: message.id, categories: local }, 'Edited message broke a local rule');
+    return row ? stillFlagged(message, row, local) : flagMessage(message, local);
+  }
 
   // Edited down to nothing a classifier can judge (text removed, images off):
   // there is no violation left to enforce.
@@ -328,7 +408,7 @@ export async function recheckMessage(message) {
     return row ? clearFlag(message, row) : OK;
   }
 
-  const verdict = await classifySafely(message);
+  const verdict = await classifySafely(message, settings);
   if (!verdict) {
     // Fails open for an unflagged message, and closed for a queued one: without
     // a verdict there is no evidence the edit fixed anything.
@@ -344,10 +424,24 @@ export async function recheckMessage(message) {
 
   if (!row) return flagMessage(message, verdict.categories);
 
-  // Still a violation, only a different one. The deadline deliberately stays
-  // where it was: editing one slur into another must not buy a fresh grace
-  // period, and re-scolding a message that is already scolded is just noise.
-  updateCategories(message.id, verdict.categories);
+  return stillFlagged(message, row, verdict.categories);
+}
+
+/**
+ * An edited message that was already queued and is still a violation, only a
+ * different one.
+ *
+ * The deadline deliberately stays where it was: editing one slur into another
+ * must not buy a fresh grace period, and re-scolding a message that is already
+ * scolded is just noise.
+ *
+ * @param {import('discord.js').Message} message
+ * @param {ReturnType<typeof findRow>} row
+ * @param {string[]} categories
+ * @returns {{ action: 'flagged', categories: string[], dueAt: string }}
+ */
+function stillFlagged(message, row, categories) {
+  updateCategories(message.id, categories);
 
   logger.info(
     {
@@ -355,11 +449,11 @@ export async function recheckMessage(message) {
       guildId: message.guildId,
       channelId: message.channelId,
       userId: message.author.id,
-      categories: verdict.categories,
+      categories,
       dueAt: row.dueAt,
     },
     'Edited message is still flagged',
   );
 
-  return { action: 'flagged', categories: verdict.categories, dueAt: row.dueAt };
+  return { action: 'flagged', categories, dueAt: row.dueAt };
 }

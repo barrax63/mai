@@ -34,6 +34,11 @@ test('a guild without a row inherits every default', () => {
     'exempt-channels': true,
     threshold: true,
     categories: true,
+    'invite-filter': true,
+    'link-policy': true,
+    'link-domains': true,
+    'mention-cap': true,
+    flood: true,
   });
 });
 
@@ -173,7 +178,58 @@ test('reset without a name clears everything', () => {
     'exempt-channels': true,
     threshold: true,
     categories: true,
+    'invite-filter': true,
+    'link-policy': true,
+    'link-domains': true,
+    'mention-cap': true,
+    flood: true,
   });
+});
+
+test('a link allowlist is normalized, and a URL is refused as a domain', () => {
+  const id = guild();
+
+  // A moderator typing a full URL would otherwise store an entry that can
+  // never match a host, and see no reason why links keep getting flagged.
+  for (const bad of ['https://example.com', 'example .com', 'not_a_domain', 'localhost']) {
+    assert.throws(() => updateSettings(id, { 'link-domains': bad }), RangeError, `accepted ${bad}`);
+  }
+
+  const settings = updateSettings(id, { 'link-domains': ' Example.COM , www.github.io ,example.com' });
+  assert.deepEqual(settings.linkDomains, ['example.com', 'github.io'], 'lower-cased, deduplicated');
+});
+
+test('an empty allowlist is a stricter rule, not an absent one', () => {
+  const id = guild();
+  const settings = updateSettings(id, { 'link-policy': 'allowlist', 'link-domains': '' });
+
+  assert.deepEqual(settings.linkDomains, []);
+  assert.equal(settings.inherited['link-domains'], false, 'no domain is allowed here, deliberately');
+});
+
+test('the flood rule is validated as count/seconds', () => {
+  const id = guild();
+  assert.deepEqual(updateSettings(id, { flood: '6/10' }).floodRule, { messages: 6, seconds: 10 });
+
+  for (const bad of ['6', '6/', '/10', '6/10/2', 'sechs/10', '1/10', '51/10', '6/0', '6/3601']) {
+    assert.throws(() => updateSettings(id, { flood: bad }), RangeError, `accepted ${bad}`);
+  }
+  assert.deepEqual(effectiveSettings(id).floodRule, { messages: 6, seconds: 10 }, 'nothing changed');
+
+  assert.equal(updateSettings(id, { flood: 'off' }).floodRule, null);
+});
+
+test('the mention cap and the link policy take only what they can act on', () => {
+  const id = guild();
+
+  assert.equal(updateSettings(id, { 'mention-cap': 0 }).mentionCap, 0, '0 is off, not invalid');
+  assert.equal(updateSettings(id, { 'mention-cap': 5 }).mentionCap, 5);
+  for (const bad of [-1, 101, 'viele']) {
+    assert.throws(() => updateSettings(id, { 'mention-cap': bad }), RangeError, `accepted ${bad}`);
+  }
+
+  assert.equal(updateSettings(id, { 'link-policy': 'allowlist' }).linkPolicy, 'allowlist');
+  assert.throws(() => updateSettings(id, { 'link-policy': 'blocklist' }), RangeError);
 });
 
 test('reset rejects an unknown setting name', () => {

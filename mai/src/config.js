@@ -142,6 +142,90 @@ export function parseThreshold(raw, label = 'threshold') {
   return value;
 }
 
+/** What the link guard does with a URL that is not on the allowlist. */
+export const LINK_POLICIES = Object.freeze(['off', 'allowlist']);
+
+/**
+ * @param {unknown} raw
+ * @param {string} [label]
+ * @returns {'off' | 'allowlist'}
+ */
+export function parseLinkPolicy(raw, label = 'link policy') {
+  const value = String(raw ?? '').trim().toLowerCase() || 'off';
+  if (!LINK_POLICIES.includes(value)) {
+    throw new RangeError(`${label} must be one of: ${LINK_POLICIES.join(', ')}`);
+  }
+  return value;
+}
+
+/**
+ * Parses a comma-separated host list for the link allowlist. Exported so
+ * `/mod config set link-domains` validates identically.
+ *
+ * A leading `www.` is dropped and the comparison is done on the registrable
+ * host plus its subdomains (see `hostAllowed` in moderation/heuristics.js), so
+ * `example.com` covers `www.example.com` and `cdn.example.com`. Anything that
+ * is not a bare host name is refused: a moderator typing a full URL would
+ * otherwise create an entry that can never match.
+ *
+ * @param {unknown} raw
+ * @param {string} [label]
+ * @returns {string[]}
+ */
+export function parseDomainList(raw, label = 'link domains') {
+  const hosts = String(raw ?? '')
+    .split(',')
+    .map((host) => host.trim().toLowerCase().replace(/^www\./, '').replace(/\.$/, ''))
+    .filter(Boolean);
+
+  const bad = hosts.filter(
+    (host) => !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(host),
+  );
+  if (bad.length > 0) {
+    throw new RangeError(`${label} must be bare host names, got: ${bad.join(', ')}`);
+  }
+  if (hosts.length > 50) throw new RangeError(`${label} accepts at most 50 domains`);
+
+  return [...new Set(hosts)];
+}
+
+/** Bounds for the flood rule, so a typo cannot arm a guard nobody survives. */
+const FLOOD_MIN_MESSAGES = 2;
+const FLOOD_MAX_MESSAGES = 50;
+const FLOOD_MAX_SECONDS = 3600;
+
+/**
+ * Parses a flood rule written as `count/seconds` ("6/10" = more than six
+ * messages in ten seconds). Exported so `/mod config set flood` validates
+ * identically.
+ *
+ * @param {unknown} raw
+ * @param {string} [label]
+ * @returns {{ messages: number, seconds: number } | null} null = off.
+ */
+export function parseFloodRule(raw, label = 'flood rule') {
+  const text = String(raw ?? '').trim().toLowerCase();
+  if (!text || text === 'off' || text === '0') return null;
+
+  const [count, window, ...rest] = text.split('/');
+  const messages = wholeNumber(count);
+  const seconds = wholeNumber(window);
+
+  if (rest.length > 0 || !Number.isInteger(messages) || !Number.isInteger(seconds)) {
+    throw new RangeError(`${label} must be written as count/seconds, e.g. 6/10 (or "off")`);
+  }
+  if (messages < FLOOD_MIN_MESSAGES || messages > FLOOD_MAX_MESSAGES) {
+    throw new RangeError(
+      `${label} count must be between ${FLOOD_MIN_MESSAGES} and ${FLOOD_MAX_MESSAGES}`,
+    );
+  }
+  if (seconds < 1 || seconds > FLOOD_MAX_SECONDS) {
+    throw new RangeError(`${label} window must be between 1 and ${FLOOD_MAX_SECONDS} seconds`);
+  }
+
+  return { messages, seconds };
+}
+
 const ratio = (name, fallback) => {
   try {
     return parseThreshold(optional(name, fallback), name);
@@ -169,6 +253,24 @@ const ladder = (name, fallback) => {
     throw new Error(`Environment variable ${error.message}`);
   }
 };
+
+/**
+ * Runs one of the exported parsers over an environment variable, so the process
+ * default is refused exactly like the same value typed into `/mod config set`.
+ *
+ * @param {(raw: unknown, label: string) => unknown} parse
+ */
+const parsed = (parse) => (name, fallback) => {
+  try {
+    return parse(optional(name, fallback) ?? '', name);
+  } catch (error) {
+    throw new Error(`Environment variable ${error.message}`);
+  }
+};
+
+const linkPolicy = parsed(parseLinkPolicy);
+const domains = parsed(parseDomainList);
+const flood = parsed(parseFloodRule);
 
 const moderationEnabled = bool('MODERATION_ENABLED', 'true');
 const chatEnabled = bool('CHAT_ENABLED', 'true');
@@ -283,6 +385,21 @@ export const config = Object.freeze({
     categories: parseCategoryList(optional('MODERATION_CATEGORIES', '') ?? '', 'MODERATION_CATEGORIES'),
     // How long the strike record is kept at all.
     violationRetentionDays: int('VIOLATION_RETENTION_DAYS', '90', { min: 1 }),
+    // Rules Mai applies herself, before any classifier call: they cost no
+    // tokens, catch what a semantic score cannot (an ad, a raid, a mass ping)
+    // and keep working while the provider is down. All four default to off:
+    // they are a server's own house rules, not a safety floor.
+    inviteFilter: bool('MODERATION_INVITE_FILTER', 'false'),
+    linkPolicy: linkPolicy('MODERATION_LINK_POLICY', 'off'),
+    linkDomains: domains('MODERATION_LINK_DOMAINS', ''),
+    // Mentions (users, roles, @everyone, @here) one message may carry. 0 = off.
+    mentionCap: int('MODERATION_MENTION_CAP', '0'),
+    // Messages per member per window, as `count/seconds`. Empty = off.
+    floodRule: flood('MODERATION_FLOOD', ''),
+    // Consecutive failed classifications in one guild before its staff are told
+    // in the log channel that Mai is currently letting everything through.
+    // Moderation fails open, which is deliberate but invisible from Discord.
+    degradedAfter: int('MODERATION_DEGRADED_AFTER', '3', { min: 1 }),
   },
   chat: {
     enabled: chatEnabled,

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
 import { content } from '../src/content.js';
+import { effectiveSettings, resetSettings, updateSettings } from '../src/db/settings.js';
 import { optionValue, resolveSubcommand } from '../src/interactions/options.js';
 import { EPHEMERAL } from '../src/interactions/respond.js';
 import { parseCustomId } from '../src/interactions/registry.js';
@@ -291,6 +292,79 @@ test('/mod config set stores an override and views it back', async () => {
     .split('\n')
     .find((line) => line.includes('Schonfrist'));
   assert.equal(graceLine.includes(content.commands.config.inherited), false);
+});
+
+test('every rendered view substitutes every placeholder it has', async () => {
+  // A new setting means a new line in the template and a new value in the
+  // handler, and forgetting either half prints `{inviteFilter}` at a moderator.
+  for (const options of [
+    [{ name: 'config', type: 2, options: [{ name: 'view', type: 1 }] }],
+    [{ name: 'status', type: 1 }],
+  ]) {
+    const res = collector();
+    await routeInteraction(command('mod', options, { member: STAFF }), res.send);
+
+    const rendered = res.first.body.data.content;
+    assert.equal(/\{[a-z]/i.test(rendered), false, `unsubstituted placeholder in: ${rendered}`);
+  }
+});
+
+test('/mod config set drives the rules Mai applies without a classifier', async () => {
+  const set = collector();
+  await routeInteraction(
+    command(
+      'mod',
+      [
+        {
+          name: 'config',
+          type: 2,
+          options: [
+            {
+              name: 'set',
+              type: 1,
+              options: [
+                { name: 'invite-filter', value: true },
+                { name: 'link-policy', value: 'allowlist' },
+                { name: 'link-domains', value: 'Example.COM, www.github.io' },
+                { name: 'mention-cap', value: 5 },
+                { name: 'flood', value: '6/10' },
+              ],
+            },
+          ],
+        },
+      ],
+      { member: STAFF },
+    ),
+    set.send,
+  );
+
+  const view = set.first.body.data.content;
+  assert.match(view, /Einladungs-Filter:\*\* ja/);
+  assert.match(view, /allowlist/);
+  // Normalized on the way in, so `www.` and case cannot produce a rule that
+  // silently never matches.
+  assert.match(view, /example\.com, github\.io/);
+  assert.match(view, /Mention-Limit:\*\* 5/);
+  assert.match(view, /6 Nachrichten in 10 s/);
+
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.inviteFilter, true);
+  assert.deepEqual(settings.linkDomains, ['example.com', 'github.io']);
+  assert.deepEqual(settings.floodRule, { messages: 6, seconds: 10 });
+});
+
+test('a guard switched off stays off instead of inheriting again', async () => {
+  // "off" and "not configured" are different answers: a guild that turned the
+  // flood rule off must not pick the process default back up.
+  updateSettings(TEST_GUILD, { flood: '6/10' });
+  updateSettings(TEST_GUILD, { flood: 'off' });
+
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.equal(settings.floodRule, null);
+  assert.equal(settings.inherited.flood, false, 'off is a decision, not an absence');
+
+  resetSettings(TEST_GUILD, 'flood');
+  assert.equal(effectiveSettings(TEST_GUILD).inherited.flood, true);
 });
 
 test('/mod config set rejects an out-of-range value in character', async () => {

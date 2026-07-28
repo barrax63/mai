@@ -11,6 +11,9 @@
 import {
   config,
   parseCategoryList,
+  parseDomainList,
+  parseFloodRule,
+  parseLinkPolicy,
   parseThreshold,
   parseTimeoutLadder,
   wholeNumber,
@@ -122,6 +125,46 @@ export const SETTINGS = Object.freeze({
       return days;
     },
   },
+  'invite-filter': {
+    column: 'invite_filter',
+    parse: (value) => (value === null ? null : toFlag(value, 'invite-filter')),
+  },
+  'link-policy': {
+    column: 'link_policy',
+    parse: (value) => (value === null ? null : parseLinkPolicy(value, 'link-policy')),
+  },
+  'link-domains': {
+    // A list, but unlike `exempt-channels` a typeable one: these are host names
+    // a moderator reads and writes, not snowflakes, so they stay a plain option
+    // on `/mod config set` instead of getting add/remove subcommands.
+    column: 'link_domains',
+    parse: (value) => (value === null ? null : parseDomainList(value, 'link-domains').join(',')),
+  },
+  'mention-cap': {
+    column: 'mention_cap',
+    parse: (value) => {
+      if (value === null) return null;
+      const cap = wholeNumber(value);
+      // 0 = off. The upper bound is Discord's own: a message cannot address
+      // more than 100 users anyway, so anything above it is a typo.
+      if (!Number.isInteger(cap) || cap < 0 || cap > 100) {
+        throw new RangeError('mention-cap must be between 0 (off) and 100');
+      }
+      return cap;
+    },
+  },
+  flood: {
+    column: 'flood_rule',
+    parse: (value) => {
+      if (value === null) return null;
+      const rule = parseFloodRule(value, 'flood');
+      // Empty string, not NULL: "off" is a decision this guild made, while NULL
+      // means "inherit", and a guild switching the guard off must not silently
+      // pick up the process default again. `/mod config reset flood` is how you
+      // go back to inheriting.
+      return rule ? `${rule.messages}/${rule.seconds}` : '';
+    },
+  },
 });
 
 const COLUMNS = Object.values(SETTINGS).map((setting) => setting.column);
@@ -167,6 +210,18 @@ export function effectiveSettings(guildId) {
     categories: row?.moderation_categories
       ? splitList(row.moderation_categories)
       : config.moderation.categories,
+    // The rules Mai applies herself, without a classifier (heuristics.js).
+    inviteFilter: flag('invite_filter', config.moderation.inviteFilter),
+    linkPolicy: row?.link_policy ?? config.moderation.linkPolicy,
+    // `== null` and not a truthiness check: an empty string is a guild saying
+    // "no domains at all", which under the allowlist policy is a real, much
+    // stricter setting than inheriting the process list.
+    linkDomains: row?.link_domains == null ? config.moderation.linkDomains : splitList(row.link_domains),
+    mentionCap: row?.mention_cap ?? config.moderation.mentionCap,
+    // Same here: '' is "flood guard off in this guild", NULL is "inherit".
+    floodRule: row?.flood_rule == null
+      ? config.moderation.floodRule
+      : parseFloodRule(row.flood_rule, 'flood'),
     inherited: {
       enabled: row?.enabled == null,
       escalation: row?.escalation_enabled == null,
@@ -178,6 +233,11 @@ export function effectiveSettings(guildId) {
       'exempt-channels': !row?.exempt_channels,
       threshold: row?.moderation_threshold === null || row?.moderation_threshold === undefined,
       categories: !row?.moderation_categories,
+      'invite-filter': row?.invite_filter == null,
+      'link-policy': row?.link_policy == null,
+      'link-domains': row?.link_domains == null,
+      'mention-cap': row?.mention_cap == null,
+      flood: row?.flood_rule == null,
     },
   };
 }

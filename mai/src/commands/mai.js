@@ -4,7 +4,8 @@
  * `ask` runs a model call, so it declares `deferred`: the router answers Discord
  * with a placeholder first and edits it when the reply is ready. `forget` is the
  * self-service side of the privacy policy: it wipes what Mai remembers about the
- * caller, behind a confirmation button.
+ * caller, behind a confirmation button. `appeal` is the second door into the
+ * appeals process, for members whose warning DM never arrived.
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
 import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../chat/limits.js';
@@ -12,8 +13,12 @@ import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
+import { effectiveSettings } from '../db/settings.js';
+import { lastEnforcementPass } from '../db/violations.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
+import { appealModal, mayOpenAppeal } from '../moderation/appeal.js';
+import { strikeWindowStart } from '../moderation/escalation.js';
 import { screenInput } from '../moderation/screen.js';
 import { ephemeralResponse, messageResponse, updateResponse } from '../interactions/respond.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
@@ -96,6 +101,52 @@ async function ask(interaction) {
 }
 
 /**
+ * `/mai appeal`: the way in for a member whose warning DM never arrived.
+ *
+ * The normal route is the button under that DM. A member with DMs closed for
+ * the server gets none of it: their messages are deleted, they may be timed
+ * out, and the message explaining why (with the button on it) bounces. This
+ * command reconstructs the same appeal from the strike record, so the incident
+ * a granted appeal overturns is still exactly the one being appealed, not the
+ * member's whole file.
+ *
+ * Synchronous throughout: the answer is a modal, and Discord opens a modal as
+ * the immediate response to the interaction, so nothing here may be deferred.
+ *
+ * @param {object} interaction
+ */
+function appeal(interaction) {
+  const user = actor(interaction);
+  const lines = content.commands.appeal;
+
+  // The appeal names a guild's decision, and a DM has no guild.
+  if (!interaction.guild_id) return ephemeralResponse(lines.guildOnly);
+  // Same rule as reports: never open a form whose answer has nowhere to land.
+  if (!effectiveSettings(interaction.guild_id).logChannelId) {
+    return ephemeralResponse(lines.unavailable);
+  }
+
+  // Only strikes that still count: one that has aged out of the window has
+  // nothing left for a granted appeal to overturn.
+  const pass = lastEnforcementPass(
+    interaction.guild_id,
+    user.id,
+    strikeWindowStart(interaction.guild_id),
+  );
+  if (!pass) return ephemeralResponse(lines.nothing);
+
+  if (!mayOpenAppeal(user.id)) return ephemeralResponse(content.moderation.appeal.busy);
+
+  logger.info(
+    { guildId: interaction.guild_id, userId: user.id, strikes: pass.strikes },
+    'Opened an appeal through /mai appeal',
+  );
+
+  // Seconds, like the button's custom_id: the id budget is 100 characters.
+  return appealModal(interaction.guild_id, Math.floor(new Date(pass.sinceIso).getTime() / 1000));
+}
+
+/**
  * Step one of the memory wipe: ask for confirmation. The user id is carried in
  * the button's custom_id, so the click can be checked against its owner.
  *
@@ -175,10 +226,16 @@ export const mai = {
         description: 'Lösche, was Mai sich von dir gemerkt hat',
         type: 1, // SUB_COMMAND
       },
+      {
+        name: 'appeal',
+        description: 'Einspruch gegen deine letzte Verwarnung einlegen',
+        type: 1, // SUB_COMMAND
+      },
     ],
   },
 
-  // `ask` waits for the model; `forget` answers instantly.
+  // `ask` waits for the model; `forget` and `appeal` answer instantly, and
+  // `appeal` answers with a modal, which cannot be deferred at all.
   deferred: (interaction) => resolveSubcommand(interaction).name === 'ask',
   ephemeral: false,
 
@@ -187,7 +244,9 @@ export const mai = {
    * @returns {Promise<object> | object} Interaction response body.
    */
   execute(interaction) {
-    if (resolveSubcommand(interaction).name === 'forget') return forget(interaction);
+    const { name } = resolveSubcommand(interaction);
+    if (name === 'forget') return forget(interaction);
+    if (name === 'appeal') return appeal(interaction);
     return ask(interaction);
   },
 };

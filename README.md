@@ -40,6 +40,7 @@ The gateway connection is outbound, so message listening keeps working even when
 
 Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) is classified. Message content is never persisted: only IDs, category labels and timestamps:
 
+- **The server's own rules first** → invite links, links outside an allowlist, mass mentions and message floods are decided locally, before any API call: they cost nothing, they catch what a meaning-based score cannot (an advertisement is a polite invite link, a raid is twenty harmless lines), and they keep working while the classifier is down. All off by default, all per server.
 - **Flagged** → warning reaction, a scold reply, and a queue row with a grace period.
 - **After the grace period** → messages the author did not delete themselves are removed and the author gets a warning DM. The scold reply is cleaned up either way.
 - **Edited** → re-classified, so the edit button is not a way past the check. The verdict cuts both ways: an edit that fixes a flagged message takes the warning reaction, the scold reply and the queue row back off it. Editing one violation into another refreshes the categories but keeps the original deadline.
@@ -47,13 +48,13 @@ Every new **and edited** message in an allowlisted guild (`DISCORD_GUILD_IDS`) i
 
 Enforced deletions add up: a strike record drives an escalation ladder that ends in a Discord timeout ([mai/README.md](mai/README.md#moderation)). Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable.
 
-Every action can also be mirrored into a staff channel as an embed: metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)).
+Every action can also be mirrored into a staff channel as an embed: metadata only, never message content ([mai/README.md](mai/README.md#moderation-log)). Two of those entries are about Mai failing rather than a member: a warning DM that bounced (the member was enforced without ever being told why), and classification going down, because moderation fails open on purpose and an outage otherwise looks exactly like a quiet afternoon.
 
 How hard Mai judges is per server too: `/mod config set threshold` decides violations on the classifier's own scores instead of its English-tuned default, and `/mod exempt add` leaves a channel alone entirely (chat and reactions keep working there).
 
-Members are not only on the receiving end: anyone can report a message to staff (right-click → *Apps* → *Nachricht melden*), and a warning DM carries an *Einspruch einlegen* button. Both land in the server's log channel with decision buttons, and granting an appeal overturns exactly the strikes it was about ([mai/README.md](mai/README.md#reports-and-appeals)).
+Members are not only on the receiving end: anyone can report a message to staff (right-click → *Apps* → *Nachricht melden*), and a warning DM carries an *Einspruch einlegen* button (`/mai appeal` for members whose DMs are closed, so a bounced warning does not also cost them the appeal). Both land in the server's log channel with decision buttons, and granting an appeal overturns exactly the strikes it was about ([mai/README.md](mai/README.md#reports-and-appeals)).
 
-Staff inspect and override with `/mod status`, `/mod history <user>`, `/mod forgive <user>`, `/mod spend`, `/mod off` / `/mod on` and `/mod config` (log channel, welcome channel, grace period, timeout ladder, strike window, escalation, threshold and categories, all per server); everything they see and do is scoped to their own server, and every change is announced in the server's own log channel. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
+Staff inspect and override with `/mod status`, `/mod history <user>`, `/mod forgive <user>`, `/mod spend`, `/mod off` / `/mod on` and `/mod config` (log channel, welcome channel, grace period, timeout ladder, strike window, escalation, threshold and categories, plus the local rules: invite filter, link policy and domains, mention cap, flood rule, all per server); everything they see and do is scoped to their own server, and every change is announced in the server's own log channel. Whoever runs the bot (`OPERATOR_USER_IDS`) additionally sees the process-wide figures. Members talk to her with `/mai ask` and clear her memory of them with `/mai forget`.
 
 ## Mai: the bot persona
 

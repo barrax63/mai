@@ -46,6 +46,13 @@ src/commands/              slash commands: /ping, /mai, /mod, and the "Nachricht
 Every non-bot guild message with text content is classified when it is posted **and again when it is edited** ([src/moderation/check.js](src/moderation/check.js)):
 
 - **Guild allowlist** via `DISCORD_GUILD_IDS` (comma-separated IDs; empty = all guilds). This is the **whole-bot** gate, enforced once in `onMessageCreate` and in the interactions endpoint: in an un-listed guild Mai does nothing (no moderation, no chat, no reactions, no welcome, no slash-command response). Direct messages are never moderated (a bot cannot delete a DM) and are allowed only from users who share a listed guild with the bot (see Chat below).
+- **Local rules first** ([src/moderation/heuristics.js](src/moderation/heuristics.js)): before anything is sent to the provider, the guild's own rules judge the message. A classifier scores what a message *means*, and none of these are about meaning: an advertisement is a perfectly polite invite link, a raid is twenty harmless lines in five seconds, a mass ping is one word plus fifty mentions. They are free (no API call, no tokens), they keep working while the provider is down, which is exactly when a raid is cheapest to run, and a message they trip on is never classified at all. All four are house rules rather than a safety floor, so each is **off** until a server turns it on:
+  - `invite-filter`: Discord invite links, with or without a scheme (category `invite`);
+  - `link-policy: allowlist` plus `link-domains`: every link outside the list counts, subdomains of a listed host included (category `link`);
+  - `mention-cap`: users, roles, `@everyone` and `@here` in one message, channel links excluded because they ping nobody (category `mentions`);
+  - `flood` as `count/seconds`: more than `count` messages from one member in that window (category `flood`). One violation **per burst**, not per message: a strike and a scold reply per message would have Mai out-spamming the spammer, and one burst is one incident.
+
+  What they produce is an ordinary list of category slugs, so a trip goes through the same path as a classified violation: warning reaction, scold reply, grace period, queue row, log entry, strike. There is deliberately no separate "delete it instantly" route. Content rules also run on **edits** (posting clean and editing an invite in afterwards would otherwise walk past all of them); the flood rule does not, because editing a message is not sending one.
 - **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
 - **Where the line sits is per server.** The endpoint answers twice (a `flagged` boolean and a `category_scores` map), and `MODERATION_THRESHOLD` (`/mod config set threshold`) decides which one counts. At `0` the provider decides, as before. Above `0`, a category counts when it scores at least that much and the provider's own boolean is ignored entirely (otherwise raising the threshold could never make anything pass). This exists for a measured reason: omni-moderation scores the same insult **0.88 in English and 0.20 in German**, so on a German-speaking server its default line lets most abuse through. `MODERATION_CATEGORIES` (`/mod config set categories`) narrows things the other way: only the listed categories count at all.
 - **Exempt channels** (`/mod exempt add|remove|list`): a vent channel, an NSFW channel, a staff channel. Moderation only: chat and reactions keep working there, which is usually the point. Exempting a channel covers its threads, and any pending queue rows in it are dropped on the next tick rather than enforced later: "Mai does not moderate here" should not be followed by her deleting something there ten minutes on.
@@ -59,9 +66,12 @@ Every non-bot guild message with text content is classified when it is posted **
 - **Self-deletion resolves immediately** ([src/gateway/events/message-delete.js](src/gateway/events/message-delete.js)): the moment the author removes a flagged message, the scold reply goes with it, the queue row is dropped and the log gets its entry: no waiting out a grace period that has nothing left to enforce. Deletions Mai performs herself (enforcement, an approved report) are registered beforehand and skipped, or her own work would be recorded as the author having fixed it. The enforcer keeps the same handling as a fallback for a deletion that happened while the gateway was down.
 - **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the channel and then the message are looked up. Gone (author deleted it, or the channel is) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, a strike is recorded, the row dropped, and the author gets one DM per tick and guild listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient, a channel that holds no messages) keeps the row for the next tick and counts an attempt.
 
+  A warning DM that **bounces** (the member has DMs from server members off, or blocked Mai) is a normal outcome for the process and a bad one for the member: their messages are gone, they may be timed out, and the one message explaining why, carrying the appeal button, never arrived. So the guild's log gets a *Verwarnung nicht zugestellt* entry naming the member, how many messages were removed and the reason in words, because otherwise the log shows a clean `deleted` entry and nothing suggests anyone needs to do anything. `/mai appeal` is the member's own way back in (see *Reports and appeals*).
+
   Rows are processed **serially** (each one is several Discord calls, so parallelism only trades a shorter tick for a harder rate limit) and capped at `MODERATION_MAX_ROWS_PER_TICK`, oldest first, so a backlog after an outage drains in order instead of outlasting the interval and being skipped by the overlap guard forever. Two categories of row are therefore kept out of the due query itself rather than skipped inside the loop, because a row that is kept but can never resolve would otherwise stay the oldest and occupy the cap on every tick: guilds paused with `/mod off`, and only those still on the allowlist (a guild that is *both* paused and un-listed stays in the query, because dropping its rows is the allowlist check's job). A channel that became exempt after the flag drops its rows, checked *after* the channel lookup because an exemption covers the threads inside the exempted channel and the parent id is only knowable from the channel object. The same tick prunes chat history and the strike record, so retention does not depend on anyone talking to Mai.
 - **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside `MODERATION_STRIKE_WINDOW_DAYS` picks a Discord timeout from the ladder (`MODERATION_TIMEOUT_LADDER`, default `0,10,60,1440`: nothing, 10 min, 1 h, then 24 h repeating). Escalation runs **once per member and guild per tick**: three messages removed in one sweep is one incident, and one grouping pass feeds both the timeout and the warning DM so the two cannot drift. Never on the user id alone: one process serves several servers, so the same person can be enforced in two of them in the same tick, and merging those produced a DM quoting one guild's deleted messages next to another's, with an appeal button scoped to whichever guild sorted first. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design: Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped. The one exception is a target Discord can *never* time out (an administrator or the guild owner): that is checked before trying and refused at `info`, because a permanent property of the target is not an incident and would otherwise page the operator every single time such a member trips the ladder. The log-channel entry still goes out: staff should know the ladder had no effect.
 - **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely. Two paths deliberately fail **closed** instead, because there is no deletion to fall back on: an already-queued message being re-checked after an edit (see above), and a `/mai ask` question, which Mai would be republishing herself.
+- **…but not silently.** Failing open is invisible from inside Discord: an outage looks exactly like a quiet afternoon, and until it was reported only the operator (container log, alert channel) ever found out. After `MODERATION_DEGRADED_AFTER` consecutive failures in a server, its log channel gets a *Moderation fällt aus* entry, and a *Moderation läuft wieder* one when the next classification succeeds ([src/moderation/health.js](src/moderation/health.js)). Exactly one of each per outage: an entry per failed message would be a second flood on top of the first. `/mod status` answers the same question on demand, which is the only route for a server with no log channel. The local rules above keep working throughout, which is half of why they are worth having.
 - **`/mai ask` screens the question** ([src/moderation/screen.js](src/moderation/screen.js)), before the completion runs, because the answer quotes it back into the channel, that command was otherwise a way to publish arbitrary text past moderation under Mai's name.
 - **What Mai says herself is deliberately not classified.** Her tone escalates with a member's open violations, and the top rung tells her to insult them outright (`chat.flagged.tones`); a classifier reads that as harassment (0.89–0.98 measured), so an outbound filter would silence the angry cat precisely when she is supposed to be angry. The behaviour is the feature. What stops a prompt-injected model is the prompt (fenced quotes and a system-only instruction notice (see *Chat* below)) rather than a filter on her output.
 - **Image attachments** are only checked when `MODERATION_CLASSIFY_IMAGES=true`. While it is off, a message carrying *only* an image is not classified at all (there is no text to look at) so posting an image is a way around moderation. With it on, image URLs are sent to the moderation endpoint alongside any text (Discord's signed CDN links are fetched by OpenAI; nothing is downloaded or stored by Mai).
@@ -91,12 +101,13 @@ Every non-bot guild message with text content is classified when it is posted **
 | `/ping` | everyone | Liveness check (ephemeral) |
 | `/mai ask <frage>` | everyone | A public question to Mai, answered in character. Stateless: no channel history in the prompt, nothing written to her memory. Subject to the same rate limit as chat, and the question is classified before it is quoted back into the channel |
 | `/mai forget` | everyone | Wipes what Mai remembers about you, behind a confirmation button. Removes your own turns everywhere plus the full history of your DM channel with her |
-| `/mod status` | Manage Messages | Open violations and chat-memory size **for this server**, plus last moderation tick, configured models and uptime (ephemeral) |
+| `/mai appeal` | everyone | Opens the appeal form for your most recent enforcement here, for members whose warning DM never arrived. Same form, same scope as the button under that DM |
+| `/mod status` | Manage Messages | Open violations and chat-memory size **for this server**, plus last moderation tick, whether classification is currently working, configured models and uptime (ephemeral) |
 | `/mod forgive <user> [strikes]` | Manage Messages | Drops that member's open violations **in this server** and cleans up the scold replies; `strikes:true` also wipes their strike record, resetting the ladder |
 | `/mod history <user>` | Manage Messages | That member's strike record here, and what their next enforced deletion would cost |
 | `/mod spend` | Manage Messages | OpenAI calls and tokens today and this month **for this server**, per purpose and model. The budget's figures are process-wide, so staff only learn whether it is exhausted |
 | `/mod config view` | Manage Messages | The settings in effect here, marking which ones are inherited defaults |
-| `/mod config set [log-channel] [welcome-channel] [grace] [timeout-ladder] [strike-window] [escalation] [enabled] [threshold] [categories]` | Manage Messages | Sets any subset for this server |
+| `/mod config set [log-channel] [welcome-channel] [grace] [timeout-ladder] [strike-window] [escalation] [enabled] [threshold] [categories] [invite-filter] [link-policy] [link-domains] [mention-cap] [flood]` | Manage Messages | Sets any subset for this server |
 | `/mod config reset [setting]` | Manage Messages | Back to the default; omit the setting to reset all |
 | `/mod exempt add\|remove\|list [channel]` | Manage Messages | Channels Mai does not moderate; chat and reactions keep working there |
 | `/mod off` / `/mod on` | Manage Messages | Kill switch: switches Mai off in this server completely, and back on |
@@ -134,7 +145,16 @@ ephemeral and a stranger's refusal must not overwrite the entry.
 **Appealing** ([src/moderation/appeal.js](src/moderation/appeal.js)): the warning
 DM carries an *Einspruch einlegen* button. It opens a modal, and the member's
 statement is posted into that guild's log channel. Rate limit: 3 per member per
-hour.
+hour, whichever door the appeal came through.
+
+**`/mai appeal`** is the second door, for a member with DMs closed: the warning
+never reaches them, so neither does the button, and they would be enforced with
+no way to answer for it. The command rebuilds the same appeal from the strike
+record: the most recent enforcement pass, found by the gap between strikes
+(rows of one tick are written seconds apart, two passes a tick interval apart),
+and only inside the strike window, because a strike that no longer counts has
+nothing left for a granted appeal to overturn. Everything downstream is the
+identical flow, including the scope: the incident, not the record.
 
 That entry carries **Stattgeben** / **Ablehnen** buttons, both Manage
 Messages-only and checked server-side. Either way the decision is written back
@@ -178,10 +198,21 @@ inherited.
 | `categories` | `MODERATION_CATEGORIES` | Category slugs that count at all, comma-separated; empty = all of them (max 30) |
 | `exempt-channels` | none | Channels moderation ignores, comma-separated (max 50). Edited through `/mod exempt add\|remove\|list`, not `/mod config set` |
 | `enabled` | on | The kill switch: same flag as `/mod off` / `/mod on` |
+| `invite-filter` | `MODERATION_INVITE_FILTER` | Treat Discord invite links as a violation |
+| `link-policy` | `MODERATION_LINK_POLICY` | `off`, or `allowlist`: every link outside `link-domains` counts |
+| `link-domains` | `MODERATION_LINK_DOMAINS` | Allowed host names, comma-separated (max 50); subdomains of a listed host are covered |
+| `mention-cap` | `MODERATION_MENTION_CAP` | Most mentions one message may carry, `@everyone` included (0–100, 0 = off) |
+| `flood` | `MODERATION_FLOOD` | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
 
 A setting whose value is a *list* still lives in the `SETTINGS` map as one
 comma-separated column, but gets its own subcommands for editing: nobody types
-channel ids into `/mod config set`.
+channel ids into `/mod config set`. `link-domains` is the exception that proves
+the rule: host names are read and written by humans, so it stays a plain option.
+
+For the last five, "off" and "not configured" are different answers, and the
+column keeps them apart: `/mod config set flood:off` stores an explicit *no
+flood rule here* rather than reverting to whatever `.env` says, which is what
+`/mod config reset flood` is for.
 
 ### Kill switch
 
@@ -214,6 +245,8 @@ With `log-channel` set, every moderation action is posted as an embed
 | `timeout` / `timeoutFailed` | red / orange | The escalation ladder fired, or Discord refused it |
 | `stuck` / `abandoned` | orange / grey | A row keeps failing to enforce, and where Mai gives up |
 | `config` | slate | `/mod config`, `/mod exempt` or `/mod off` / `/mod on` changed the rules |
+| `warningUndelivered` | orange | The warning DM bounced: the member was enforced without ever being told, and never saw the appeal button |
+| `degraded` / `recovered` | orange / green | Classification started failing (moderation is passing everything through here), and started working again |
 
 **Every entry starts with the same head**: member, channel, message, in that
 order, and each kind appends its own fields. Following one incident across

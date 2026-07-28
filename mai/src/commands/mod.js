@@ -6,7 +6,7 @@
  * is a UI default a server admin can widen.
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { config, isOperator } from '../config.js';
+import { config, isOperator, LINK_POLICIES } from '../config.js';
 import { content, fill } from '../content.js';
 import { stats as historyStats } from '../db/history.js';
 import { depth, forgiveUser } from '../db/queue.js';
@@ -22,6 +22,7 @@ import { ladderFor, strikeWindowStart } from '../moderation/escalation.js';
 import { getGatewayClient } from '../gateway/client.js';
 import { logger } from '../logger.js';
 import { getEnforcerStatus } from '../moderation/enforcer.js';
+import { degradedGuildIds } from '../moderation/health.js';
 import { LOG_CONFIG, LOG_FORGIVEN, postModerationLog } from '../moderation/log.js';
 import { optionValue, resolveSubcommand } from '../interactions/options.js';
 import { ephemeralResponse } from '../interactions/respond.js';
@@ -85,6 +86,16 @@ function statusResponse(interaction) {
     `moderation \`${config.openai.moderationModel}\`${config.moderation.enabled ? '' : ' (aus)'}`,
   ].join(', ');
 
+  // Whether classification is currently failing open. The guild's log channel
+  // gets an entry when it starts, but a guild without one has no other way to
+  // find out, and "is Mai working?" is exactly what this command is asked.
+  const degraded = degradedGuildIds();
+  const classifier = scope
+    ? (degraded.includes(scope) ? content.commands.status.degraded : content.commands.status.healthy)
+    : fill(degraded.length > 0 ? content.commands.status.degradedGuilds : content.commands.status.healthy, {
+        count: degraded.length,
+      });
+
   return ephemeralResponse(
     fill(content.commands.status.body, {
       // Enforcer health, uptime and the model names stay unscoped: they are
@@ -96,6 +107,7 @@ function statusResponse(interaction) {
       historyChannels: history.channels,
       lastTick,
       openai,
+      classifier,
       uptime: formatUptime(process.uptime()),
     }),
   );
@@ -333,7 +345,7 @@ function forgiveResponse(interaction) {
 function configView(guildId) {
   const settings = effectiveSettings(guildId);
   const inherited = (key) => (settings.inherited[key] ? ` ${content.commands.config.inherited}` : '');
-  const { unset, systemChannel, thresholdOff, allCategories, noExemptChannels } =
+  const { unset, systemChannel, thresholdOff, allCategories, noExemptChannels, guardOff, noDomains } =
     content.commands.config;
   const yesNo = (value) => (value ? content.commands.config.on : content.commands.config.off);
 
@@ -363,6 +375,21 @@ function configView(guildId) {
         ? settings.exemptChannels.map((id) => `<#${id}>`).join(' ')
         : noExemptChannels,
       exemptChannelsSource: inherited('exempt-channels'),
+      // The rules Mai applies without a classifier. Each renders as its own
+      // "off" rather than a bare 0 or an empty string: a moderator reading this
+      // has to be able to tell "not set up" from "set to nothing".
+      inviteFilter: yesNo(settings.inviteFilter),
+      inviteFilterSource: inherited('invite-filter'),
+      linkPolicy: settings.linkPolicy === 'off' ? guardOff : settings.linkPolicy,
+      linkPolicySource: inherited('link-policy'),
+      linkDomains: settings.linkDomains.length ? settings.linkDomains.join(', ') : noDomains,
+      linkDomainsSource: inherited('link-domains'),
+      mentionCap: settings.mentionCap > 0 ? settings.mentionCap : guardOff,
+      mentionCapSource: inherited('mention-cap'),
+      flood: settings.floodRule
+        ? fill(content.commands.config.floodRule, settings.floodRule)
+        : guardOff,
+      floodSource: inherited('flood'),
     }),
   );
 }
@@ -701,6 +728,34 @@ export const mod = {
               {
                 name: 'categories',
                 description: 'Only these categories count, comma-separated (empty = all)',
+                type: 3, // STRING
+              },
+              {
+                name: 'invite-filter',
+                description: 'Treat Discord invite links as a violation',
+                type: 5, // BOOLEAN
+              },
+              {
+                name: 'link-policy',
+                description: 'What to do with links: off, or allow only link-domains',
+                type: 3, // STRING
+                choices: LINK_POLICIES.map((value) => ({ name: value, value })),
+              },
+              {
+                name: 'link-domains',
+                description: 'Allowed hosts, comma-separated (subdomains included)',
+                type: 3, // STRING
+              },
+              {
+                name: 'mention-cap',
+                description: 'Most mentions one message may carry, @everyone included (0 = off)',
+                type: 4, // INTEGER
+                min_value: 0,
+                max_value: 100,
+              },
+              {
+                name: 'flood',
+                description: 'Message burst rule as count/seconds, e.g. 6/10 (or off)',
                 type: 3, // STRING
               },
             ],

@@ -82,6 +82,7 @@ function loadContent() {
   const appeal = section(moderation, 'appeal');
   const commands = section(parsed, 'commands');
   const ask = section(commands, 'ask');
+  const appealCommand = section(commands, 'appeal');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
   const forgive = section(commands, 'forgive');
@@ -163,6 +164,9 @@ function loadContent() {
           config: str(logTitles, ['moderation', 'log', 'titles', 'config']),
           appealGranted: str(logTitles, ['moderation', 'log', 'titles', 'appealGranted']),
           appealDenied: str(logTitles, ['moderation', 'log', 'titles', 'appealDenied']),
+          warningUndelivered: str(logTitles, ['moderation', 'log', 'titles', 'warningUndelivered']),
+          degraded: str(logTitles, ['moderation', 'log', 'titles', 'degraded']),
+          recovered: str(logTitles, ['moderation', 'log', 'titles', 'recovered']),
         }),
         fields: Object.freeze({
           user: str(logFields, ['moderation', 'log', 'fields', 'user']),
@@ -250,6 +254,16 @@ function loadContent() {
         never: str(status, ['commands', 'status', 'never']),
         // Marks a view whose counters span every guild (operators only).
         allGuilds: str(status, ['commands', 'status', 'allGuilds']),
+        // Whether classification is answering. Moderation fails open, so an
+        // outage is otherwise indistinguishable from a quiet server.
+        healthy: str(status, ['commands', 'status', 'healthy']),
+        degraded: str(status, ['commands', 'status', 'degraded']),
+        degradedGuilds: str(status, ['commands', 'status', 'degradedGuilds']),
+      }),
+      appeal: Object.freeze({
+        guildOnly: str(appealCommand, ['commands', 'appeal', 'guildOnly']),
+        nothing: str(appealCommand, ['commands', 'appeal', 'nothing']),
+        unavailable: str(appealCommand, ['commands', 'appeal', 'unavailable']),
       }),
       forgive: Object.freeze({
         done: str(forgive, ['commands', 'forgive', 'done']),
@@ -316,6 +330,10 @@ function loadContent() {
         thresholdOff: str(configSection, ['commands', 'config', 'thresholdOff']),
         allCategories: str(configSection, ['commands', 'config', 'allCategories']),
         noExemptChannels: str(configSection, ['commands', 'config', 'noExemptChannels']),
+        // The rules Mai applies herself: each is off until a guild turns it on.
+        guardOff: str(configSection, ['commands', 'config', 'guardOff']),
+        noDomains: str(configSection, ['commands', 'config', 'noDomains']),
+        floodRule: str(configSection, ['commands', 'config', 'floodRule']),
         nothing: str(configSection, ['commands', 'config', 'nothing']),
         invalid: str(configSection, ['commands', 'config', 'invalid']),
         guildOnly: str(configSection, ['commands', 'config', 'guildOnly']),

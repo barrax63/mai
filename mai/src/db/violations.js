@@ -64,6 +64,58 @@ export function strikeCount(guildId, userId, sinceIso) {
 }
 
 /**
+ * Strikes are written one per deleted message, but a member appeals an
+ * *incident*: everything one enforcement pass took from them. Rows inside a
+ * pass are written seconds apart at most (each is a Discord round trip), while
+ * two passes are a tick interval apart, so a gap is what separates them.
+ * Widening this much further would start swallowing the previous incident,
+ * which an appeal says nothing about.
+ */
+const PASS_GAP_MS = 15_000;
+/** Enough rows to cover any one pass; a member is not enforced 50 times a tick. */
+const PASS_LOOKBACK_ROWS = 50;
+
+/**
+ * The most recent enforcement pass against a member, as the `since` an appeal
+ * is scoped by.
+ *
+ * The appeal button carries that value from the warning DM. This is the same
+ * value reconstructed from the record, for the member whose DM never arrived:
+ * without it `/mai appeal` would either have nothing to name or would have to
+ * overturn a whole record it was never about.
+ *
+ * @param {string} guildId
+ * @param {string} userId
+ * @param {string} [sinceIso] Ignore anything older (the strike window: a strike
+ *   that no longer counts has nothing left to overturn).
+ * @returns {{ sinceIso: string, strikes: number } | null} null = nothing to appeal.
+ */
+export function lastEnforcementPass(guildId, userId, sinceIso) {
+  const rows = getDb()
+    .prepare(
+      `SELECT created_at FROM violations
+       WHERE guild_id = ? AND user_id = ? AND action = ? AND created_at >= ?
+       ORDER BY created_at DESC LIMIT ?`,
+    )
+    .all(guildId, userId, ACTION_DELETED, sinceIso ?? '', PASS_LOOKBACK_ROWS)
+    .map((row) => Date.parse(row.created_at))
+    .filter((at) => Number.isFinite(at));
+
+  if (rows.length === 0) return null;
+
+  let start = rows[0];
+  let strikes = 1;
+  for (const at of rows.slice(1)) {
+    if (start - at > PASS_GAP_MS) break;
+    start = at;
+    strikes += 1;
+  }
+
+  // The oldest row of the pass, inclusive: `overturnSince` matches on `>=`.
+  return { sinceIso: new Date(start).toISOString(), strikes };
+}
+
+/**
  * @param {string} guildId
  * @param {string} userId
  * @param {number} [limit]

@@ -86,27 +86,51 @@ export function appealComponents(guildId, sinceIso) {
 /** @param {string} since Epoch seconds from a custom_id. */
 const incidentIso = (since) => new Date(Number(since || 0) * 1000).toISOString();
 
+/**
+ * An appeal is staff attention, so it is limited per member regardless of which
+ * door it came through: the DM button or `/mai appeal`.
+ *
+ * @param {string} userId
+ * @returns {boolean}
+ */
+export const mayOpenAppeal = (userId) => appealLimiter.consume(userId);
+
+/**
+ * The appeal form itself. Shared with `/mai appeal`, which exists because a
+ * member with closed DMs never receives the button: the warning DM bounces, and
+ * without a second route they are enforced with no way to answer for it.
+ *
+ * Opening a modal is the immediate response to an interaction and cannot be
+ * deferred, so every caller must reach this with synchronous work only.
+ *
+ * @param {string} guildId
+ * @param {string | number} since Epoch seconds of the enforcement pass.
+ * @returns {object} Interaction response.
+ */
+export const appealModal = (guildId, since) =>
+  modalResponse({
+    customId: `appeal-submit:${guildId}:${since ?? 0}`,
+    title: content.moderation.appeal.modalTitle,
+    components: [
+      textInput({
+        customId: APPEAL_INPUT,
+        label: content.moderation.appeal.inputLabel,
+        style: PARAGRAPH_INPUT,
+        required: true,
+        maxLength: APPEAL_MAX_LENGTH,
+        placeholder: content.moderation.appeal.inputPlaceholder,
+      }),
+    ],
+  });
+
 export const appealButtons = {
   appeal(interaction, [guildId, since]) {
     const member = actor(interaction);
-    if (!appealLimiter.consume(member.id)) {
+    if (!mayOpenAppeal(member.id)) {
       return ephemeralResponse(content.moderation.appeal.busy);
     }
 
-    return modalResponse({
-      customId: `appeal-submit:${guildId}:${since ?? 0}`,
-      title: content.moderation.appeal.modalTitle,
-      components: [
-        textInput({
-          customId: APPEAL_INPUT,
-          label: content.moderation.appeal.inputLabel,
-          style: PARAGRAPH_INPUT,
-          required: true,
-          maxLength: APPEAL_MAX_LENGTH,
-          placeholder: content.moderation.appeal.inputPlaceholder,
-        }),
-      ],
-    });
+    return appealModal(guildId, since);
   },
 };
 
