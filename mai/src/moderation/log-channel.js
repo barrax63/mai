@@ -55,8 +55,13 @@ function adoptable(guild) {
     if (channel?.type !== ChannelType.GuildText) continue;
     if (!ADOPTABLE.test(channel.name ?? '')) continue;
     // A channel she cannot write in is not an answer, it is the same problem
-    // one step further along.
-    if (me && channel.permissionsFor(me)?.missing(NEEDED).length > 0) continue;
+    // one step further along. Written out rather than leaning on `?.` here: the
+    // short-circuit would make an unreadable permission set read as "fine",
+    // and this is the check that stops her adopting somewhere she is mute.
+    if (me) {
+      const gaps = channel.permissionsFor(me)?.missing(NEEDED);
+      if (!gaps || gaps.length > 0) continue;
+    }
     return channel;
   }
   return null;

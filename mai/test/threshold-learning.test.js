@@ -118,13 +118,13 @@ test('the window ending applies the number and offers to take it back', async ()
   getDb().exec('DELETE FROM guild_settings');
   clearScores(TEST_GUILD);
 
-  // A week of German-scoring traffic: nothing the provider would flag, worst
-  // 1% around 0.2.
-  for (let index = 0; index < 970; index++) recordScore(TEST_GUILD, 0.02);
-  for (let index = 0; index < 30; index++) recordScore(TEST_GUILD, 0.22);
-
   updateSettings(TEST_GUILD, { 'log-channel': '870000000000000001' });
   startShadowWindow(TEST_GUILD, 7);
+
+  // A week of German-scoring traffic, collected *inside* the window: nothing
+  // the provider would flag, worst 1% around 0.2.
+  for (let index = 0; index < 970; index++) recordScore(TEST_GUILD, 0.02);
+  for (let index = 0; index < 30; index++) recordScore(TEST_GUILD, 0.22);
   // Wind the window back so this tick is the one that finds it expired.
   getDb()
     .prepare('UPDATE guild_settings SET shadow_until = ? WHERE guild_id = ?')
@@ -164,11 +164,11 @@ test('a server that already chose a threshold is not overruled by the week', asy
 
   getDb().exec('DELETE FROM guild_settings');
   clearScores(TEST_GUILD);
-  for (let index = 0; index < 970; index++) recordScore(TEST_GUILD, 0.02);
-  for (let index = 0; index < 30; index++) recordScore(TEST_GUILD, 0.22);
-
   updateSettings(TEST_GUILD, { threshold: 0.45 }, 'admin-1');
   startShadowWindow(TEST_GUILD, 7);
+
+  for (let index = 0; index < 970; index++) recordScore(TEST_GUILD, 0.02);
+  for (let index = 0; index < 30; index++) recordScore(TEST_GUILD, 0.22);
   getDb()
     .prepare('UPDATE guild_settings SET shadow_until = ? WHERE guild_id = ?')
     .run(new Date(Date.now() - 60_000).toISOString(), TEST_GUILD);
@@ -218,4 +218,26 @@ test('the undo button is one click, and only for this server\'s staff', async ()
   const settings = effectiveSettings(TEST_GUILD);
   assert.equal(settings.source.threshold, 'default', 'back to profile or base');
   assert.equal(settings.inherited.threshold, true);
+});
+
+test('an abandoned observation period does not feed the next one', async () => {
+  const { getDb } = await import('../src/db/index.js');
+  const { clearShadowWindow, startShadowWindow } = await import('../src/db/settings.js');
+
+  getDb().exec('DELETE FROM guild_settings');
+  clearScores(TEST_GUILD);
+
+  startShadowWindow(TEST_GUILD, 7);
+  for (let index = 0; index < 300; index++) recordScore(TEST_GUILD, 0.9);
+
+  // Abandoned rather than expired (`/mod config set shadow:false`, or any other
+  // preset), so nothing will ever read these: the expiry path is the only place
+  // that drops them, and it will not run.
+  clearShadowWindow(TEST_GUILD);
+  assert.deepEqual(histogram(TEST_GUILD), new Array(BUCKETS).fill(0));
+
+  // And a period that starts fresh starts from nothing, whatever went before.
+  for (let index = 0; index < 300; index++) recordScore(TEST_GUILD, 0.9);
+  startShadowWindow(TEST_GUILD, 7);
+  assert.deepEqual(histogram(TEST_GUILD), new Array(BUCKETS).fill(0));
 });

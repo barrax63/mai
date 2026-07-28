@@ -617,8 +617,11 @@ function learnThreshold(guildId) {
 
     if (!suggestion) return null;
 
-    // Never overrule a server that has already decided where its line is.
-    if (!effectiveSettings(guildId).inherited.threshold) return null;
+    // Never overrule a server that has already decided where its line is, and
+    // a profile is a decision: `source`, not `inherited`, because `inherited`
+    // only asks whether the guild typed the value itself and answers "yes, go
+    // ahead" for a threshold that came out of `strict`.
+    if (effectiveSettings(guildId).source.threshold !== 'default') return null;
 
     updateSettings(guildId, { threshold: suggestion.threshold });
     return suggestion;

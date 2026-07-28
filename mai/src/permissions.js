@@ -160,23 +160,31 @@ function reconcileEscalation(guild, report) {
   // cold start.
   if (!report.known) return;
 
-  const settings = effectiveSettings(guild.id);
-  const canTimeOut = !report.guild.includes('ModerateMembers');
+  // The audit itself is a read, and two of its three callers are the gateway's
+  // ready sweep and the join handler: a failing write here would take those with
+  // it. Reporting what is missing matters more than acting on it, so the acting
+  // half can fail on its own.
+  try {
+    const settings = effectiveSettings(guild.id);
+    const canTimeOut = !report.guild.includes('ModerateMembers');
 
-  if (!canTimeOut && settings.escalationEnabled) {
-    if (suspendEscalation(guild.id)) {
-      logger.warn(
-        { guildId: guild.id },
-        'Escalation switched off: Moderate Members is missing, so every timeout would fail',
-      );
-      announce(guild.id, content.moderation.log.escalationSuspended);
+    if (!canTimeOut && settings.escalationEnabled) {
+      if (suspendEscalation(guild.id)) {
+        logger.warn(
+          { guildId: guild.id },
+          'Escalation switched off: Moderate Members is missing, so every timeout would fail',
+        );
+        announce(guild.id, content.moderation.log.escalationSuspended);
+      }
+      return;
     }
-    return;
-  }
 
-  if (canTimeOut && settings.escalationSuspendedAt && resumeEscalation(guild.id)) {
-    logger.info({ guildId: guild.id }, 'Escalation switched back on: Moderate Members is back');
-    announce(guild.id, content.moderation.log.escalationResumed);
+    if (canTimeOut && settings.escalationSuspendedAt && resumeEscalation(guild.id)) {
+      logger.info({ guildId: guild.id }, 'Escalation switched back on: Moderate Members is back');
+      announce(guild.id, content.moderation.log.escalationResumed);
+    }
+  } catch (error) {
+    logger.warn({ guildId: guild.id, err: error }, 'Could not reconcile escalation with permissions');
   }
 }
 

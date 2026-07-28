@@ -32,6 +32,7 @@ import {
 } from '../config.js';
 import { BASE_SETTINGS, PRESETS, PROFILE_KEYS } from '../moderation/presets.js';
 import { getDb } from './index.js';
+import { clearScores } from './shadow-scores.js';
 
 /** Discord snowflakes, as stored in the comma-separated channel columns. */
 const SNOWFLAKE = /^\d{5,25}$/;
@@ -473,6 +474,12 @@ export function setProfile(guildId, name, actorId, extra = {}) {
  */
 export function startShadowWindow(guildId, days, now = new Date()) {
   const until = new Date(now.getTime() + days * 86_400_000).toISOString();
+  // A period starts from nothing. The expiry path drops the histogram after
+  // reading it, but a period that is *abandoned* (a different preset, an
+  // explicit `shadow:false`) never reaches that path, and its leftovers would
+  // otherwise be counted into the next one: a threshold learned from two
+  // unrelated weeks, possibly months apart.
+  clearScores(guildId);
   getDb()
     .prepare(
       `INSERT INTO guild_settings (guild_id, shadow_mode, shadow_until, shadow_hits, updated_at)
@@ -499,6 +506,9 @@ export function clearShadowWindow(guildId) {
   getDb()
     .prepare('UPDATE guild_settings SET shadow_until = NULL WHERE guild_id = ?')
     .run(String(guildId));
+  // Nothing will ever read this period's scores now, so they are not kept:
+  // an abandoned observation is not a measurement of anything.
+  clearScores(guildId);
 }
 
 /**

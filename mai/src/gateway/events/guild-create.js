@@ -136,7 +136,17 @@ export async function onGuildCreate(guild) {
   // Before the introduction, so it can say what she did. `log-channel` is the
   // one setting with no working default, and without it reports, appeals and
   // the outage notice all have nowhere to land.
-  const log = await ensureLogChannel(guild);
+  //
+  // Wrapped, and this is the important part: `onboarded_at` is already written,
+  // so anything that throws between here and the send costs this server its
+  // introduction permanently. Failing to find a channel is a thing she can say
+  // out loud; failing to *say anything* is not.
+  let log = { channelId: null, created: false, adopted: false };
+  try {
+    log = await ensureLogChannel(guild);
+  } catch (error) {
+    logger.warn({ guildId: guild.id, err: error }, 'Could not settle a log channel on join');
+  }
 
   const body = `${content.commands.setup.introduction}${logChannelNotice(log)}${permissionNotice(guild)}`;
 
