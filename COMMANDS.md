@@ -114,7 +114,7 @@ resettable with `/mod config reset`.
 period of it tells a server what Mai would have done to its own traffic, which
 is the only honest way to find out whether her line sits where theirs does.
 
-It is a **period**, not a state. The window is `MODERATION_SHADOW_DAYS` long
+It is a **period**, not a state. The window is a week long
 (seven by default), and when it runs out Mai switches herself back to enforcing
 and posts a *Beobachtungszeit vorbei* entry saying how much she would have acted
 on during it. Nobody has to remember to end it, which is the only reason it is
@@ -263,7 +263,7 @@ setting to the inherited default, or all of them when the setting is omitted.
 | `log-channel` | Where moderation entries are posted. Unset = no log for this server, which also disables reports, appeals and evidence |
 | `welcome-channel` | Where new members are greeted (default: the server's system channel) |
 | `grace` | Minutes an author has to delete a flagged message themselves (1 to 1440) |
-| `timeout-ladder` | Timeout minutes per strike, e.g. `0,10,60,1440`; the last step repeats |
+| `timeout-ladder` | Timeout minutes per strike, e.g. `0,5,15,30,60`; the last step repeats |
 | `strike-window` | Days an enforced deletion counts towards escalation (1 to 365) |
 | `escalation` | Hand out timeouts at all. Off still records strikes |
 | `enabled` | The same switch as `/mod off` / `/mod on` |

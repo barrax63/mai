@@ -242,14 +242,6 @@ export function parseFloodRule(raw, label = 'flood rule') {
   return { messages, seconds };
 }
 
-const ratio = (name, fallback) => {
-  try {
-    return parseThreshold(optional(name, fallback), name);
-  } catch (error) {
-    throw new Error(`Environment variable ${error.message}`);
-  }
-};
-
 /** A non-negative number, fractional allowed. 0 = disabled. */
 const amount = (name, fallback, unit) => {
   const raw = optional(name, fallback);
@@ -263,7 +255,6 @@ const amount = (name, fallback, unit) => {
 };
 
 const hours = (name, fallback) => amount(name, fallback, 'hours');
-const days = (name, fallback) => amount(name, fallback, 'days');
 
 /**
  * Environment variables that used to do something and no longer do.
@@ -294,13 +285,83 @@ deprecate(
     + 'or /mod config set shadow:true (open-ended). This variable is ignored.',
 );
 
-const ladder = (name, fallback) => {
-  try {
-    return parseTimeoutLadder(optional(name, fallback), name);
-  } catch (error) {
-    throw new Error(`Environment variable ${error.message}`);
-  }
-};
+/**
+ * Tuning that used to be configurable and is now simply correct.
+ *
+ * Every one of these had an environment variable, a line in `.env.example` and
+ * a paragraph explaining a number nobody had a reason to change: the size of an
+ * HTTP body Discord never sends, how many turns of context a model reads well,
+ * how often a loop that processes a handful of rows should wake up. A knob that
+ * is never turned is not flexibility, it is another line the operator has to
+ * form an opinion about before the bot starts, and fifty of those is why this
+ * file was hard to approach.
+ *
+ * The bar for keeping a variable is that somebody has a reason to set it: a
+ * secret, something about the deployment (ports, paths, ids), or a policy that
+ * differs per server. These are none of those, so they are values now.
+ *
+ * A second tier sits between this and the documented surface: the timings the
+ * *test suite* varies (`OPENAI_MAX_RETRIES` and `OPENAI_TIMEOUT_MS` so a stubbed
+ * failure does not sleep through its backoff, the four rate-limit knobs and
+ * `MODERATION_MAX_ROWS_PER_TICK` / `MODERATION_DEGRADED_AFTER` so a test can
+ * reach a limit in two steps instead of a hundred, `PRESENCE_ROTATE_HOURS` to
+ * reach the interval clamp). Those keep reading the environment, because the
+ * environment is already the seam the tests use and a test-only setter exported
+ * from production code would be worse. They are gone from `.env.example` and the
+ * README instead: reachable, not offered.
+ */
+const TICK_MS = 60_000;
+const STUCK_RESTART_TICKS = 5;
+const MAX_BODY_BYTES = 65_536;
+const HISTORY_TURNS = 12;
+const MAX_REPLY_CHARS = 1800;
+const VISION_MAX_IMAGES = 2;
+const SHADOW_DAYS = 7;
+
+// Reported at startup rather than ignored: the failure mode of silence is a
+// deployment whose carefully chosen number stopped being read and cannot see it.
+const retired = (name) =>
+  deprecate(name, 'This is a fixed value now and the variable is ignored.');
+
+retired('MODERATION_TICK_MS');
+retired('MODERATION_STUCK_RESTART_TICKS');
+retired('INTERACTIONS_MAX_BODY_BYTES');
+retired('CHAT_HISTORY_TURNS');
+retired('CHAT_MAX_REPLY_CHARS');
+retired('CHAT_VISION_MAX_IMAGES');
+retired('MODERATION_SHADOW_DAYS');
+
+/**
+ * The per-server policies that used to have a process-wide default here.
+ *
+ * A default for a setting that belongs to a server is only meaningful in a
+ * deployment with one server. With several, it quietly decided things for
+ * servers whose staff could not see the file it lived in, and it put a third
+ * place to look between `/mod config view` and the answer to "why did Mai
+ * delete that?". They live in `BASE_SETTINGS` (moderation/presets.js) now, at
+ * the values these shipped with, under the guild's profile and its own
+ * overrides. Nothing about an existing server's behaviour changes unless its
+ * `.env` had one of these set to something other than the default.
+ */
+for (const name of [
+  'MODERATION_GRACE_PERIOD_MINUTES',
+  'MODERATION_ESCALATION_ENABLED',
+  'MODERATION_TIMEOUT_LADDER',
+  'MODERATION_STRIKE_WINDOW_DAYS',
+  'MODERATION_THRESHOLD',
+  'MODERATION_CATEGORIES',
+  'MODERATION_INVITE_FILTER',
+  'MODERATION_LINK_POLICY',
+  'MODERATION_LINK_DOMAINS',
+  'MODERATION_MENTION_CAP',
+  'MODERATION_FLOOD',
+]) {
+  deprecate(
+    name,
+    'This is a per-server setting now: /mod setup for a whole profile, '
+      + '/mod config set for one value. The variable is ignored.',
+  );
+}
 
 /**
  * Runs one of the exported parsers over an environment variable, so the process
@@ -316,9 +377,20 @@ const parsed = (parse) => (name, fallback) => {
   }
 };
 
-const linkPolicy = parsed(parseLinkPolicy);
-const domains = parsed(parseDomainList);
-const flood = parsed(parseFloodRule);
+/**
+ * The thirteenth of the per-server policies, and the one that could not leave.
+ *
+ * `MODERATION_NAME_CHECK` is not only a policy: anything but `off` requests the
+ * privileged GuildMembers intent, and an intent is decided once, at login, for
+ * the whole process. A guild setting therefore cannot turn one on, so the
+ * operator has to state up front whether member events are available at all.
+ * The setting of the same name is per guild like the rest, and answers with a
+ * warning when this says no.
+ *
+ * Collapsing this and `DISCORD_WELCOME_ENABLED` into a single "I switched the
+ * intent on in the Developer Portal" variable is the obvious next move, and
+ * would let the policy half of it follow the other twelve into `BASE_SETTINGS`.
+ */
 const nameCheck = parsed(parseNameCheck);
 
 const moderationEnabled = bool('MODERATION_ENABLED', 'true');
@@ -401,7 +473,7 @@ export const config = Object.freeze({
     rateLimitWindowMs: int('INTERACTIONS_RATE_LIMIT_WINDOW_MS', '60000', { min: 1000 }),
     // Discord's own payloads are a few KB; this only stops someone streaming
     // megabytes at the signature check.
-    maxBodyBytes: int('INTERACTIONS_MAX_BODY_BYTES', '65536', { min: 1024 }),
+    maxBodyBytes: MAX_BODY_BYTES,
     // Bearer token for GET /metrics. The whole server is public through the
     // tunnel and the metrics are process-wide, so an empty token disables the
     // endpoint entirely rather than exposing every guild's counts.
@@ -424,10 +496,8 @@ export const config = Object.freeze({
   },
   moderation: {
     enabled: moderationEnabled,
-    // Time the author has to delete a flagged message themselves.
-    gracePeriodMinutes: int('MODERATION_GRACE_PERIOD_MINUTES', '10', { min: 1 }),
     // How often the enforcer looks for due rows (also prunes chat history).
-    tickMs: int('MODERATION_TICK_MS', '60000', { min: 1000 }),
+    tickMs: TICK_MS,
     // Most rows one tick will work through. Rows are processed one at a time
     // (several Discord calls each), so an unbounded backlog after an outage
     // could take longer than the interval and be skipped by the overlap guard
@@ -435,35 +505,8 @@ export const config = Object.freeze({
     maxRowsPerTick: int('MODERATION_MAX_ROWS_PER_TICK', '100', { min: 1 }),
     // Also send image attachments to the moderation endpoint (multimodal).
     classifyImages: bool('MODERATION_CLASSIFY_IMAGES', 'false'),
-    // Hand out timeouts at all. Off still records strikes, so the record stays
-    // complete and switching it back on picks up where it left off.
-    escalationEnabled: bool('MODERATION_ESCALATION_ENABLED', 'true'),
-    // Timeout in minutes per strike, 1-based; the last entry repeats. 0 = no
-    // timeout for that strike, so the default lets a first offence pass with
-    // just the deletion. Discord caps a timeout at 28 days (40320 minutes).
-    timeoutLadder: ladder('MODERATION_TIMEOUT_LADDER', '0,10,60,1440'),
-    // How far back strikes count towards escalation.
-    strikeWindowDays: int('MODERATION_STRIKE_WINDOW_DAYS', '30', { min: 1 }),
-    // Minimum category score (0-1) that counts as a violation. 0 = trust the
-    // provider's own `flagged` boolean. Worth raising off 0 for non-English
-    // servers: the same insult scores far lower in German than in English, so
-    // the provider's own line lets most of it through.
-    threshold: ratio('MODERATION_THRESHOLD', '0'),
-    // Comma-separated category slugs that count at all. Empty = all of them.
-    categories: parseCategoryList(optional('MODERATION_CATEGORIES', '') ?? '', 'MODERATION_CATEGORIES'),
     // How long the strike record is kept at all.
     violationRetentionDays: int('VIOLATION_RETENTION_DAYS', '90', { min: 1 }),
-    // Rules Mai applies herself, before any classifier call: they cost no
-    // tokens, catch what a semantic score cannot (an ad, a raid, a mass ping)
-    // and keep working while the provider is down. All four default to off:
-    // they are a server's own house rules, not a safety floor.
-    inviteFilter: bool('MODERATION_INVITE_FILTER', 'false'),
-    linkPolicy: linkPolicy('MODERATION_LINK_POLICY', 'off'),
-    linkDomains: domains('MODERATION_LINK_DOMAINS', ''),
-    // Mentions (users, roles, @everyone, @here) one message may carry. 0 = off.
-    mentionCap: int('MODERATION_MENTION_CAP', '0'),
-    // Messages per member per window, as `count/seconds`. Empty = off.
-    floodRule: flood('MODERATION_FLOOD', ''),
     // Consecutive failed classifications in one guild before its staff are told
     // in the log channel that Mai is currently letting everything through.
     // Moderation fails open, which is deliberate but invisible from Discord.
@@ -479,30 +522,28 @@ export const config = Object.freeze({
     // intent, which is why anything but 'off' requests it (see `discord` above).
     nameCheck: nameCheckMode,
     // How long `/mod setup observe` watches before switching itself back to
-    // enforcing. Days, fractions allowed so a deployment can test the ending
-    // without waiting a week. 0 = no automatic end, which turns the preset
-    // back into an open-ended flag somebody has to remember.
-    shadowDays: days('MODERATION_SHADOW_DAYS', '7'),
+    // enforcing. A week, because that is what Mai's introduction promises, and
+    // the promise is the feature: a flag somebody has to remember to turn off
+    // is the shapeless version this replaced.
+    shadowDays: SHADOW_DAYS,
     // Missed ticks before the process gives up on itself and exits, so the
     // container restarts it. A tick that hangs (a Discord call that never
     // settles) is skipped by the overlap guard forever after, which /healthz
     // reports and nothing acts on: Docker restart policies do not watch health.
-    // 0 = never exit, for anyone who would rather have a wedged bot than a
-    // restarting one.
-    stuckRestartTicks: int('MODERATION_STUCK_RESTART_TICKS', '5'),
+    stuckRestartTicks: STUCK_RESTART_TICKS,
   },
   chat: {
     enabled: chatEnabled,
     // Prior history rows handed to the model as context.
-    historyTurns: int('CHAT_HISTORY_TURNS', '12', { min: 1 }),
+    historyTurns: HISTORY_TURNS,
     // Rows older than this are pruned on every enforcer tick.
     historyMaxAgeHours: int('CHAT_HISTORY_MAX_AGE_HOURS', '48', { min: 1 }),
-    maxReplyChars: int('CHAT_MAX_REPLY_CHARS', '1800', { min: 1 }),
+    maxReplyChars: MAX_REPLY_CHARS,
     historyKey: readHistoryKey(),
     // Let Mai look at image attachments in messages addressed to her.
     visionEnabled: bool('CHAT_VISION_ENABLED', 'true'),
     // Images cost tokens per call, so only the first few are sent.
-    visionMaxImages: int('CHAT_VISION_MAX_IMAGES', '2', { min: 1 }),
+    visionMaxImages: VISION_MAX_IMAGES,
     // Function calling: lets her look up her own moderation queue and server
     // facts instead of inventing them.
     toolsEnabled: bool('CHAT_TOOLS_ENABLED', 'true'),
@@ -529,7 +570,7 @@ export const config = Object.freeze({
     // Hours between rotating custom statuses; 0 = pick one status at startup
     // and never rotate. Validated like every other knob: a typo used to become
     // NaN and silently disable rotation instead of failing at startup.
-    rotateHours: hours('PRESENCE_ROTATE_HOURS', '3'),
+    rotateHours: hours('PRESENCE_ROTATE_HOURS', '5'),
   },
   timezone: optional('TZ', 'UTC'),
   logLevel: optional('LOG_LEVEL', 'info'),

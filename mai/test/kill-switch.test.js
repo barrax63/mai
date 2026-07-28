@@ -149,7 +149,7 @@ test('escalation can be switched off without losing the record', () => {
     action: ACTION_DELETED,
   });
 
-  assert.deepEqual(decideEscalation(guild, MEMBER), { strikes: 2, minutes: 10 });
+  assert.deepEqual(decideEscalation(guild, MEMBER), { strikes: 2, minutes: 5 });
 
   updateSettings(guild, { escalation: false });
   const paused = decideEscalation(guild, MEMBER);
@@ -157,7 +157,7 @@ test('escalation can be switched off without losing the record', () => {
   assert.equal(paused.minutes, 0, 'but they cost nothing');
 
   updateSettings(guild, { escalation: true });
-  assert.equal(decideEscalation(guild, MEMBER).minutes, 10, 'and it comes back');
+  assert.equal(decideEscalation(guild, MEMBER).minutes, 5, 'and it comes back');
 });
 
 test('/mod config shows both switches and can set them', async () => {

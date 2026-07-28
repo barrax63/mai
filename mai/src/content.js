@@ -432,7 +432,12 @@ function loadContent() {
       }),
       config: Object.freeze({
         body: str(configSection, ['commands', 'config', 'body']),
+        // Three layers, so three answers to "who decided this?". `inherited`
+        // marks a built-in default, `fromProfile` a value the guild's profile
+        // decides, and an unmarked line is one somebody here set deliberately.
         inherited: str(configSection, ['commands', 'config', 'inherited']),
+        fromProfile: str(configSection, ['commands', 'config', 'fromProfile']),
+        noProfile: str(configSection, ['commands', 'config', 'noProfile']),
         on: str(configSection, ['commands', 'config', 'on']),
         off: str(configSection, ['commands', 'config', 'off']),
         unset: str(configSection, ['commands', 'config', 'unset']),

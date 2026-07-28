@@ -1,9 +1,20 @@
 /**
- * Per-guild settings, layered over the process defaults from `.env`.
+ * Per-guild settings, resolved through three layers.
+ *
+ *   explicit override  >  the guild's profile  >  the built-in base
  *
  * `effectiveSettings(guildId)` is the only thing callers need: it returns the
- * merged view plus, per key, whether the value is inherited, which is what
+ * merged view plus, per key, where the value came from, which is what
  * `/mod config view` shows.
+ *
+ * There is deliberately no environment layer under any of this any more. A
+ * process-wide default for a per-server policy is only meaningful in a
+ * deployment with one server; in a deployment with several it decided things
+ * for servers whose staff could not see the file it lived in, and it meant
+ * every "why did Mai do that?" started with working out which of three places
+ * had won. `.env` still holds secrets, deployment facts and the switches that
+ * are genuinely the operator's (whether a feature is available at all), and
+ * nothing that a server's own staff should be answering.
  *
  * Reads are single-row primary-key lookups on SQLite, so they happen inline
  * (per flagged message, per queue row) without a cache.
@@ -19,6 +30,7 @@ import {
   parseTimeoutLadder,
   wholeNumber,
 } from '../config.js';
+import { BASE_SETTINGS, PRESETS, PROFILE_KEYS } from '../moderation/presets.js';
 import { getDb } from './index.js';
 
 /** Discord snowflakes, as stored in the comma-separated channel columns. */
@@ -189,6 +201,59 @@ export const SETTINGS = Object.freeze({
 const COLUMNS = Object.values(SETTINGS).map((setting) => setting.column);
 
 /**
+ * Turns a patch of public setting names into a partial row, keyed by column and
+ * carrying exactly the values the database would have stored.
+ *
+ * Both layers under the overrides are written as things a moderator could type
+ * (`'6/10'`, `true`, `'0,10,60,1440'`) and are put through the same `parse` as
+ * a typed value, so a mistake in a bundle is refused at import time rather than
+ * at the moment somebody earns a timeout for it. Compiled once at module load:
+ * `effectiveSettings` runs per flagged message, and re-parsing a ladder on
+ * every one of those would be work to produce a constant.
+ *
+ * @param {Record<string, unknown>} patch
+ * @returns {Record<string, unknown>}
+ */
+const compile = (patch) =>
+  Object.freeze(
+    Object.fromEntries(
+      Object.entries(patch).map(([name, value]) => [SETTINGS[name].column, SETTINGS[name].parse(value)]),
+    ),
+  );
+
+const BASE_ROW = compile(BASE_SETTINGS);
+
+const PROFILE_ROWS = Object.freeze(
+  Object.fromEntries(Object.entries(PRESETS).map(([name, entry]) => [name, compile(entry.settings)])),
+);
+
+/**
+ * The three-layer lookup, and the reason `??` is the right operator here.
+ *
+ * An empty string is a *value* at every layer: `flood: ''` is "the flood guard
+ * is off here" and `link-domains: ''` under an allowlist policy is "no domain
+ * is allowed at all", which is the strictest setting there is rather than an
+ * absent one. Only NULL means "I did not decide, ask the layer below", so a
+ * truthiness check would silently promote both of those to whatever the profile
+ * or the base says.
+ *
+ * @param {object | null} row
+ * @param {object | undefined} profileRow
+ * @param {string} column
+ */
+const pick = (row, profileRow, column) => row?.[column] ?? profileRow?.[column] ?? BASE_ROW[column];
+
+/**
+ * A guild's profile row, or undefined. The name comes out of the database and
+ * is looked up with `Object.hasOwn`, like every other externally-supplied key:
+ * a bare property read also answers for everything on `Object.prototype`.
+ *
+ * @param {object | null} row
+ */
+const profileRowFor = (row) =>
+  row?.profile && Object.hasOwn(PROFILE_ROWS, row.profile) ? PROFILE_ROWS[row.profile] : undefined;
+
+/**
  * @param {string} guildId
  * @returns {object | null} Raw row, or null when the guild never changed anything.
  */
@@ -205,65 +270,76 @@ export function rawSettings(guildId) {
  */
 export function effectiveSettings(guildId) {
   const row = guildId ? rawSettings(guildId) : null;
+  const fromProfile = profileRowFor(row);
 
-  const flag = (column, fallback) => (row?.[column] == null ? fallback : row[column] === 1);
+  const value = (column) => pick(row, fromProfile, column);
+  const flag = (column) => value(column) === 1;
+  const list = (column) => splitList(value(column));
+
+  // Where each setting's value came from, which is the whole point of the
+  // layers: "inherited" was one bit when there was one thing to inherit from,
+  // and a moderator looking at a mention cap of 6 now has three possible
+  // answers to "who decided that?".
+  const source = (name) => {
+    const { column } = SETTINGS[name];
+    if (row?.[column] != null) return 'set';
+    return fromProfile && column in fromProfile ? 'profile' : 'default';
+  };
 
   return {
-    // The kill switch: false means Mai does nothing in this guild at all.
-    enabled: flag('enabled', true),
-    escalationEnabled: flag('escalation_enabled', config.moderation.escalationEnabled),
-    // No process-wide default: without an explicit channel there is no mod log.
+    // The kill switch: false means Mai does nothing in this guild at all. No
+    // profile may contain it: applying one must not undo somebody's `/mod off`.
+    enabled: row?.enabled == null ? true : row.enabled === 1,
+    // The name of the bundle under the overrides, for `/mod config view`. Null
+    // for a server that has never run `/mod setup`.
+    profile: fromProfile ? row.profile : null,
+    escalationEnabled: flag('escalation_enabled'),
+    // No default anywhere: without an explicit channel there is no mod log.
     logChannelId: row?.log_channel_id ?? null,
     // Falls back to the guild's system channel in the welcome handler.
     welcomeChannelId: row?.welcome_channel_id ?? null,
-    gracePeriodMinutes: row?.grace_period_minutes ?? config.moderation.gracePeriodMinutes,
-    timeoutLadder: row?.timeout_ladder
-      ? row.timeout_ladder.split(',').map(Number)
-      : config.moderation.timeoutLadder,
-    strikeWindowDays: row?.strike_window_days ?? config.moderation.strikeWindowDays,
+    gracePeriodMinutes: value('grace_period_minutes'),
+    timeoutLadder: value('timeout_ladder').split(',').map(Number),
+    strikeWindowDays: value('strike_window_days'),
     // Channels the delete/scold pipeline ignores entirely. Chat and reactions
-    // are unaffected, this is about moderation only.
+    // are unaffected, this is about moderation only. Not in any profile: which
+    // channels a server has is not a stance on moderation.
     exemptChannels: splitList(row?.exempt_channels),
     // How hard this guild judges. 0 = defer to the provider's own `flagged`.
-    threshold: row?.moderation_threshold ?? config.moderation.threshold,
-    categories: row?.moderation_categories
-      ? splitList(row.moderation_categories)
-      : config.moderation.categories,
+    threshold: value('moderation_threshold'),
+    categories: list('moderation_categories'),
     // The rules Mai applies herself, without a classifier (heuristics.js).
-    inviteFilter: flag('invite_filter', config.moderation.inviteFilter),
-    linkPolicy: row?.link_policy ?? config.moderation.linkPolicy,
-    // `== null` and not a truthiness check: an empty string is a guild saying
-    // "no domains at all", which under the allowlist policy is a real, much
-    // stricter setting than inheriting the process list.
-    linkDomains: row?.link_domains == null ? config.moderation.linkDomains : splitList(row.link_domains),
-    mentionCap: row?.mention_cap ?? config.moderation.mentionCap,
-    // Same here: '' is "flood guard off in this guild", NULL is "inherit".
-    floodRule: row?.flood_rule == null
-      ? config.moderation.floodRule
-      : parseFloodRule(row.flood_rule, 'flood'),
-    // Keeping a member's deleted words is a decision each guild makes for
-    // itself, so this one inherits `false` rather than a process default: the
-    // operator's knob (`MODERATION_EVIDENCE_HOURS`) decides whether it is
-    // available at all, not whether it is on.
-    evidenceEnabled: flag('evidence_enabled', false) && config.moderation.evidenceHours > 0,
-    nameCheck: row?.name_check ?? config.moderation.nameCheck,
-    // No process default: shadow mode is a server's decision about its own
-    // moderation, and the only shapeless version of it (on everywhere, forever,
-    // announced nowhere) was the one an environment flag could produce.
-    shadowMode: flag('shadow_mode', false),
+    inviteFilter: flag('invite_filter'),
+    linkPolicy: value('link_policy'),
+    linkDomains: list('link_domains'),
+    mentionCap: value('mention_cap'),
+    floodRule: parseFloodRule(value('flood_rule'), 'flood'),
+    // Keeping a member's deleted words needs the guild's consent *and* the
+    // operator's retention window: `MODERATION_EVIDENCE_HOURS` decides whether
+    // the feature is available at all, this flag whether it is used. Folded in
+    // here so every caller reads what actually happens.
+    evidenceEnabled: flag('evidence_enabled') && config.moderation.evidenceHours > 0,
+    // The one setting with no entry in `BASE_SETTINGS`: its default is the
+    // operator's, because the same variable decides whether the privileged
+    // intent it needs was requested at login at all (see presets.js).
+    nameCheck: value('name_check') ?? config.moderation.nameCheck,
+    shadowMode: flag('shadow_mode'),
     // When an observation period ends by itself. NULL = shadow mode with no
     // end, which is what an explicit `/mod config set shadow:true` means.
     shadowUntil: row?.shadow_until ?? null,
+    // True when this guild has not explicitly set the key itself. Deliberately
+    // still a plain "did somebody here type this?", so it keeps answering the
+    // question `/mod config reset` is about; `source` is the finer view.
     inherited: {
       enabled: row?.enabled == null,
       escalation: row?.escalation_enabled == null,
       'log-channel': !row?.log_channel_id,
       'welcome-channel': !row?.welcome_channel_id,
-      grace: row?.grace_period_minutes === null || row?.grace_period_minutes === undefined,
+      grace: row?.grace_period_minutes == null,
       'timeout-ladder': !row?.timeout_ladder,
-      'strike-window': row?.strike_window_days === null || row?.strike_window_days === undefined,
+      'strike-window': row?.strike_window_days == null,
       'exempt-channels': !row?.exempt_channels,
-      threshold: row?.moderation_threshold === null || row?.moderation_threshold === undefined,
+      threshold: row?.moderation_threshold == null,
       categories: !row?.moderation_categories,
       'invite-filter': row?.invite_filter == null,
       'link-policy': row?.link_policy == null,
@@ -274,6 +350,7 @@ export function effectiveSettings(guildId) {
       'name-check': row?.name_check == null,
       shadow: row?.shadow_mode == null,
     },
+    source: Object.fromEntries(Object.keys(SETTINGS).map((name) => [name, source(name)])),
   };
 }
 
@@ -316,15 +393,56 @@ export function pausedGuildIds() {
  * Counts *settings*, not rows. A row also exists for a server that has only
  * been greeted (`onboarded_at`), and counting those would report every server
  * Mai has ever joined as configured. The condition is built from the SETTINGS
- * map so it stays true as columns are added.
+ * map so it stays true as columns are added, plus `profile`: picking one is now
+ * the ordinary way to configure a server, and the whole point of the layer is
+ * that doing so writes no other column.
  *
  * @returns {number}
  */
 export function configuredGuildCount() {
-  const anySetting = COLUMNS.map((column) => `${column} IS NOT NULL`).join(' OR ');
+  const anySetting = [...COLUMNS, 'profile'].map((column) => `${column} IS NOT NULL`).join(' OR ');
   return getDb()
     .prepare(`SELECT COUNT(*) AS count FROM guild_settings WHERE ${anySetting}`)
     .get().count;
+}
+
+/**
+ * Puts a guild on a profile, and hands back to it every setting the profiles
+ * decide.
+ *
+ * The second half is what makes this different from `updateSettings`. A server
+ * that ran `standard` before profiles existed carries six explicitly written
+ * columns; switching it to `strict` without clearing them would leave it on
+ * `standard`'s mention cap with `strict` printed at the top of
+ * `/mod config view`. Clearing is also the honest reading of the command: a
+ * profile is what you pick when you do *not* want to hold an opinion on the
+ * individual knobs, so picking one withdraws the opinions you had.
+ *
+ * Keys no bundle mentions are untouched, deliberately: the log channel and the
+ * exempt channels are facts about the server, not a stance on moderation, and
+ * losing them to a `/mod setup` would take the moderation log with them.
+ *
+ * @param {string} guildId
+ * @param {string} name A preset name, which may have come from a `custom_id`.
+ * @param {string} [actorId]
+ * @param {Record<string, string | number | null>} [extra] Applied in the same
+ *   breath, for the optional `log-channel` on `/mod setup`.
+ * @returns {ReturnType<typeof effectiveSettings> | null} Null for an unknown name.
+ */
+export function setProfile(guildId, name, actorId, extra = {}) {
+  if (!Object.hasOwn(PROFILE_ROWS, String(name))) return null;
+
+  updateSettings(
+    guildId,
+    { ...Object.fromEntries(PROFILE_KEYS.map((key) => [key, null])), ...extra },
+    actorId,
+  );
+
+  getDb()
+    .prepare('UPDATE guild_settings SET profile = ?, updated_at = ? WHERE guild_id = ?')
+    .run(String(name), new Date().toISOString(), String(guildId));
+
+  return effectiveSettings(guildId);
 }
 
 /**

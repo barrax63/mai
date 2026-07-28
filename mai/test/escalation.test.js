@@ -7,6 +7,7 @@ import test from 'node:test';
 import { config } from '../src/config.js';
 import { content } from '../src/content.js';
 import { resetSettings, updateSettings } from '../src/db/settings.js';
+import { BASE_SETTINGS } from '../src/moderation/presets.js';
 import {
   ACTION_DELETED,
   ACTION_SELF_DELETED,
@@ -39,17 +40,17 @@ const strike = (overrides = {}) =>
 const daysAgo = (days) => new Date(Date.now() - days * 86_400_000).toISOString();
 
 test('the default ladder lets a first offence pass, then escalates', () => {
-  assert.deepEqual(config.moderation.timeoutLadder, [0, 10, 60, 1440]);
-  assert.deepEqual(ladderFor(GUILD), [0, 10, 60, 1440]);
+  assert.deepEqual(BASE_SETTINGS['timeout-ladder'], '0,5,15,30,60');
+  assert.deepEqual(ladderFor(GUILD), [0, 5, 15, 30, 60]);
 
   strike();
   assert.deepEqual(decideEscalation(GUILD, MEMBER), { strikes: 1, minutes: 0 });
 
   strike();
-  assert.deepEqual(decideEscalation(GUILD, MEMBER), { strikes: 2, minutes: 10 });
+  assert.deepEqual(decideEscalation(GUILD, MEMBER), { strikes: 2, minutes: 5 });
 
   strike();
-  assert.deepEqual(decideEscalation(GUILD, MEMBER), { strikes: 3, minutes: 60 });
+  assert.deepEqual(decideEscalation(GUILD, MEMBER), { strikes: 3, minutes: 15 });
 });
 
 test('the last ladder step repeats for everything above it', () => {
@@ -59,7 +60,7 @@ test('the last ladder step repeats for everything above it', () => {
   const { strikes, minutes } = decideEscalation(GUILD, MEMBER);
 
   assert.equal(strikes, 6);
-  assert.equal(minutes, 1440, 'stays at the ceiling instead of running off the end');
+  assert.equal(minutes, 60, 'stays at the ceiling instead of running off the end');
 });
 
 test('a member with no record gets no timeout', () => {
@@ -99,7 +100,7 @@ test('strikes age out of the window', () => {
   strike({ guildId: guild, createdAt: daysAgo(40) });
   strike({ guildId: guild, createdAt: daysAgo(2) });
 
-  // MODERATION_STRIKE_WINDOW_DAYS defaults to 30.
+  // The base strike-window is 7 days, so only the second one is inside it.
   assert.equal(decideEscalation(guild, MEMBER).strikes, 1, 'only the recent one counts');
   assert.equal(totalsFor(guild, MEMBER).total, 2, 'both stay in the record');
 
@@ -289,7 +290,7 @@ test('/mod history shows the record and the next consequence', async () => {
   assert.match(text, new RegExp(`<@${MEMBER}>`));
   assert.match(text, /Verstöße im Fenster:\*\* 1/);
   // One strike so far, so the *next* one lands on the second ladder step.
-  assert.ok(text.includes('10 Minuten Timeout'), text);
+  assert.ok(text.includes('5 Minuten Timeout'), text);
   assert.equal(/\{[a-z]/i.test(text), false, `unsubstituted placeholder: ${text}`);
 });
 

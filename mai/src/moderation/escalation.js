@@ -11,7 +11,6 @@
  * staff have `/mod history` plus the log to act on the ones that matter.
  */
 import { PermissionFlagsBits } from 'discord.js';
-import { config } from '../config.js';
 import { content } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
 import { strikeCount } from '../db/violations.js';
@@ -22,8 +21,7 @@ import { logger } from '../logger.js';
  * @param {string} guildId
  * @returns {number[]} Minutes per strike, 1-based, last entry repeating.
  */
-export const ladderFor = (guildId) =>
-  effectiveSettings(guildId).timeoutLadder ?? config.moderation.timeoutLadder;
+export const ladderFor = (guildId) => effectiveSettings(guildId).timeoutLadder;
 
 /**
  * @param {string} guildId

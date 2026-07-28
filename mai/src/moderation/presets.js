@@ -7,9 +7,12 @@
  * for every one of those knobs is "off", so a server that never gets round to
  * it is running a moderation bot that moderates nothing.
  *
- * A preset is a starting point, not a mode: it writes ordinary per-guild
- * settings through the ordinary path, every one of which can be changed
- * afterwards with `/mod config set` or put back with `/mod config reset`.
+ * A preset is a starting point, not a mode: every value in one can be changed
+ * afterwards with `/mod config set` or put back with `/mod config reset`. It is
+ * a *layer* rather than a copy, though: `/mod setup` records the name and
+ * `effectiveSettings` resolves through it, so a server stores the one decision
+ * it made instead of six values it never looked at, and improving a bundle here
+ * reaches every server already on it.
  *
  * Three of them, and the order matters:
  *
@@ -83,6 +86,81 @@ export const PRESETS = Object.freeze({
 });
 
 export const PRESET_NAMES = Object.freeze(Object.keys(PRESETS));
+
+/**
+ * What a setting means for a server that has chosen nothing at all: no profile,
+ * no override, which is every server until somebody runs `/mod setup`.
+ *
+ * These used to be thirteen environment variables, one per knob, and the layer
+ * they formed was the problem rather than the solution. A process-wide default
+ * for a *per-server* policy is only meaningful in a deployment with one server,
+ * and in a deployment with several it silently decided things for servers whose
+ * staff had never heard of the operator's `.env`. Answering "why did Mai delete
+ * that?" meant reading a file, a database row and a preset and knowing which of
+ * the three won. Now it means reading `/mod config view`.
+ *
+ * The values are what those variables shipped as, so a server that had
+ * configured nothing before this existed behaves exactly the same after it.
+ * Note what that means: **almost everything is off**. These are a floor, not a
+ * recommendation. The recommendation is a profile, which is what `/mod setup`
+ * and the buttons in Mai's introduction are for.
+ *
+ * Written as public setting names with the values `/mod config set` accepts, so
+ * they go through the same validation as anything a moderator types (see
+ * `compile` in db/settings.js): a typo here fails at startup rather than at the
+ * moment somebody earns a timeout.
+ */
+export const BASE_SETTINGS = Object.freeze({
+  escalation: true,
+  grace: 10,
+  // Nothing for a first offence (the deletion is the message), then 5, 15, 30,
+  // 60 minutes, the last step repeating. A ladder that reaches a day off the
+  // fourth strike is a punishment; this one is a cooling-off period, which is
+  // what an automated ceiling should be when the thing deciding is a classifier.
+  'timeout-ladder': '0,5,15,30,60',
+  // How long a strike keeps counting towards the next step. Short on purpose:
+  // the ladder is about the argument someone is having this week, not a file on
+  // them. `VIOLATION_RETENTION_DAYS` is how long the *record* lives.
+  'strike-window': 7,
+  // 0 = the provider's own `flagged` decides. Worth raising for a non-English
+  // server, which is what `/mod setup observe` plus `/mod simulate` are for.
+  threshold: 0,
+  // Empty = every category the provider reports counts.
+  categories: '',
+  // The house rules, all off: they are a server's own decision, not a floor.
+  'invite-filter': false,
+  'link-policy': 'off',
+  'link-domains': '',
+  'mention-cap': 0,
+  flood: '',
+  // Keeping a member's deleted words needs the operator's retention window too
+  // (`MODERATION_EVIDENCE_HOURS`), which `effectiveSettings` folds in.
+  evidence: false,
+  shadow: false,
+});
+
+// `name-check` is deliberately absent, and it is the one setting whose default
+// still comes from the environment (`MODERATION_NAME_CHECK`). Anything but
+// `off` requests the privileged GuildMembers intent, which is decided once at
+// login for the whole process, so the operator states it up front and a base
+// value here would either silently disagree with what the gateway asked for or
+// quietly promise a screening that cannot run. The profiles still set it, and a
+// guild that does gets the warning `/mod config set name-check` already gives.
+
+/**
+ * Every setting name any bundle above decides, which is what `/mod setup` hands
+ * back to the profile when it is applied.
+ *
+ * Applying a profile has to clear the explicit overrides for these keys, or a
+ * server that ran `standard` before profiles existed (and therefore carries six
+ * written columns) would switch to `strict` and keep the old numbers, with
+ * `/mod config view` showing `strict` next to `standard`'s mention cap. Keys no
+ * bundle mentions (the log channel, exempt channels) are untouched: those are
+ * facts about the server, not a stance on moderation.
+ */
+export const PROFILE_KEYS = Object.freeze([
+  ...new Set(Object.values(PRESETS).flatMap((entry) => Object.keys(entry.settings))),
+]);
 
 /**
  * @param {string} name

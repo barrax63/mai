@@ -1,0 +1,22 @@
+-- A preset that stays a preset.
+--
+-- `/mod setup standard` used to copy six values into six columns and forget it
+-- had ever been run. Two costs followed. `/mod config view` printed eighteen
+-- rows of explicitly-set values with nothing to say which of them anybody had
+-- actually chosen, so the answer to "what is this server doing?" was a wall.
+-- And improving a preset reached exactly nobody: every server that had already
+-- run it was carrying a copy of the old numbers.
+--
+-- The column holds the *name*. `effectiveSettings` resolves a setting as
+-- explicit override, then the profile's value, then the built-in base, so a
+-- server that picked `standard` and changed one thing stores one profile and
+-- one override instead of six values it never looked at. Tuning a preset now
+-- reaches every server on it.
+--
+-- Deliberately **not** in the SETTINGS map: `/mod setup` writes it, and
+-- `/mod config reset` (which clears every override) leaves it alone, because
+-- "put everything back the way my profile has it" is the useful meaning of that
+-- command and "silently unconfigure the server" is not. `configuredGuildCount`
+-- does count it: a server with a profile is a configured server, which is the
+-- opposite of `onboarded_at`.
+ALTER TABLE guild_settings ADD COLUMN profile TEXT;

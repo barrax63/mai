@@ -53,11 +53,11 @@ Every non-bot guild message with text content is classified when it is posted **
   - `flood` as `count/seconds`: more than `count` messages from one member in that window (category `flood`). One violation **per burst**, not per message: a strike and a scold reply per message would have Mai out-spamming the spammer, and one burst is one incident.
 
   What they produce is an ordinary list of category slugs, so a trip goes through the same path as a classified violation: warning reaction, scold reply, grace period, queue row, log entry, strike. There is deliberately no separate "delete it instantly" route. Content rules also run on **edits** (posting clean and editing an invite in afterwards would otherwise walk past all of them); the flood rule does not, because editing a message is not sending one.
-- **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt = now + MODERATION_GRACE_PERIOD_MINUTES`. Reaction and scold reply are best effort; the queue row is what counts.
+- **Flagged** (`POST /moderations`, `OPENAI_MODERATION_MODEL`): Mai reacts with the warning emoji, replies with a random scold line, and stores metadata in the queue with `dueAt` set the guild's `grace` minutes out. Reaction and scold reply are best effort; the queue row is what counts.
 - **Shadow mode** runs both layers and acts on neither: no warning reaction, no scold reply, no queue row, no strike, no timeout. Every verdict goes to the log channel as a *Nur beobachtet* entry carrying the categories, the **top score** and a working jump link, so a server picks its threshold by reading its own traffic instead of by deleting the wrong messages and apologising. It is not a pause: rows queued before it was switched on are still enforced (`/mod off` is the pause).
 
-  It comes in two shapes, and the difference matters. `/mod setup observe` starts an **observation period**: `shadow_until` is set `MODERATION_SHADOW_DAYS` out, the enforcer tick switches the guild back to enforcing when it passes, and the log channel gets a *Beobachtungszeit vorbei* entry with the count of what she would have acted on. That is the promise her introduction makes, and it is kept without anybody remembering to collect on it. `/mod config set shadow:true` is the other shape: open-ended, because somebody decided it deliberately and will decide when it ends. Any statement about shadow mode (another preset, a manual `shadow:…`) cancels a running period, so a leftover end date cannot fire days later and announce the end of an observation nobody was running. There is deliberately **no process-wide shadow switch**: it is a server's decision about its own moderation, and an environment flag could only produce the shapeless version, on everywhere and forever. `/mod simulate <text>` answers the same question for one string on demand, including which local rule would have caught it, and is the only place a full score vector is shown: the text is the moderator's own, the answer is ephemeral to them, and nothing is stored or logged.
-- **Where the line sits is per server.** The endpoint answers twice (a `flagged` boolean and a `category_scores` map), and `MODERATION_THRESHOLD` (`/mod config set threshold`) decides which one counts. At `0` the provider decides, as before. Above `0`, a category counts when it scores at least that much and the provider's own boolean is ignored entirely (otherwise raising the threshold could never make anything pass). This exists for a measured reason: omni-moderation scores the same insult **0.88 in English and 0.20 in German**, so on a German-speaking server its default line lets most abuse through. `MODERATION_CATEGORIES` (`/mod config set categories`) narrows things the other way: only the listed categories count at all.
+  It comes in two shapes, and the difference matters. `/mod setup observe` starts an **observation period**: `shadow_until` is set a week out, the enforcer tick switches the guild back to enforcing when it passes, and the log channel gets a *Beobachtungszeit vorbei* entry with the count of what she would have acted on. That is the promise her introduction makes, and it is kept without anybody remembering to collect on it. `/mod config set shadow:true` is the other shape: open-ended, because somebody decided it deliberately and will decide when it ends. Any statement about shadow mode (another preset, a manual `shadow:…`) cancels a running period, so a leftover end date cannot fire days later and announce the end of an observation nobody was running. There is deliberately **no process-wide shadow switch**: it is a server's decision about its own moderation, and an environment flag could only produce the shapeless version, on everywhere and forever. `/mod simulate <text>` answers the same question for one string on demand, including which local rule would have caught it, and is the only place a full score vector is shown: the text is the moderator's own, the answer is ephemeral to them, and nothing is stored or logged.
+- **Where the line sits is per server.** The endpoint answers twice (a `flagged` boolean and a `category_scores` map), and the guild's `threshold` (`/mod config set threshold`) decides which one counts. At `0` the provider decides, as before. Above `0`, a category counts when it scores at least that much and the provider's own boolean is ignored entirely (otherwise raising the threshold could never make anything pass). This exists for a measured reason: omni-moderation scores the same insult **0.88 in English and 0.20 in German**, so on a German-speaking server its default line lets most abuse through. `categories` (`/mod config set categories`) narrows things the other way: only the listed categories count at all.
 - **Exempt channels** (`/mod exempt add|remove|list`): a vent channel, an NSFW channel, a staff channel. Moderation only: chat and reactions keep working there, which is usually the point. Exempting a channel covers its threads, and any pending queue rows in it are dropped on the next tick rather than enforced later: "Mai does not moderate here" should not be followed by her deleting something there ten minutes on.
 - **Edits** ([src/gateway/events/message-update.js](src/gateway/events/message-update.js)) run through the same classifier via `recheckMessage`, because otherwise "post something harmless, then edit it" walks straight past the check. The verdict cuts both ways, since the message may already have a queue row:
   - clean before, a violation now → flagged like any new message, with a fresh grace period;
@@ -68,14 +68,14 @@ Every non-bot guild message with text content is classified when it is posted **
   Discord also fires `messageUpdate` for link previews resolving, pins and flag changes; those are filtered out by `edited_timestamp` plus a content comparison, so they never cost a classification call. Edits are moderation-only: retrofitting a mention into a message does not make Mai answer it. No extra intent or Developer Portal toggle is needed.
 - **Display names are screened separately** ([src/moderation/names.js](src/moderation/names.js)), because a nickname is on every message its owner sends and no message rule can ever see it: Mai was deleting a word out of a member's sentences while it sat in their name untouched. `name-check` is `off`, `log` (an entry in the moderation log) or `reset` (the same entry, plus the *server* nickname is removed). A global username is not Mai's to change and she never kicks or bans over a name, so `reset` falling back to a flagged global name ends in an entry and a human decision. The entry carries **no copy of the name**: `<@id>` renders as that member's current display name for whoever reads it, which is both the evidence and always up to date. Screened on join (a flagged name is not welcomed, since a welcome would put it in front of the whole server in Mai's own words) and on rename, filtered to actual name changes because MEMBER_UPDATE also fires for roles, avatars and every timeout Mai hands out. Bounded at 3 checks per member per 10 minutes: renaming is free and instant. Fails open like the rest of the pipeline, which here means an API timeout can never strip somebody's nickname. Needs `MODERATION_NAME_CHECK` (the process-wide switch that requests the privileged **Server Members Intent**) plus the per-guild setting.
 - **Self-deletion resolves immediately** ([src/gateway/events/message-delete.js](src/gateway/events/message-delete.js)): the moment the author removes a flagged message, the scold reply goes with it, the queue row is dropped and the log gets its entry: no waiting out a grace period that has nothing left to enforce. Deletions Mai performs herself (enforcement, an approved report) are registered beforehand and skipped, or her own work would be recorded as the author having fixed it. The enforcer keeps the same handling as a fallback for a deletion that happened while the gateway was down.
-- **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs every `MODERATION_TICK_MS`: for each due row, the channel and then the message are looked up. Gone (author deleted it, or the channel is) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, a strike is recorded, the row dropped, and the author gets one DM per tick and guild listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient, a channel that holds no messages) keeps the row for the next tick and counts an attempt.
+- **Enforcement** ([src/moderation/enforcer.js](src/moderation/enforcer.js)) runs once a minute: for each due row, the channel and then the message are looked up. Gone (author deleted it, or the channel is) → the orphaned scold reply is removed, the row dropped, no DM. Still there → message and scold reply are deleted, a strike is recorded, the row dropped, and the author gets one DM per tick and guild listing every removed message with category and timestamp. Any other lookup failure (missing permission, transient, a channel that holds no messages) keeps the row for the next tick and counts an attempt.
 
   A warning DM that **bounces** (the member has DMs from server members off, or blocked Mai) is a normal outcome for the process and a bad one for the member: their messages are gone, they may be timed out, and the one message explaining why, carrying the appeal button, never arrived. So the guild's log gets a *Verwarnung nicht zugestellt* entry naming the member, how many messages were removed and the reason in words, because otherwise the log shows a clean `deleted` entry and nothing suggests anyone needs to do anything. `/mai appeal` is the member's own way back in (see *Reports and appeals*).
 
-  Rows are processed **serially** (each one is several Discord calls, so parallelism only trades a shorter tick for a harder rate limit) and capped at `MODERATION_MAX_ROWS_PER_TICK`, oldest first, so a backlog after an outage drains in order instead of outlasting the interval and being skipped by the overlap guard forever. Two categories of row are therefore kept out of the due query itself rather than skipped inside the loop, because a row that is kept but can never resolve would otherwise stay the oldest and occupy the cap on every tick: guilds paused with `/mod off`, and only those still on the allowlist (a guild that is *both* paused and un-listed stays in the query, because dropping its rows is the allowlist check's job). A channel that became exempt after the flag drops its rows, checked *after* the channel lookup because an exemption covers the threads inside the exempted channel and the parent id is only knowable from the channel object. The same tick prunes chat history and the strike record, so retention does not depend on anyone talking to Mai.
-- **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside `MODERATION_STRIKE_WINDOW_DAYS` picks a Discord timeout from the ladder (`MODERATION_TIMEOUT_LADDER`, default `0,10,60,1440`: nothing, 10 min, 1 h, then 24 h repeating). Escalation runs **once per member and guild per tick**: three messages removed in one sweep is one incident, and one grouping pass feeds both the timeout and the warning DM so the two cannot drift. Never on the user id alone: one process serves several servers, so the same person can be enforced in two of them in the same tick, and merging those produced a DM quoting one guild's deleted messages next to another's, with an appeal button scoped to whichever guild sorted first. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design: Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped. The one exception is a target Discord can *never* time out (an administrator or the guild owner): that is checked before trying and refused at `info`, because a permanent property of the target is not an incident and would otherwise page the operator every single time such a member trips the ladder. The log-channel entry still goes out: staff should know the ladder had no effect.
+  Rows are processed **serially** (each one is several Discord calls, so parallelism only trades a shorter tick for a harder rate limit) and capped at a hundred, oldest first, so a backlog after an outage drains in order instead of outlasting the interval and being skipped by the overlap guard forever. Two categories of row are therefore kept out of the due query itself rather than skipped inside the loop, because a row that is kept but can never resolve would otherwise stay the oldest and occupy the cap on every tick: guilds paused with `/mod off`, and only those still on the allowlist (a guild that is *both* paused and un-listed stays in the query, because dropping its rows is the allowlist check's job). A channel that became exempt after the flag drops its rows, checked *after* the channel lookup because an exemption covers the threads inside the exempted channel and the parent id is only knowable from the channel object. The same tick prunes chat history and the strike record, so retention does not depend on anyone talking to Mai.
+- **Escalation** ([src/moderation/escalation.js](src/moderation/escalation.js)): each enforced deletion is recorded as a strike, and the strike count inside the guild's `strike-window` picks a Discord timeout from its `timeout-ladder` (base `0,5,15,30,60`: nothing for a first offence, then 5, 15, 30 and 60 minutes, the last step repeating). Escalation runs **once per member and guild per tick**: three messages removed in one sweep is one incident, and one grouping pass feeds both the timeout and the warning DM so the two cannot drift. Never on the user id alone: one process serves several servers, so the same person can be enforced in two of them in the same tick, and merging those produced a DM quoting one guild's deleted messages next to another's, with an appeal button scoped to whichever guild sorted first. A message the author deleted during the grace period is recorded but never escalates. The ceiling is a timeout by design: Mai never kicks or bans on her own, because an automated permanent action on a false positive is not recoverable. Needs the **Moderate Members** permission and Mai's role above the member's; a refused timeout is logged at `error` (so it alerts) and shown in the log channel rather than silently skipped. The one exception is a target Discord can *never* time out (an administrator or the guild owner): that is checked before trying and refused at `info`, because a permanent property of the target is not an incident and would otherwise page the operator every single time such a member trips the ladder. The log-channel entry still goes out: staff should know the ladder had no effect.
 - **Fails open**: if classification is unavailable (API down, key revoked), the message passes and Mai keeps chatting. `MODERATION_ENABLED=false` disables the pipeline entirely. Two paths deliberately fail **closed** instead, because there is no deletion to fall back on: an already-queued message being re-checked after an edit (see above), and a `/mai ask` question, which Mai would be republishing herself.
-- **…but not silently.** Failing open is invisible from inside Discord: an outage looks exactly like a quiet afternoon, and until it was reported only the operator (container log, alert channel) ever found out. After `MODERATION_DEGRADED_AFTER` consecutive failures in a server, its log channel gets a *Moderation fällt aus* entry, and a *Moderation läuft wieder* one when the next classification succeeds ([src/moderation/health.js](src/moderation/health.js)). Exactly one of each per outage: an entry per failed message would be a second flood on top of the first. `/mod status` answers the same question on demand, which is the only route for a server with no log channel. The local rules above keep working throughout, which is half of why they are worth having.
+- **…but not silently.** Failing open is invisible from inside Discord: an outage looks exactly like a quiet afternoon, and until it was reported only the operator (container log, alert channel) ever found out. After three consecutive failures in a server, its log channel gets a *Moderation fällt aus* entry, and a *Moderation läuft wieder* one when the next classification succeeds ([src/moderation/health.js](src/moderation/health.js)). Exactly one of each per outage: an entry per failed message would be a second flood on top of the first. `/mod status` answers the same question on demand, which is the only route for a server with no log channel. The local rules above keep working throughout, which is half of why they are worth having.
 - **`/mai ask` screens the question** ([src/moderation/screen.js](src/moderation/screen.js)), before the completion runs, because the answer quotes it back into the channel, that command was otherwise a way to publish arbitrary text past moderation under Mai's name.
 - **What Mai says herself is deliberately not classified.** Her tone escalates with a member's open violations, and the top rung tells her to insult them outright (`chat.flagged.tones`); a classifier reads that as harassment (0.89–0.98 measured), so an outbound filter would silence the angry cat precisely when she is supposed to be angry. The behaviour is the feature. What stops a prompt-injected model is the prompt (fenced quotes and a system-only instruction notice (see *Chat* below)) rather than a filter on her output.
 - **Image attachments** are only checked when `MODERATION_CLASSIFY_IMAGES=true`. While it is off, a message carrying *only* an image is not classified at all (there is no text to look at) so posting an image is a way around moderation. With it on, image URLs are sent to the moderation endpoint alongside any text (Discord's signed CDN links are fetched by OpenAI; nothing is downloaded or stored by Mai).
@@ -86,17 +86,17 @@ Every non-bot guild message with text content is classified when it is posted **
 - **Chat** ([src/gateway/events/mai-chat.js](src/gateway/events/mai-chat.js), [src/chat/reply.js](src/chat/reply.js)): mentioning the bot, replying to one of its messages, or sending it a direct message makes Mai answer in character (`OPENAI_CHAT_MODEL` via `POST /chat/completions`). A typing indicator runs while the model call is in flight, and all pings inside the reply are suppressed via `allowedMentions` plus `@everyone`/`@here` neutralization.
   - Guild messages addressed to Mai are moderated **first**: a flagged message gets no chat answer: the scold reply takes its place, and the message never reaches the chat pipeline or the history table.
   - **Direct messages** are always treated as addressed to Mai (no mention needed) and skip moderation, but only from an author who shares at least one `DISCORD_GUILD_IDS` guild with the bot (`isDmAuthorInAllowedGuild`, a per-guild `members.fetch`; empty allowlist = open). A DM has a `null` guild id; history is keyed per channel (a DM channel is stable per user). The check runs before any chat rate limit, so its answer is cached per user (10 minutes for a yes, 30 for a no) with a small per-user limiter behind the cache; otherwise a stranger's DM spam is a free Discord round trip per guild per message.
-  - **Memory**: the last `CHAT_HISTORY_TURNS` turns of the channel are sent as a real `messages[]` array: one entry per turn with its own role, user turns prefixed with the speaker's name because a channel has many. Turns are stored in SQLite with `content` and `username` encrypted (AES-256-GCM, `CHAT_HISTORY_KEY`) and pruned after `CHAT_HISTORY_MAX_AGE_HOURS`. One of only two places message content is stored (see *Storage*).
+  - **Memory**: the last twelve turns of the channel are sent as a real `messages[]` array: one entry per turn with its own role, user turns prefixed with the speaker's name because a channel has many. Turns are stored in SQLite with `content` and `username` encrypted (AES-256-GCM, `CHAT_HISTORY_KEY`) and pruned after `CHAT_HISTORY_MAX_AGE_HOURS`. One of only two places message content is stored (see *Storage*).
   - **Context Discord hides**: what a message replies to (quoted, truncated) and the thread it sits in are resolved and put in front of the current turn. Without them a reply reads as a non-sequitur. Neither is persisted: only what the member wrote themselves.
   - **Prompt injection**: only the system message carries instructions, and it says so. Text the speaker merely *chose* to pull in (the quoted message, the thread title) is wrapped in `⟪…⟫`, with those characters stripped from the value first so it cannot close its own fence. Speaker labels have newlines and colons removed, so a username cannot forge a second `Name:` turn. The speaker's own message is deliberately not fenced: it is the thing being answered.
-  - **Vision** (`CHAT_VISION_ENABLED`): image attachments on messages addressed to her are passed to the model as content parts, at most `CHAT_VISION_MAX_IMAGES` per message. Images are never stored; a picture-only message is remembered as a placeholder.
+  - **Vision** (`CHAT_VISION_ENABLED`): image attachments on messages addressed to her are passed to the model as content parts, at most two per message. Images are never stored; a picture-only message is remembered as a placeholder.
   - **Tools** (`CHAT_TOOLS_ENABLED`, [src/chat/tools.js](src/chat/tools.js)): `get_my_violations`, `get_server_info`, `get_current_time`, `get_my_timeout_status`, `get_my_appeal_status`, and `get_server_rules` where `chat.rules` in the YAML is filled in (an empty list means the tool is not offered at all, because one that answers "no rules" sends the model straight back to inventing them). **No tool takes arguments from the model**: who is asking and where comes from the interaction context, so a model cannot read another member's record by naming them. They are also synchronous by design, so the timeout tool reads the member cache and reports "unknown" on a miss rather than guessing. At most two tool rounds, then the last call goes out without tools so she has to answer in words.
   - **Tone**: while the author has an open (un-enforced) violation in the queue (in *any* guild, DMs included) Mai turns aggressive, escalating with the number of open strikes. Enforcement (or `/mod forgive`) makes her friendly again. This reads the *queue*, not the strike record: a member with an empty queue and ten strikes gets friendly Mai.
-  - **Limits**: `CHAT_RATE_LIMIT_MAX` replies per user per `CHAT_RATE_LIMIT_WINDOW_MS`, `CHAT_MAX_CONCURRENT` model calls in flight. Over either limit she reacts with the busy emoji instead of answering. Turns in one channel are serialized so parallel conversations cannot interleave history reads and writes.
+  - **Limits**: five replies per user per minute, three model calls in flight. Over either limit she reacts with the busy emoji instead of answering. Turns in one channel are serialized so parallel conversations cannot interleave history reads and writes.
   - `CHAT_ENABLED=false` disables chat.
 - **Reactions** ([src/gateway/events/reactions.js](src/gateway/events/reactions.js)): keyword triggers (fish, cat words, meowing, "gute Katze") get an emoji reaction, some only with a random chance. At most one reaction per message. Triggers live in `config/mai.yaml`, and `content.js` strips `g` and `y` from their `flags`: the patterns are used with `.test()`, where either flag walks `lastIndex` and makes the same message match, then not, then match again. A reaction firing every other time is not something anyone would go looking for in a config file.
 - **Welcome messages** ([src/gateway/events/guild-member-add.js](src/gateway/events/guild-member-add.js)): new members are greeted in the guild's `welcome-channel`, falling back to its system channel (and to silence if neither is reachable). Requires `DISCORD_WELCOME_ENABLED=true` **and** the privileged "Server Members Intent" (Developer Portal → Bot): the flag gates the `GuildMembers` intent, because logging in with a privileged intent that is not enabled in the portal fails.
-- **Presence** ([src/gateway/presence.js](src/gateway/presence.js)): custom status ("😺 schnurrt irgendwo in der Nähe", …) picked at random on gateway ready and rotated every `PRESENCE_ROTATE_HOURS` hours (default 3; 0 = no rotation).
+- **Presence** ([src/gateway/presence.js](src/gateway/presence.js)): custom status ("😺 schnurrt irgendwo in der Nähe", …) picked at random on gateway ready and rotated every five hours.
 
 ## Slash commands
 
@@ -235,7 +235,7 @@ Three things Mai does about her own setup, because nobody else will:
 
 - **She introduces herself, once** ([src/gateway/events/guild-create.js](src/gateway/events/guild-create.js)). A fresh server used to get nothing: no log channel, every house rule off (the only honest default for a house rule), and seventeen `/mod config set` options between an admin and a working bot. She now posts one message in the system channel (or the first channel she may write in) naming what she does, and carries the three setup presets as buttons: one click is a whole configuration. `onboarded_at` in `guild_settings` keeps it to one message ever, whatever a reconnect or a re-join does, and the row it writes does not count as "configured" in the metrics.
 - **She checks her own permissions** ([src/permissions.js](src/permissions.js)): once per process for every allowlisted server, again on join (the result goes into the introduction), and on demand in `/mod status`. Only what that server switched on is checked, so a guild with escalation off is not nagged about Moderate Members. Every one of these fails gracefully at runtime, which is exactly why nobody notices them.
-- **She restarts herself when wedged** ([src/moderation/enforcer.js](src/moderation/enforcer.js)): the overlap guard turns a hung tick into permanent silence, and `/healthz` reporting that changes nothing on its own, because Docker restart policies do not watch health. After `MODERATION_STUCK_RESTART_TICKS` intervals with no sign of life the process logs at `fatal` (so the alert channel hears about it) and exits, and `restart: on-failure` brings back a working one. It measures **progress**, not completion: every resolved row counts, so a long pass through a backlog under a rate limit is never mistaken for a hang and restarted into the same backlog forever.
+- **She restarts herself when wedged** ([src/moderation/enforcer.js](src/moderation/enforcer.js)): the overlap guard turns a hung tick into permanent silence, and `/healthz` reporting that changes nothing on its own, because Docker restart policies do not watch health. After five intervals with no sign of life the process logs at `fatal` (so the alert channel hears about it) and exits, and `restart: on-failure` brings back a working one. It measures **progress**, not completion: every resolved row counts, so a long pass through a backlog under a rate limit is never mistaken for a hang and restarted into the same backlog forever.
 
 ### Presets
 
@@ -243,46 +243,77 @@ Three things Mai does about her own setup, because nobody else will:
 
 | Preset | What it sets |
 |---|---|
-| `observe` | An observation period: shadow mode until `MODERATION_SHADOW_DAYS` are up, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off. Everything detects, nothing acts, and she switches herself back to enforcing when the window ends |
+| `observe` | An observation period: shadow mode for a week, invite filter on, mention cap 6, flood `6/10`, name check `log`, escalation off. Everything detects, nothing acts, and she switches herself back to enforcing when the window ends |
 | `standard` | The same detection, enforced |
 | `strict` | Enforced, plus threshold `0.3`, mention cap 5, flood `5/10`, grace 5 minutes, name check `reset` |
 
-A preset is a starting point, not a mode: it writes ordinary per-guild settings
-through the ordinary path, and every one of them can be changed afterwards or
-put back with `/mod config reset`. None of them touches `enabled`, so applying
-one cannot undo somebody's `/mod off`, and only `strict` sets a `threshold`:
-guessing that number for a server nobody has looked at is the tuning-by-deletion
-that shadow mode exists to replace.
+A preset is a starting point, not a mode: every value in one can be changed
+afterwards with `/mod config set` or put back with `/mod config reset`. It is a
+*layer* rather than a copy, though. `/mod setup` records the name and
+`effectiveSettings` resolves through the bundle, so the server stores the one
+decision it made instead of six values nobody looked at, `/mod config view` can
+say which of its settings anyone actually chose, and improving a bundle here
+reaches every server already on it.
+
+None of them touches `enabled`, so applying one cannot undo somebody's
+`/mod off`, and only `strict` sets a `threshold`: guessing that number for a
+server nobody has looked at is the tuning-by-deletion that shadow mode exists to
+replace.
 
 ## Per-guild settings
 
 One process serves several servers, and they disagree about where Mai should log
-and how long the grace period is. `guild_settings` holds only what a server
-actually changed; a NULL column inherits the process default from `.env`.
-[src/db/settings.js](src/db/settings.js) is the single authority:
-`effectiveSettings(guildId)` returns the merged view plus which keys are
-inherited.
+and how long the grace period is. [src/db/settings.js](src/db/settings.js) is the
+single authority: `effectiveSettings(guildId)` resolves a setting through three
+layers and returns the merged view plus, per key, which layer answered.
 
-| Setting | Default | Effect |
+```text
+explicit override   what this server's staff set with /mod config set
+      ↓
+the guild's profile what /mod setup wrote: a name, resolved live
+      ↓
+the built-in base   BASE_SETTINGS in moderation/presets.js
+```
+
+There is deliberately **no environment layer** under any of it. A process-wide
+default for a per-server policy is only meaningful in a deployment with one
+server; with several it decided things for servers whose staff could not see the
+file it lived in, and it meant every "why did Mai do that?" started by working
+out which of three places had won. `.env` keeps the secrets, the deployment
+facts and the switches that are genuinely the operator's.
+
+The profile is a *layer*, not a copy: `/mod setup standard` stores the name and
+nothing else, so a typical server holds one row with one value in it, and tuning
+a bundle in `presets.js` reaches every server already on it. Applying a profile
+clears the explicit overrides for the keys profiles decide (or a server that had
+run `standard` would sit on `strict` while still enforcing `standard`'s mention
+cap) and leaves the rest alone: the log channel and the exempt channels are facts
+about the server, not a stance on moderation.
+
+| Setting | Base | Effect |
 |---|---|---|
 | `log-channel` | none | Target channel for the moderation log. Unset = no log for this guild |
 | `welcome-channel` | the guild's system channel | Where new members are greeted |
-| `grace` | `MODERATION_GRACE_PERIOD_MINUTES` | Minutes an author has to delete a flagged message (1–1440) |
-| `timeout-ladder` | `MODERATION_TIMEOUT_LADDER` | Timeout minutes per strike, e.g. `0,10,60,1440`; the last step repeats |
-| `strike-window` | `MODERATION_STRIKE_WINDOW_DAYS` | Days an enforced deletion counts towards escalation (1–365) |
-| `escalation` | `MODERATION_ESCALATION_ENABLED` | Hand out timeouts at all; off still records strikes |
-| `threshold` | `MODERATION_THRESHOLD` | Minimum category score (0–1) that counts; 0 defers to the provider's own `flagged` |
-| `categories` | `MODERATION_CATEGORIES` | Category slugs that count at all, comma-separated; empty = all of them (max 30) |
+| `grace` | 10 min | Minutes an author has to delete a flagged message (1–1440) |
+| `timeout-ladder` | `0,5,15,30,60` | Timeout minutes per strike; the last step repeats |
+| `strike-window` | 7 days | Days an enforced deletion counts towards escalation (1–365) |
+| `escalation` | on | Hand out timeouts at all; off still records strikes |
+| `threshold` | 0 | Minimum category score (0–1) that counts; 0 defers to the provider's own `flagged` |
+| `categories` | all | Category slugs that count at all, comma-separated; empty = all of them (max 30) |
 | `exempt-channels` | none | Channels moderation ignores, comma-separated (max 50). Edited through `/mod exempt add\|remove\|list`, not `/mod config set` |
-| `enabled` | on | The kill switch: same flag as `/mod off` / `/mod on` |
-| `invite-filter` | `MODERATION_INVITE_FILTER` | Treat Discord invite links as a violation |
-| `link-policy` | `MODERATION_LINK_POLICY` | `off`, or `allowlist`: every link outside `link-domains` counts |
-| `link-domains` | `MODERATION_LINK_DOMAINS` | Allowed host names, comma-separated (max 50); subdomains of a listed host are covered |
-| `mention-cap` | `MODERATION_MENTION_CAP` | Most mentions one message may carry, `@everyone` included (0–100, 0 = off) |
-| `flood` | `MODERATION_FLOOD` | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
-| `name-check` | `MODERATION_NAME_CHECK` | Display names: `off`, `log`, or `reset` (also removes the server nickname) |
-| `shadow` | off | Report every verdict in the log and act on none of them. No process default: `/mod setup observe` for a window that ends by itself, `/mod config set shadow:true` for an open-ended one |
+| `enabled` | on | The kill switch: same flag as `/mod off` / `/mod on`. In no profile, so applying one cannot undo it |
+| `invite-filter` | off | Treat Discord invite links as a violation |
+| `link-policy` | `off` | `off`, or `allowlist`: every link outside `link-domains` counts |
+| `link-domains` | none | Allowed host names, comma-separated (max 50); subdomains of a listed host are covered |
+| `mention-cap` | 0 (off) | Most mentions one message may carry, `@everyone` included (0–100) |
+| `flood` | off | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
+| `name-check` | `MODERATION_NAME_CHECK` | Display names: `off`, `log`, or `reset` (also removes the server nickname). The one setting still defaulting from the environment, because the same variable decides whether the privileged intent it needs was requested at login |
+| `shadow` | off | Report every verdict in the log and act on none of them. `/mod setup observe` for a window that ends by itself, `/mod config set shadow:true` for an open-ended one |
 | `evidence` | off | Keep enforced messages (encrypted, `MODERATION_EVIDENCE_HOURS`) so staff can review an appeal |
+
+Note what the base column says: almost everything is **off**. That is a floor,
+not a recommendation. The recommendation is a profile, which is what `/mod setup`
+and the buttons in Mai's introduction exist to offer.
 
 A setting whose value is a *list* still lives in the `SETTINGS` map as one
 comma-separated column, but gets its own subcommands for editing: nobody types
@@ -291,8 +322,8 @@ the rule: host names are read and written by humans, so it stays a plain option.
 
 For the local rules, "off" and "not configured" are different answers, and the
 column keeps them apart: `/mod config set flood:off` stores an explicit *no
-flood rule here* rather than reverting to whatever `.env` says, which is what
-`/mod config reset flood` is for.
+flood rule here* rather than falling back to whatever the profile says, which is
+what `/mod config reset flood` is for.
 
 Two settings need something only the operator can switch on, because a guild
 cannot: `name-check` rides on a gateway intent (requested once, at login, for
@@ -406,10 +437,9 @@ handled the same way.
 The endpoint is reachable from the public internet through the tunnel, and
 verifying an Ed25519 signature is the expensive part of handling a request, so
 two cheap caps run *before* it: a per-client rate limit
-(`INTERACTIONS_RATE_LIMIT_MAX` per window, keyed on `CF-Connecting-IP` since
-every request otherwise carries the cloudflared container's address) and a body
-size cap (`INTERACTIONS_MAX_BODY_BYTES`; a request without a `Content-Length` is
-refused rather than streamed). Refusals are logged at `debug`: at HTTP volume an
+(120 requests a minute, keyed on `CF-Connecting-IP` since every request
+otherwise carries the cloudflared container's address) and a body size cap
+(64 KB; a request without a `Content-Length` is refused rather than streamed). Refusals are logged at `debug`: at HTTP volume an
 `info` line per refusal would turn a flood into a second flood in the log.
 
 Component `custom_id`s carry state, but an id from the client only ever *names* a
@@ -498,8 +528,10 @@ copied into the image (see `.dockerignore`): run them on the host.
 
 Two surfaces, both read once at startup:
 
-- **`.env`**: secrets, models, feature flags, timings, limits. See [../.env.example](../.env.example). Changing it requires a container **recreate** (`docker compose up -d mai`), not just a restart.
+- **`.env`**: secrets, models, deployment facts (ports, paths, ids) and the feature flags an operator has a reason to set. See [../.env.example](../.env.example). Changing it requires a container **recreate** (`docker compose up -d mai`), not just a restart.
 - **`config/mai.yaml`**: everything Mai says: persona, prompt scaffolding, moderation tone directives, scold lines, warning-DM template, `/mai` and `/mod` replies, log-embed titles and field labels, the Discord error codes explained to staff (`moderation.errors`), welcome lines, reaction triggers, presence statuses. Loaded and validated by [src/content.js](src/content.js). **No handler may contain a literal string Mai says**: adding wording means a YAML key plus a validated field in `content.js`. Point `MAI_CONFIG_PATH` at a read-only bind mount to edit it without rebuilding the image; a restart applies it.
+
+Timings nobody had a reason to change are values in [src/config.js](src/config.js) rather than variables: the enforcer interval, the per-tick row cap, the interactions body cap, the number of chat turns and images sent to the model, the reply length cap, the wedged-loop threshold. A knob that is never turned is not flexibility, it is another line the operator has to form an opinion about before the bot starts. A stale `.env` line for one of them is reported at startup through `deprecatedEnv` rather than silently ignored.
 
 ## Storage
 

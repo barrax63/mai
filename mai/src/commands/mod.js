@@ -18,6 +18,7 @@ import {
   clearShadowWindow,
   effectiveSettings,
   resetSettings,
+  setProfile,
   SETTINGS,
   startShadowWindow,
   updateSettings,
@@ -323,9 +324,10 @@ function historyResponse(interaction) {
 }
 
 /**
- * Applies a whole preset (moderation/presets.js) as one ordinary settings
- * patch, so the caller gets exactly what `/mod config set` would have given
- * them for seventeen typed options.
+ * Puts the guild on a preset (moderation/presets.js), which is one stored
+ * decision rather than the six writes this used to be: `effectiveSettings`
+ * resolves through the bundle, so the values stay changeable with
+ * `/mod config set` and improving a bundle reaches servers already on it.
  *
  * @param {string} guildId
  * @param {string} name Preset name, which may have come from a `custom_id`.
@@ -338,15 +340,19 @@ function applyPreset(guildId, name, actorId, logChannelId) {
   const chosen = preset(name);
   if (!chosen) return { applied: false, needsLogChannel: false };
 
-  const patch = chosen.settings;
-  if (logChannelId) patch['log-channel'] = logChannelId;
-
-  updateSettings(guildId, patch, actorId);
+  const extra = logChannelId ? { 'log-channel': logChannelId } : {};
+  if (!setProfile(guildId, name, actorId, extra)) {
+    return { applied: false, needsLogChannel: false };
+  }
 
   // `observe` is a period, not a state: it ends by itself and says so. Every
   // other preset is a statement of intent about shadow mode, so a window left
   // over from an earlier `observe` has to go, or it fires days later and
   // announces the end of an observation nobody was running.
+  //
+  // The explicit `shadow` column written here sits *above* the profile on
+  // purpose: it is how the window ends, since the tick flips it to 0 and the
+  // `observe` bundle underneath still says true.
   let until = null;
   if (chosen.observing && config.moderation.shadowDays > 0) {
     until = startShadowWindow(guildId, config.moderation.shadowDays);
@@ -355,7 +361,7 @@ function applyPreset(guildId, name, actorId, logChannelId) {
   }
 
   logger.info({ guildId, preset: name, byUserId: actorId, until }, 'Applied a settings preset');
-  announceConfigChange(guildId, actorId, describeChanges(patch));
+  announceConfigChange(guildId, actorId, describeChanges({ profile: name, ...extra }));
 
   return {
     applied: true,
@@ -697,13 +703,17 @@ function forgiveResponse(interaction) {
  */
 function configView(guildId) {
   const settings = effectiveSettings(guildId);
-  const inherited = (key) => (settings.inherited[key] ? ` ${content.commands.config.inherited}` : '');
+  // Three layers, so three answers. An unmarked line is one this server set
+  // itself, which is the one a moderator reading this most needs to spot.
+  const marker = { profile: content.commands.config.fromProfile, default: content.commands.config.inherited };
+  const inherited = (key) => (marker[settings.source[key]] ? ` ${marker[settings.source[key]]}` : '');
   const { unset, systemChannel, thresholdOff, allCategories, noExemptChannels, guardOff, noDomains } =
     content.commands.config;
   const yesNo = (value) => (value ? content.commands.config.on : content.commands.config.off);
 
   return ephemeralResponse(
     fill(content.commands.config.body, {
+      profile: settings.profile ? `\`${settings.profile}\`` : content.commands.config.noProfile,
       enabled: yesNo(settings.enabled),
       enabledSource: inherited('enabled'),
       escalation: yesNo(settings.escalationEnabled),

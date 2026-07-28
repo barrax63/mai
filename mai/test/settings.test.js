@@ -2,12 +2,16 @@ import { openTestDatabase, TEST_GUILD } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { config } from '../src/config.js';
+import { BASE_SETTINGS } from '../src/moderation/presets.js';
 import {
+  configuredGuildCount,
   effectiveSettings,
   rawSettings,
   resetSettings,
+  setProfile,
   updateSettings,
 } from '../src/db/settings.js';
+import { getDb } from '../src/db/index.js';
 
 await openTestDatabase();
 
@@ -20,9 +24,9 @@ test('a guild without a row inherits every default', () => {
 
   assert.equal(settings.logChannelId, null, 'no mod log without an explicit channel');
   assert.equal(settings.welcomeChannelId, null);
-  assert.equal(settings.gracePeriodMinutes, config.moderation.gracePeriodMinutes);
-  assert.deepEqual(settings.timeoutLadder, config.moderation.timeoutLadder);
-  assert.equal(settings.strikeWindowDays, config.moderation.strikeWindowDays);
+  assert.equal(settings.gracePeriodMinutes, BASE_SETTINGS.grace);
+  assert.deepEqual(settings.timeoutLadder, [0, 5, 15, 30, 60]);
+  assert.equal(settings.strikeWindowDays, BASE_SETTINGS['strike-window']);
   assert.deepEqual(settings.inherited, {
     enabled: true,
     escalation: true,
@@ -68,7 +72,7 @@ test('the strike window is validated', () => {
 
 test('a missing guild id (DM) still yields usable defaults', () => {
   const settings = effectiveSettings(null);
-  assert.equal(settings.gracePeriodMinutes, config.moderation.gracePeriodMinutes);
+  assert.equal(settings.gracePeriodMinutes, BASE_SETTINGS.grace);
   assert.equal(settings.logChannelId, null);
 });
 
@@ -79,7 +83,7 @@ test('setting one value leaves the others inherited', () => {
   assert.equal(settings.logChannelId, '4711');
   assert.equal(settings.inherited['log-channel'], false);
   assert.equal(settings.inherited.grace, true);
-  assert.equal(settings.gracePeriodMinutes, config.moderation.gracePeriodMinutes);
+  assert.equal(settings.gracePeriodMinutes, BASE_SETTINGS.grace);
   assert.equal(rawSettings(id).updated_by, 'admin-1');
 });
 
@@ -154,7 +158,7 @@ test('reset clears a single setting back to inherited', () => {
   updateSettings(id, { 'log-channel': '4711', grace: 5 });
   const settings = resetSettings(id, 'grace', 'admin-3');
 
-  assert.equal(settings.gracePeriodMinutes, config.moderation.gracePeriodMinutes);
+  assert.equal(settings.gracePeriodMinutes, BASE_SETTINGS.grace);
   assert.equal(settings.inherited.grace, true);
   assert.equal(settings.logChannelId, '4711', 'other overrides untouched');
 });
@@ -272,6 +276,93 @@ test('settings are per guild', () => {
   updateSettings(a, { grace: 2 });
 
   assert.equal(effectiveSettings(a).gracePeriodMinutes, 2);
-  assert.equal(effectiveSettings(b).gracePeriodMinutes, config.moderation.gracePeriodMinutes);
-  assert.equal(effectiveSettings(TEST_GUILD).gracePeriodMinutes, config.moderation.gracePeriodMinutes);
+  assert.equal(effectiveSettings(b).gracePeriodMinutes, BASE_SETTINGS.grace);
+  assert.equal(effectiveSettings(TEST_GUILD).gracePeriodMinutes, BASE_SETTINGS.grace);
+});
+
+// --- The profile layer ---------------------------------------------------
+//
+// `/mod setup` stores a name, not a copy of six values. These cover the three
+// ways that can go wrong: the profile not being read, an override not beating
+// it, and a stale override surviving a switch to a different profile.
+
+test('a profile decides the settings it covers, and says so', () => {
+  const id = guild();
+  const settings = setProfile(id, 'standard');
+
+  assert.equal(settings.profile, 'standard');
+  assert.equal(settings.mentionCap, 6, 'from the bundle, not the base');
+  assert.equal(settings.inviteFilter, true);
+  assert.deepEqual(settings.floodRule, { messages: 6, seconds: 10 });
+  assert.equal(settings.source['mention-cap'], 'profile');
+  // Untouched by every bundle, so it still comes from the base.
+  assert.equal(settings.strikeWindowDays, BASE_SETTINGS['strike-window']);
+  assert.equal(settings.source['strike-window'], 'default');
+  // The whole point: one stored value, not six.
+  assert.equal(rawSettings(id).mention_cap, null, 'the bundle is resolved, not copied');
+  assert.equal(rawSettings(id).profile, 'standard');
+});
+
+test('an explicit setting beats the profile under it', () => {
+  const id = guild();
+  setProfile(id, 'standard');
+  updateSettings(id, { 'mention-cap': 20 });
+
+  const settings = effectiveSettings(id);
+  assert.equal(settings.mentionCap, 20);
+  assert.equal(settings.source['mention-cap'], 'set');
+  assert.equal(settings.inviteFilter, true, 'the rest still comes from the profile');
+});
+
+test('switching profile drops the old overrides but keeps the channels', () => {
+  const id = guild();
+  const channel = '424242424242424242';
+  setProfile(id, 'standard', undefined, { 'log-channel': channel });
+  updateSettings(id, { 'mention-cap': 20, 'exempt-channels': channel });
+
+  const settings = setProfile(id, 'strict');
+
+  // Without this, a server that had run `standard` would sit on `strict` while
+  // still enforcing `standard`'s cap, with `/mod config view` showing neither.
+  assert.equal(settings.mentionCap, 5, 'the stale override is gone');
+  assert.equal(settings.source['mention-cap'], 'profile');
+  assert.equal(settings.threshold, 0.3);
+  // Facts about the server, not a stance on moderation: these survive.
+  assert.equal(settings.logChannelId, channel);
+  assert.deepEqual(settings.exemptChannels, [channel]);
+});
+
+test('an observation window ends above the profile that started it', () => {
+  const id = guild();
+  const settings = setProfile(id, 'observe');
+  assert.equal(settings.shadowMode, true, 'the bundle switches it on');
+
+  // What the enforcer writes when the window runs out. The `observe` bundle
+  // underneath still says true, so the explicit 0 has to win or the observation
+  // period could never end.
+  updateSettings(id, { shadow: false });
+  assert.equal(effectiveSettings(id).shadowMode, false);
+  assert.equal(effectiveSettings(id).source.shadow, 'set');
+});
+
+test('an unknown profile is refused, and a stale one falls through to the base', () => {
+  const id = guild();
+  assert.equal(setProfile(id, 'nope'), null);
+  assert.equal(setProfile(id, 'constructor'), null, 'not a property of Object.prototype either');
+
+  // A name that was valid when it was written and is not any more: the server
+  // gets the base rather than an exception on every flagged message.
+  updateSettings(id, { grace: 3 });
+  getDb().prepare('UPDATE guild_settings SET profile = ? WHERE guild_id = ?').run('retired', id);
+
+  const settings = effectiveSettings(id);
+  assert.equal(settings.profile, null);
+  assert.equal(settings.mentionCap, BASE_SETTINGS['mention-cap']);
+  assert.equal(settings.gracePeriodMinutes, 3, 'the explicit override still applies');
+});
+
+test('a guild that only picked a profile counts as configured', () => {
+  const before = configuredGuildCount();
+  setProfile(guild(), 'standard');
+  assert.equal(configuredGuildCount(), before + 1);
 });
