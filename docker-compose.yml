@@ -30,7 +30,6 @@ services:
       context: ./mai
     image: barrax63/mai:latest
     init: true
-    container_name: mai
     hostname: mai
     networks:
       - edge
