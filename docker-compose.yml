@@ -34,7 +34,7 @@ services:
     hostname: mai
     networks:
       - edge
-    restart: on-failure
+    restart: unless-stopped
     env_file:
       - path: .env
         required: true
@@ -68,7 +68,7 @@ services:
     image: cloudflare/cloudflared:latest
     init: true
     networks: ['edge']
-    restart: on-failure
+    restart: unless-stopped
     user: "65532:65532"
     depends_on:
       mai:
