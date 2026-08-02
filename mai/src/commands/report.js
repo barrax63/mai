@@ -116,6 +116,16 @@ export const reportComponents = {
     try {
       const channel = await getGatewayClient()?.channels?.fetch(channelId);
 
+      // No channel is a failed deletion, never a permitted one: the client is
+      // null until the gateway is ready, and a fetch can answer null for a
+      // channel that is gone. `channel?.messages?.delete(...)` used to resolve
+      // through both and set `deleted`, so the entry told every moderator the
+      // message had been removed while it was still on screen.
+      if (!channel) {
+        logger.warn(
+          { channelId, messageId, guildId: interaction.guild_id, byUserId: staff.id },
+          'Report approval could not resolve its target channel',
+        );
       // The channel id travels in the custom_id, and Manage Messages was only
       // checked against the guild the click came from. Discord will not let a
       // member invent a custom_id today, but this handler deletes through the
@@ -123,7 +133,7 @@ export const reportComponents = {
       // is proven to be in the clicker's guild rather than assumed. Same rule
       // as forgetComponents: an id from the client names a target, it does not
       // authorize one.
-      if (channel && channel.guildId !== interaction.guild_id) {
+      } else if (channel.guildId !== interaction.guild_id) {
         // Deliberately not an ephemeral refusal: for staff this handler is
         // deferred, and a deferred response replaces the log entry itself. This
         // falls through as a failed deletion so the outcome lands *in* the
@@ -137,7 +147,9 @@ export const reportComponents = {
         // Staff acting through Mai is still Mai deleting: the messageDelete
         // handler must not read this as the author fixing it themselves.
         markOwnDeletion(messageId);
-        await channel?.messages?.delete(messageId);
+        // Unchained deliberately: a channel with no message manager throws into
+        // the catch below rather than resolving as a deletion that happened.
+        await channel.messages.delete(messageId);
         deleted = true;
       }
     } catch (error) {

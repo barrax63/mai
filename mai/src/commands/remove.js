@@ -108,10 +108,27 @@ export const removeMessage = {
 
     try {
       const channel = await client?.channels?.fetch(channelId);
+
+      // No channel is a failed deletion, never a permitted one. `client` is null
+      // until the gateway is ready (the HTTP server listens first), and
+      // `channels.fetch` can answer null for a channel that is simply gone.
+      // Optional chaining all the way to `delete` used to swallow both and fall
+      // through to the success path, which wrote a strike towards an automatic
+      // timeout, kept the text as appeal evidence and logged a removal, for a
+      // message still on screen. `warn` rather than `error`: a gateway that is
+      // not up yet is not an incident worth paging the operator about.
+      if (!channel) {
+        logger.warn(
+          { channelId, messageId, guildId: interaction.guild_id, byUserId: staff.id },
+          'Manual deletion could not resolve its target channel',
+        );
+        return ephemeralResponse(content.commands.remove.failed);
+      }
+
       // The target id comes from Discord's own resolved payload rather than a
       // custom_id, but the fetch still goes through the bot's client, which
       // reaches every guild Mai is in: prove the channel is this guild's.
-      if (channel && channel.guildId !== interaction.guild_id) {
+      if (channel.guildId !== interaction.guild_id) {
         logger.error(
           { channelId, messageId, guildId: interaction.guild_id, byUserId: staff.id },
           'Manual deletion targeted a channel outside the calling guild',
@@ -124,7 +141,10 @@ export const removeMessage = {
       }
 
       markOwnDeletion(messageId);
-      await channel?.messages?.delete(messageId);
+      // Unchained deliberately: a channel with no message manager (a category, a
+      // voice channel) has to throw into the catch below rather than resolve as
+      // a deletion, for the same reason.
+      await channel.messages.delete(messageId);
     } catch (error) {
       logger.warn({ channelId, messageId, err: error }, 'Manual deletion failed');
       return ephemeralResponse(content.commands.remove.failed);

@@ -60,24 +60,37 @@ const wipe = () => {
 };
 
 /** Everything Mai reaches Discord through, and what she did with it. */
-function stubGateway({ deleteFails = false, dmFails = false, channelGuildId = TEST_GUILD } = {}) {
+function stubGateway({
+  deleteFails = false,
+  dmFails = false,
+  channelGuildId = TEST_GUILD,
+  // The target channel resolves to nothing: a channel that is gone, or a client
+  // that is not up yet. The log channel still resolves, so a test can read what
+  // was posted about the attempt.
+  targetMissing = false,
+} = {}) {
   const record = { posted: [], deleted: [], dms: [] };
 
   setGatewayClient({
     guilds: { cache: new Map([[TEST_GUILD, { id: TEST_GUILD, name: 'Katzenhaus' }]]) },
     channels: {
-      fetch: async (id) => ({
-        id,
-        guildId: channelGuildId,
-        isTextBased: () => true,
-        send: async (payload) => record.posted.push({ channelId: id, ...payload }),
-        messages: {
-          delete: async (messageId) => {
-            if (deleteFails) throw Object.assign(new Error('Missing Permissions'), { code: 50013 });
-            record.deleted.push(messageId);
+      fetch: async (id) => {
+        if (targetMissing && id === CHANNEL) return null;
+        return {
+          id,
+          guildId: channelGuildId,
+          isTextBased: () => true,
+          send: async (payload) => record.posted.push({ channelId: id, ...payload }),
+          messages: {
+            delete: async (messageId) => {
+              if (deleteFails) {
+                throw Object.assign(new Error('Missing Permissions'), { code: 50013 });
+              }
+              record.deleted.push(messageId);
+            },
           },
-        },
-      }),
+        };
+      },
     },
     users: {
       fetch: async (userId) => ({
@@ -225,6 +238,46 @@ test('a failed deletion records nothing', async () => {
   await settle();
 
   assert.equal(totalsFor(TEST_GUILD, OFFENDER).total, 0, 'no strike for a message still standing');
+});
+
+test('a deletion with no channel to delete in records nothing either', async () => {
+  wipe();
+  const record = stubGateway({ targetMissing: true });
+
+  await route(removeCommand());
+  await settle();
+
+  // A message still on screen must not earn a strike towards an automatic
+  // timeout. Optional chaining used to carry a nullish channel all the way
+  // through `delete` without throwing, so the success path ran on a deletion
+  // that never happened: the client is null until the gateway is ready, and a
+  // fetch answers null for a channel that is gone.
+  assert.deepEqual(record.deleted, []);
+  assert.equal(totalsFor(TEST_GUILD, OFFENDER).total, 0);
+  assert.equal(isOwnDeletion(MESSAGE), false, 'nothing to attribute to her');
+  assert.equal(edits.at(-1).body.content, content.commands.remove.failed);
+});
+
+test('a queued row survives a deletion that did not happen', async () => {
+  wipe();
+  stubGateway({ targetMissing: true });
+  enqueue({
+    messageId: MESSAGE,
+    guildId: TEST_GUILD,
+    channelId: CHANNEL,
+    userId: OFFENDER,
+    categories: ['harassment'],
+    warnedAt: new Date().toISOString(),
+    dueAt: new Date(Date.now() + 600_000).toISOString(),
+    scoldMessageId: '900000000000000009',
+  });
+
+  await route(removeCommand());
+  await settle();
+
+  // Dropping the row here would abandon enforcement Mai had already decided on,
+  // for a message nobody removed.
+  assert.ok(findRow(MESSAGE), 'still queued, because the message is still there');
 });
 
 test('/mod warn DMs the member and stays off the ladder', async () => {

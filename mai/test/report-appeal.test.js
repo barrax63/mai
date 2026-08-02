@@ -27,26 +27,35 @@ updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL });
  * Captures what Mai posts to Discord, and lets a test drive the gateway client
  * the handlers reach for.
  */
-function stubGateway({ deleteFails = false, channelGuildId = TEST_GUILD } = {}) {
+function stubGateway({
+  deleteFails = false,
+  channelGuildId = TEST_GUILD,
+  // The reported channel resolves to nothing: gone, or a client that is not up
+  // yet. The log channel still resolves, so the entry can still be read.
+  targetMissing = false,
+} = {}) {
   const sent = [];
   const deleted = [];
 
   setGatewayClient({
     channels: {
-      fetch: async (id) => ({
-        id,
-        // Which guild the channel is in: `report-approve` proves the target
-        // sits in the clicker's guild before deleting through it.
-        guildId: channelGuildId,
-        isTextBased: () => true,
-        send: async (payload) => sent.push({ channelId: id, ...payload }),
-        messages: {
-          delete: async (messageId) => {
-            if (deleteFails) throw new Error('Missing Permissions');
-            deleted.push(messageId);
+      fetch: async (id) => {
+        if (targetMissing && id === CHANNEL) return null;
+        return {
+          id,
+          // Which guild the channel is in: `report-approve` proves the target
+          // sits in the clicker's guild before deleting through it.
+          guildId: channelGuildId,
+          isTextBased: () => true,
+          send: async (payload) => sent.push({ channelId: id, ...payload }),
+          messages: {
+            delete: async (messageId) => {
+              if (deleteFails) throw new Error('Missing Permissions');
+              deleted.push(messageId);
+            },
           },
-        },
-      }),
+        };
+      },
     },
   });
 
@@ -230,6 +239,28 @@ test('approval refuses a target channel outside the clicking guild', async () =>
   assert.equal(resolution.name, content.moderation.log.fields.resolution);
   assert.equal(
     resolution.value,
+    content.commands.report.approvedFailed.replace('{userId}', TEST_USER),
+  );
+});
+
+test('an approval with no channel to delete in does not claim the message is gone', async () => {
+  // Optional chaining used to carry a nullish channel through `delete` without
+  // throwing, so the entry told every moderator the message had been removed
+  // while it was still on screen. The client is null until the gateway is ready,
+  // and a fetch answers null for a channel that is gone.
+  const { deleted } = stubGateway({ targetMissing: true });
+  const { edits } = await routeDeferred(
+    interaction({
+      type: InteractionType.MESSAGE_COMPONENT,
+      member: member(TEST_USER, STAFF_PERMISSIONS),
+      message: { embeds: [{ title: 'x', fields: [] }] },
+      data: { custom_id: `report-approve:${CHANNEL}:${MESSAGE}`, component_type: 2 },
+    }),
+  );
+
+  assert.deepEqual(deleted, []);
+  assert.equal(
+    edits[0].body.embeds[0].fields.at(-1).value,
     content.commands.report.approvedFailed.replace('{userId}', TEST_USER),
   );
 });
