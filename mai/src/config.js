@@ -537,7 +537,11 @@ export const config = Object.freeze({
     // forever. The remainder is simply picked up by the next tick.
     maxRowsPerTick: int('MODERATION_MAX_ROWS_PER_TICK', '100', { min: 1 }),
     // Also send image attachments to the moderation endpoint (multimodal).
-    classifyImages: bool('MODERATION_CLASSIFY_IMAGES', 'false'),
+    // On by default, matching `.env.example`: with it off, a message carrying
+    // only an image is not classified at all, so posting one is a way around
+    // moderation entirely. A deployment that omits the variable should not get
+    // the bypass, and an operator who wants the tokens back can still say so.
+    classifyImages: bool('MODERATION_CLASSIFY_IMAGES', 'true'),
     // How long the strike record is kept at all.
     violationRetentionDays: int('VIOLATION_RETENTION_DAYS', '90', { min: 1 }),
     // Consecutive failed classifications in one guild before its staff are told

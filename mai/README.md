@@ -25,11 +25,18 @@ src/logger.js              pino, plus the hook that raises those alerts
 src/rate-limit.js          the shared token bucket (interactions, chat, reports, appeals, DM checks)
 src/ai/                    openai.js (HTTP client + retries + token accounting), moderation.js
                            (classify + applyPolicy), chat.js (prompt build, tool loop, normalize)
+src/permissions.js         what she is missing per guild, and switching escalation off when she
+                           cannot carry it out
 src/db/                    the only SQL: index.js (open/migrate), queue.js, history.js, settings.js,
-                           violations.js, usage.js, crypto.js, migrations/
+                           violations.js, evidence.js (appeal material), notes.js (staff notes),
+                           shadow-scores.js (observation histogram), usage.js, crypto.js,
+                           migrations/
 src/moderation/            check.js (per message, incl. recheck + exemptions), enforcer.js (tick loop),
+                           heuristics.js (the free rules: invites, links, mentions, floods),
                            cleanup.js (undoing Mai's marks), escalation.js (strike ladder + timeouts),
                            warning.js (DM composer + grouping), log.js (staff-channel embeds),
+                           log-channel.js (finding or making one on join), presets.js (the bundles),
+                           health.js (degraded/recovered entries), names.js (display-name screen),
                            appeal.js (button, modal, decisions), screen.js (/mai ask input guard)
 src/chat/                  reply.js (turn orchestration), limits.js (rate limit, concurrency,
                            serialization), tools.js (argument-free function calling)
@@ -37,8 +44,8 @@ src/gateway/               client.js (intents + wiring), presence.js, events/
 src/http/                  server.js (interactions, healthz, landing page), metrics.js, public/
 src/interactions/          router.js (dispatch, allowlist, kill switch), registry.js (components +
                            modals), options.js (subcommand/option reading), respond.js (builders)
-src/commands/              slash commands: /ping, /mai, /mod, and the "Nachricht melden" message
-                           command (report.js)
+src/commands/              slash commands: /ping, /mai, /mod, plus the two message commands:
+                           "Nachricht melden" (report.js) and "Löschen (Mai)" (remove.js)
 ```
 
 ## Moderation
@@ -80,7 +87,7 @@ Every non-bot guild message with text content is classified when it is posted **
 - **…but not silently.** Failing open is invisible from inside Discord: an outage looks exactly like a quiet afternoon, and until it was reported only the operator (container log, alert channel) ever found out. After three consecutive failures in a server, its log channel gets a *Moderation fällt aus* entry, and a *Moderation läuft wieder* one when the next classification succeeds ([src/moderation/health.js](src/moderation/health.js)). Exactly one of each per outage: an entry per failed message would be a second flood on top of the first. `/mod status` answers the same question on demand, which is the only route for a server with no log channel. The local rules above keep working throughout, which is half of why they are worth having.
 - **`/mai ask` screens the question** ([src/moderation/screen.js](src/moderation/screen.js)), before the completion runs, because the answer quotes it back into the channel, that command was otherwise a way to publish arbitrary text past moderation under Mai's name.
 - **What Mai says herself is deliberately not classified.** Her tone escalates with a member's open violations, and the top rung tells her to insult them outright (`chat.flagged.tones`); a classifier reads that as harassment (0.89–0.98 measured), so an outbound filter would silence the angry cat precisely when she is supposed to be angry. The behaviour is the feature. What stops a prompt-injected model is the prompt (fenced quotes and a system-only instruction notice (see *Chat* below)) rather than a filter on her output.
-- **Image attachments** are only checked when `MODERATION_CLASSIFY_IMAGES=true`. While it is off, a message carrying *only* an image is not classified at all (there is no text to look at) so posting an image is a way around moderation. With it on, image URLs are sent to the moderation endpoint alongside any text (Discord's signed CDN links are fetched by OpenAI; nothing is downloaded or stored by Mai).
+- **Image attachments** are checked unless `MODERATION_CLASSIFY_IMAGES=false`. On by default, because while it is off a message carrying *only* an image is not classified at all (there is no text to look at) so posting an image is a way around moderation, and a deployment that never set the variable should not get that. With it on, image URLs are sent to the moderation endpoint alongside any text (Discord's signed CDN links are fetched by OpenAI; nothing is downloaded or stored by Mai).
 - The queue holds **metadata only**: message text is never persisted. The content quoted in the warning DM is read from Discord at enforcement time.
 
 ## Mai persona features
@@ -239,7 +246,7 @@ Three things Mai does about her own setup, because nobody else will:
 - **She finds herself somewhere to write** ([src/moderation/log-channel.js](src/moderation/log-channel.js)): `log-channel` is the only setting with no working default, and without one the moderation log, reports, appeals and the outage notice are all silently absent. On join she adopts a channel the server already keeps for this (whole-name match on `mod-log`, `moderation-log`, `mai-log` and their plural and underscore spellings, never a substring: adopting `#changelog` would start posting member ids and category slugs into a channel nobody meant for that), or creates one if she has Manage Channels, denied to `@everyone` on creation so the default is less exposure rather than more. A server that has already chosen is never overruled, a channel she cannot write in is not an answer, and whichever of the three happened is named in the introduction: making a channel in somebody's server is a visible act.
 - **She stops handing out timeouts she cannot hand out** ([src/permissions.js](src/permissions.js)): without Moderate Members every escalation fails at `error` level, which reaches the operator's alert channel, and posts an entry in the guild's log. Right for an incident, wrong for a permanent state, where it fires on every second strike forever. So escalation switches itself off with an entry explaining why, strikes keep accumulating (that is what escalation-off has always meant), and the moment the permission appears she switches it back on. `escalation_suspended_at` records that the decision was hers, so she only ever undoes her own: any human writing `escalation` ends the suspension and she leaves it alone from then on.
 - **She checks her own permissions** ([src/permissions.js](src/permissions.js)): once per process for every allowlisted server, again on join (the result goes into the introduction), and on demand in `/mod status`. Only what that server switched on is checked, so a guild with escalation off is not nagged about Moderate Members. Every one of these fails gracefully at runtime, which is exactly why nobody notices them.
-- **She restarts herself when wedged** ([src/moderation/enforcer.js](src/moderation/enforcer.js)): the overlap guard turns a hung tick into permanent silence, and `/healthz` reporting that changes nothing on its own, because Docker restart policies do not watch health. After five intervals with no sign of life the process logs at `fatal` (so the alert channel hears about it) and exits, and `restart: on-failure` brings back a working one. It measures **progress**, not completion: every resolved row counts, so a long pass through a backlog under a rate limit is never mistaken for a hang and restarted into the same backlog forever.
+- **She restarts herself when wedged** ([src/moderation/enforcer.js](src/moderation/enforcer.js)): the overlap guard turns a hung tick into permanent silence, and `/healthz` reporting that changes nothing on its own, because Docker restart policies do not watch health. After five intervals with no sign of life the process logs at `fatal` (so the alert channel hears about it) and exits, and the compose restart policy (`unless-stopped`, which restarts after a non-zero exit and after a host reboot) brings back a working one. It measures **progress**, not completion: every resolved row counts, so a long pass through a backlog under a rate limit is never mistaken for a hang and restarted into the same backlog forever.
 
 ### Presets
 

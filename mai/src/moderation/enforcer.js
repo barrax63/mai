@@ -659,9 +659,10 @@ const thresholdUndoButton = (guildId) => [
  *
  * So the loop watches itself: if the last completed tick is older than
  * `MODERATION_STUCK_RESTART_TICKS` intervals, the process exits and the
- * container's `restart: on-failure` brings back a working one. Losing an
- * in-flight tick costs nothing, because every row it had not resolved is still
- * in the queue and the next process picks it up.
+ * container's restart policy (`unless-stopped`, which also restarts after a
+ * non-zero exit) brings back a working one. Losing an in-flight tick costs
+ * nothing, because every row it had not resolved is still in the queue and the
+ * next process picks it up.
  *
  * Same shape as the uncaught-exception handler in index.js: `fatal` (so the
  * alert hook forwards it), then exit after a beat so that alert can leave.

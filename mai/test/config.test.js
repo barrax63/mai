@@ -153,6 +153,14 @@ test('being an operator is not the same as being staff somewhere', () => {
   assert.ok(!isOperator(''));
 });
 
+test('a deployment that says nothing about images still checks them', () => {
+  // No test setup sets MODERATION_CLASSIFY_IMAGES, so this is the bare default.
+  // It used to be false in code and true in `.env.example`, which meant a
+  // deployment built from the template was fine while one that omitted the
+  // variable let a message carrying only an image past moderation entirely.
+  assert.equal(config.moderation.classifyImages, true);
+});
+
 test('the config object cannot be edited at runtime', () => {
   assert.ok(Object.isFrozen(config));
   assert.throws(() => {

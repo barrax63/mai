@@ -25,7 +25,7 @@ async function main() {
   // line and, more importantly, never reaches the alert channel: Mai would
   // vanish and restart with nothing to say why. Installing a handler suppresses
   // that default, so this has to exit itself; the process is in an undefined
-  // state and `restart: on-failure` in compose is what brings her back. The
+  // state and the compose restart policy is what brings her back. The
   // delay only gives the alert hook, which posts to Discord and cannot be
   // awaited from here, a chance to land first: the same trade the shutdown
   // path makes with its force-exit timer.
