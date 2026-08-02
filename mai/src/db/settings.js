@@ -118,6 +118,13 @@ export const SETTINGS = Object.freeze({
     column: 'welcome_enabled',
     parse: (value) => (value === null ? null : toFlag(value, 'welcome')),
   },
+  gifs: {
+    // Whether Mai may search for a GIF and post it here. Rides on the
+    // operator's `GIPHY_API_KEY` the way `evidence` rides on the retention
+    // window, so `/mod config set` warns when there is nothing to search with.
+    column: 'gifs_enabled',
+    parse: (value) => (value === null ? null : toFlag(value, 'gifs')),
+  },
   grace: {
     column: 'grace_period_minutes',
     parse: (value) => {
@@ -339,6 +346,10 @@ export function effectiveSettings(guildId) {
     // Whether there is a greeting at all. Needs `DISCORD_MEMBER_EVENTS` too:
     // the intent it rides on is the operator's, decided once at login.
     welcomeEnabled: flag('welcome_enabled') && config.discord.memberEventsEnabled,
+    // Whether she may search for a GIF here, folded like `evidence`: a server
+    // can say yes long before there is a key to search with, so what this
+    // returns is what actually happens rather than what was asked for.
+    gifsEnabled: flag('gifs_enabled') && config.chat.gifSearch.enabled,
     gracePeriodMinutes: value('grace_period_minutes'),
     timeoutLadder: value('timeout_ladder').split(',').map(Number),
     strikeWindowDays: value('strike_window_days'),
@@ -380,6 +391,7 @@ export function effectiveSettings(guildId) {
       'log-channel': !row?.log_channel_id,
       'welcome-channel': !row?.welcome_channel_id,
       welcome: row?.welcome_enabled == null,
+      gifs: row?.gifs_enabled == null,
       grace: row?.grace_period_minutes == null,
       'timeout-ladder': !row?.timeout_ladder,
       'strike-window': row?.strike_window_days == null,

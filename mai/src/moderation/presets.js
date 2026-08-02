@@ -140,6 +140,11 @@ export const BASE_SETTINGS = Object.freeze({
   // what it returns is what actually happens.
   'name-check': 'off',
   welcome: false,
+  // Persona rather than moderation, so no bundle decides it: `/mod setup` must
+  // not start posting animations in a server that only asked for stricter
+  // moderation. A GIF is visible to everyone in the channel, so it is opted
+  // into like the greeting is.
+  gifs: false,
   // Keeping a member's deleted words needs the operator's retention window too
   // (`MODERATION_EVIDENCE_HOURS`), folded in the same way.
   evidence: false,

@@ -9,6 +9,7 @@
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
 import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../chat/limits.js';
+import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { deleteForUser } from '../db/history.js';
@@ -87,14 +88,24 @@ async function ask(interaction) {
       client: getGatewayClient(),
     });
     logger.info(
-      { userId: user.id, replyLength: reply.length, model: config.openai.chatModel },
+      {
+        userId: user.id,
+        replyLength: reply.text.length,
+        gif: Boolean(reply.gifUrl),
+        model: config.openai.chatModel,
+      },
       'Answered /mai ask',
     );
-    logger.debug({ userId: user.id, question, reply }, '/mai ask content');
+    logger.debug({ userId: user.id, question, reply: reply.text }, '/mai ask content');
 
     // Public answer, quoting the question so the thread of conversation is
-    // visible to everyone; the question is the caller's own text.
-    return messageResponse(fill(content.commands.ask.answer, { question, reply }));
+    // visible to everyone; the question is the caller's own text. A GIF she
+    // chose rides along as an embed, the same as in chat, so no address ends
+    // up in the text.
+    return messageResponse(
+      fill(content.commands.ask.answer, { question, reply: reply.text }),
+      { embeds: gifEmbeds(reply.gifUrl) },
+    );
   } finally {
     releaseSlot();
   }

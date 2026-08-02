@@ -10,7 +10,7 @@
  */
 import { config } from '../config.js';
 import { content, fill } from '../content.js';
-import { runTool, toolDefinitions } from '../chat/tools.js';
+import { runTool, toolsFor } from '../chat/tools.js';
 import { logger } from '../logger.js';
 import { createChatCompletion } from './openai.js';
 
@@ -238,6 +238,36 @@ export function pruneInventedEmotes(raw, context) {
 }
 
 /**
+ * `[GIF]`, `(gif)` and friends: a model narrating an attachment it does not
+ * control. Calling the tool is how a GIF is sent, and the message is assembled
+ * afterwards, so a marker in the text is never anything but litter in the
+ * middle of her sentence.
+ *
+ * The instructions in the YAML ask her not to write one, which mostly works;
+ * this is the half that does not depend on the model reading its brief. Stripped
+ * whether or not a GIF was actually attached: a leftover marker for a search
+ * that found nothing is the same litter.
+ */
+const GIF_PLACEHOLDER = /[[(]\s*gifs?\s*[\])]/gi;
+
+/**
+ * @param {string} text
+ * @returns {string}
+ */
+function dropGifPlaceholders(text) {
+  // Replace first and compare, rather than testing: `.test()` on a `/g` regex
+  // walks `lastIndex` and would answer differently every other call, which is
+  // the same trap `content.js` strips the flag for.
+  const stripped = text.replace(GIF_PLACEHOLDER, '');
+  if (stripped === text) return text;
+
+  // The marker took its surrounding spaces with it.
+  return stripped
+    .replace(/[^\S\r\n]{2,}/g, ' ')
+    .replace(/[^\S\r\n]+(?=\r?\n|$)/g, '');
+}
+
+/**
  * Trims, length-caps and de-pings a model reply.
  *
  * @param {string} raw
@@ -266,11 +296,11 @@ export function normalizeReply(raw) {
  *
  * @param {{ id: string, function?: { name?: string } }} call
  * @param {{ userId: string, guildId: string | null, client?: object }} context
- * @returns {string}
+ * @returns {Promise<string>}
  */
-function toolPayload(call, context) {
+async function toolPayload(call, context) {
   try {
-    return JSON.stringify(runTool(call, context));
+    return JSON.stringify(await runTool(call, context));
   } catch (error) {
     logger.error(
       { tool: call?.function?.name, err: error },
@@ -285,16 +315,32 @@ function toolPayload(call, context) {
  *
  * @param {object[]} messages From `buildMessages`.
  * @param {{ userId: string, guildId: string | null, client?: object }} context
- *   Passed to the tools; the model never supplies these.
- * @returns {Promise<string>} Normalized reply, ready to post.
+ *   Passed to the tools; the model never supplies these. A GIF tool leaves its
+ *   choice on this object, which is why the caller hands in a fresh one.
+ * @returns {Promise<{ text: string, gifUrl: string | null }>} Ready to post.
  */
 export async function generateReply(messages, context) {
   const conversation = [...messages];
   const useTools = config.chat.toolsEnabled && Boolean(context?.userId);
 
+  /**
+   * The reply as it will be posted. An empty answer next to a GIF stays empty
+   * rather than becoming the fallback line: "schick mir ein gif" is answered
+   * with the GIF, and a cat staring silently would be a stranger reply than
+   * saying nothing at all.
+   */
+  const finish = (raw) => {
+    const gifUrl = context?.pendingGif ?? null;
+    const pruned = dropGifPlaceholders(pruneInventedEmotes(raw, context));
+    return {
+      text: gifUrl && !pruned.trim() ? '' : normalizeReply(pruned),
+      gifUrl,
+    };
+  };
+
   for (let round = 0; round <= MAX_TOOL_ROUNDS; round++) {
     // The final round drops the tools, so the model has to answer in words.
-    const tools = useTools && round < MAX_TOOL_ROUNDS ? toolDefinitions : undefined;
+    const tools = useTools && round < MAX_TOOL_ROUNDS ? toolsFor(context?.guildId) : undefined;
     const { message } = await createChatCompletion({
       messages: conversation,
       tools,
@@ -303,7 +349,7 @@ export async function generateReply(messages, context) {
 
     const calls = message?.tool_calls ?? [];
     // Pruned before the length cap, so the cap applies to what is posted.
-    if (calls.length === 0) return normalizeReply(pruneInventedEmotes(message?.content, context));
+    if (calls.length === 0) return finish(message?.content);
 
     logger.info(
       { round, tools: calls.map((call) => call.function?.name) },
@@ -317,12 +363,15 @@ export async function generateReply(messages, context) {
       conversation.push({
         role: 'tool',
         tool_call_id: call.id,
-        content: toolPayload(call, context),
+        // Serially: the calls in one round are independent, but the only tool
+        // that takes any real time is bounded by its own timeout, and a loop
+        // that is easy to read beats saving a few hundred milliseconds here.
+        content: await toolPayload(call, context),
       });
     }
   }
 
   // Cap reached and still no prose: give up rather than loop.
   logger.warn({ rounds: MAX_TOOL_ROUNDS }, 'Model kept asking for tools, answering without');
-  return normalizeReply('');
+  return finish('');
 }

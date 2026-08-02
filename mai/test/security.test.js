@@ -171,7 +171,7 @@ test('Mai is never classified on the way out', async () => {
     restore();
   }
 
-  assert.equal(reply, '*faucht* Verschwinde, du Idiot.', 'posted verbatim');
+  assert.equal(reply.text, '*faucht* Verschwinde, du Idiot.', 'posted verbatim');
   assert.equal(
     calls.some((url) => url.includes('/moderations')),
     false,

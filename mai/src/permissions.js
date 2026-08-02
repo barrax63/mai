@@ -100,6 +100,9 @@ export function missingPermissions(guild) {
   // escalation off that it is missing Moderate Members is noise.
   if (settings.escalationEnabled) required.push(PermissionFlagsBits.ModerateMembers);
   if (settings.nameCheck === 'reset') required.push(PermissionFlagsBits.ManageNicknames);
+  // A GIF is a link Discord has to unfurl. Without this she posts a bare URL
+  // and looks broken, which is a silent failure like every other one here.
+  if (settings.gifsEnabled) required.push(PermissionFlagsBits.EmbedLinks);
 
   return {
     guild: me.permissions.missing(required),

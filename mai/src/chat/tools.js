@@ -13,6 +13,7 @@ import { config } from '../config.js';
 import { content } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
 import { openViolations } from '../db/queue.js';
+import { searchGif } from './gif-search.js';
 import { lastEnforcementPass, strikeCount, totalsFor } from '../db/violations.js';
 import { logger } from '../logger.js';
 import { strikeWindowStart } from '../moderation/escalation.js';
@@ -108,6 +109,66 @@ export const toolDefinitions = Object.freeze([
       ]
     : []),
 ]);
+
+/**
+ * The one tool that takes something the model wrote.
+ *
+ * Every other tool here refuses arguments outright, and the reason is worth
+ * restating rather than making an exception to quietly: an argument that names
+ * a *target* (a user id, a channel) would let a prompt-injected model reach
+ * something that is not the caller's. A search term names no target. It steers
+ * what Mai looks for, and what comes back is constrained on our side instead:
+ * screened before it is sent, host-checked before it is posted, and never
+ * echoed to the model as a URL (see `chat/gif-search.js`).
+ */
+const searchTools = Object.freeze(
+  config.chat.gifSearch.enabled
+    ? [
+        {
+          type: 'function',
+          function: {
+            name: 'search_gif',
+            description: content.chat.gifSearchInstruction,
+            parameters: {
+              type: 'object',
+              properties: {
+                query: {
+                  type: 'string',
+                  // The examples are the strongest steer in here, so they are
+                  // deliberately about *situations* and deliberately not cats:
+                  // "cat in a box" as a sample turned every search into another
+                  // cat GIF, because the persona was already pulling that way.
+                  description:
+                    'Wonach gesucht wird, ein paar Worte, am besten Englisch, passend zum Thema des Gesprächs: "facepalm", "excited celebration", "monday morning", "mind blown", "awkward silence". Keine Links, keine ganzen Sätze.',
+                },
+              },
+              required: ['query'],
+              additionalProperties: false,
+            },
+          },
+        },
+      ]
+    : [],
+);
+
+const WITH_SEARCH = Object.freeze([...toolDefinitions, ...searchTools]);
+
+/**
+ * What the model is offered for a given guild.
+ *
+ * `search_gif` is the first tool a *server* can switch off (`/mod config set
+ * gifs:false`), so the offered list stopped being a constant. Both arrays are
+ * built once at import; this runs per reply and only decides between them.
+ * `gifsEnabled` arrives already folded against the operator's API key, so true
+ * here means a key really exists.
+ *
+ * @param {string | null | undefined} guildId
+ * @returns {object[]}
+ */
+export function toolsFor(guildId) {
+  if (searchTools.length === 0) return toolDefinitions;
+  return effectiveSettings(guildId).gifsEnabled ? WITH_SEARCH : toolDefinitions;
+}
 
 /**
  * Models render a bare ISO string as a date and drop the time, which is the one
@@ -281,25 +342,88 @@ const handlers = {
 };
 
 /**
- * @param {{ id: string, function?: { name?: string } }} call One entry of the
- *   assistant message's `tool_calls`.
- * @param {{ userId: string, guildId: string | null, client?: object }} context
- * @returns {object} Result payload, serialized into the tool message by the caller.
+ * The one tool with a side effect, and the only one that awaits.
+ *
+ * Every other handler answers a question; this one *does* something, by leaving
+ * the chosen URL on the context for `generateReply` to pick up. The alternative
+ * was handing the URL back to the model and posting whatever it echoed, which
+ * would make "what did Mai just link?" a question about model output instead of
+ * about a host allowlist.
+ *
+ * Awaiting is allowed here because what it waits for is one outbound request
+ * with a hard timeout, which is a different thing from the fetch
+ * `get_my_timeout_status` is forbidden: that one would have gone to Discord for
+ * state the cache already holds. Nothing here can be answered from memory.
+ *
+ * The guild's switch is checked again for the usual reason: which tools were
+ * offered is not an authorization. Calls in the same turn overwrite each other,
+ * so a reply carries at most one GIF.
+ *
+ * @param {{ guildId: string | null, pendingGif?: string | null }} context
+ * @param {{ query?: unknown }} args Model-supplied, validated downstream.
  */
-export function runTool(call, context) {
+async function searchGifTool(context, args) {
+  if (!effectiveSettings(context.guildId).gifsEnabled) return { error: 'gifs_disabled' };
+
+  const url = await searchGif(args?.query, { guildId: context.guildId ?? null });
+  // "Nothing found" is a normal answer and the model has to be able to write
+  // around it, so it is not an error.
+  if (!url) return { found: false };
+
+  context.pendingGif = url;
+  return { found: true };
+}
+
+const gifHandlers = searchTools.length > 0 ? { search_gif: searchGifTool } : {};
+
+/**
+ * The arguments string is parsed here and handed on as a plain object, but that
+ * is a convenience and not an endorsement: `search_gif` is the only handler
+ * that reads it, and it validates what it finds. Everything else ignores the
+ * second parameter entirely, which is what keeps "no tool takes arguments from
+ * the model" true where it matters.
+ *
+ * Awaits the handler. Almost all of them are synchronous and must stay that way
+ * (a tool that fetches from Discord for state the cache already holds is the
+ * mistake this rule exists to prevent); the exception is the one whose whole
+ * job is an outbound request with a timeout.
+ *
+ * @param {{ id: string, function?: { name?: string, arguments?: string } }} call
+ *   One entry of the assistant message's `tool_calls`.
+ * @param {{ userId: string, guildId: string | null, client?: object }} context
+ * @returns {Promise<object>} Result payload, serialized by the caller.
+ */
+export async function runTool(call, context) {
   const name = call?.function?.name;
   // Own properties only: a plain lookup also finds everything on
   // Object.prototype, so a model naming `constructor` as its tool got Object
   // back and had the caller's context handed to it as an argument.
-  const handler = Object.hasOwn(handlers, String(name)) ? handlers[name] : null;
+  const key = String(name);
+  const handler = Object.hasOwn(handlers, key)
+    ? handlers[key]
+    : (Object.hasOwn(gifHandlers, key) ? gifHandlers[key] : null);
 
   if (!handler) {
     logger.warn({ tool: name }, 'Model asked for an unknown tool');
     return { error: 'unknown_tool' };
   }
 
+  let args = {};
+  const raw = call?.function?.arguments;
+  if (typeof raw === 'string' && raw.trim()) {
+    try {
+      const parsed = JSON.parse(raw);
+      // An array or a bare string parses fine and is not an argument object.
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) args = parsed;
+    } catch {
+      // A model that cannot produce JSON gets the tool's no-argument behaviour,
+      // which for every tool but one is the only behaviour there is.
+      logger.debug({ tool: name }, 'Tool arguments were not JSON');
+    }
+  }
+
   try {
-    const result = handler(context);
+    const result = await handler(context, args);
     logger.info({ tool: name, userId: context.userId }, 'Tool call handled');
     logger.debug({ tool: name, result }, 'Tool call result');
     return result;

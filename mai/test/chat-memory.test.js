@@ -230,7 +230,7 @@ test('an exchange is remembered as the member wrote it, without the prompt conte
       content: '  hallo Mai  ',
       images: ['https://cdn.example/a.png'],
     },
-    'miau',
+    { text: 'miau' },
   );
 
   const turns = recentTurns(GUILD_CHANNEL, 10);
@@ -248,7 +248,7 @@ test('an image-only message is remembered as a placeholder, not as an empty turn
   wipe();
   rememberExchange(
     { channelId: GUILD_CHANNEL, guildId: TEST_GUILD, userId: TEST_USER, username: 'tester', content: '   ', images: ['https://cdn.example/a.png'] },
-    'was soll das sein?',
+    { text: 'was soll das sein?' },
   );
 
   assert.deepEqual(recentTurns(GUILD_CHANNEL, 10).map((turn) => turn.content), [
@@ -259,7 +259,7 @@ test('an image-only message is remembered as a placeholder, not as an empty turn
 
 test('a bare poke stores only her answer', () => {
   wipe();
-  rememberExchange({ channelId: GUILD_CHANNEL, guildId: TEST_GUILD, userId: TEST_USER, username: 'tester', content: '' }, 'was?');
+  rememberExchange({ channelId: GUILD_CHANNEL, guildId: TEST_GUILD, userId: TEST_USER, username: 'tester', content: '' }, { text: 'was?' });
 
   assert.deepEqual(recentTurns(GUILD_CHANNEL, 10).map((turn) => [turn.role, turn.content]), [['assistant', 'was?']]);
 });
@@ -268,7 +268,7 @@ test('memory loss is survivable: the reply was already delivered', () => {
   wipe();
   assert.doesNotThrow(() =>
     // A NOT NULL channel id: appendTurns throws, rememberExchange swallows it.
-    rememberExchange({ channelId: null, guildId: TEST_GUILD, userId: TEST_USER, username: 'tester', content: 'hallo' }, 'miau'),
+    rememberExchange({ channelId: null, guildId: TEST_GUILD, userId: TEST_USER, username: 'tester', content: 'hallo' }, { text: 'miau' }),
   );
 });
 

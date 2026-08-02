@@ -771,6 +771,10 @@ function configView(guildId) {
       welcomeSource: inherited('welcome'),
       welcomeChannel: settings.welcomeChannelId ? `<#${settings.welcomeChannelId}>` : systemChannel,
       welcomeChannelSource: inherited('welcome-channel'),
+      // Folded against the operator's API key, so this says what happens
+      // rather than what the row holds.
+      gifs: yesNo(settings.gifsEnabled),
+      gifsSource: inherited('gifs'),
       ladder: settings.timeoutLadder.join(', '),
       ladderSource: inherited('timeout-ladder'),
       strikeWindow: settings.strikeWindowDays,
@@ -927,6 +931,11 @@ function unavailableNotes(patch) {
   }
   if (patch.welcome === true && !config.discord.memberEventsEnabled) {
     notes.push(content.commands.config.welcomeUnavailable);
+  }
+  // There is nothing to search with until the operator has a key. Stored
+  // anyway, like the two settings that ride on the member intent.
+  if (patch.gifs === true && !config.chat.gifSearch.enabled) {
+    notes.push(content.commands.config.gifSearchUnavailable);
   }
   // Retention is the operator's call, because it is their database.
   if (patch.evidence === true && config.moderation.evidenceHours === 0) {
@@ -1247,6 +1256,11 @@ export const mod = {
               {
                 name: 'welcome',
                 description: 'Greet new members at all (needs DISCORD_MEMBER_EVENTS)',
+                type: 5, // BOOLEAN
+              },
+              {
+                name: 'gifs',
+                description: 'Let Mai search for a GIF and post it (needs GIPHY_API_KEY)',
                 type: 5, // BOOLEAN
               },
               {

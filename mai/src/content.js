@@ -121,6 +121,10 @@ function loadContent() {
       rules: Object.freeze(
         chat.rules === undefined ? [] : strings(chat, ['chat', 'rules'], { min: 0 }),
       ),
+      // What the model reads about `search_gif`, and the mark under the result.
+      // Offered only where there is a key and a server that asked for it.
+      gifSearchInstruction: str(chat, ['chat', 'gifSearchInstruction']),
+      gifAttribution: str(chat, ['chat', 'gifAttribution']),
       fallbackReply: str(chat, ['chat', 'fallbackReply']),
       busyEmoji: str(chat, ['chat', 'busyEmoji']),
       flagged: Object.freeze({
@@ -132,6 +136,7 @@ function loadContent() {
       prompt: Object.freeze({
         emptyMessagePlaceholder: str(prompt, ['chat', 'prompt', 'emptyMessagePlaceholder']),
         imagePlaceholder: str(prompt, ['chat', 'prompt', 'imagePlaceholder']),
+        gifPlaceholder: str(prompt, ['chat', 'prompt', 'gifPlaceholder']),
         replyContext: str(prompt, ['chat', 'prompt', 'replyContext']),
         threadContext: str(prompt, ['chat', 'prompt', 'threadContext']),
         assistantLabel: str(prompt, ['chat', 'prompt', 'assistantLabel']),
@@ -473,6 +478,7 @@ function loadContent() {
         nameCheckUnavailable: str(configSection, ['commands', 'config', 'nameCheckUnavailable']),
         welcomeUnavailable: str(configSection, ['commands', 'config', 'welcomeUnavailable']),
         evidenceUnavailable: str(configSection, ['commands', 'config', 'evidenceUnavailable']),
+        gifSearchUnavailable: str(configSection, ['commands', 'config', 'gifSearchUnavailable']),
         nothing: str(configSection, ['commands', 'config', 'nothing']),
         invalid: str(configSection, ['commands', 'config', 'invalid']),
         guildOnly: str(configSection, ['commands', 'config', 'guildOnly']),

@@ -6,7 +6,7 @@
  * posting the answer) and the guards in front of the model call; the reply
  * itself comes from chat/reply.js.
  */
-import { generateChatReply, rememberExchange } from '../../chat/reply.js';
+import { generateChatReply, gifEmbeds, rememberExchange } from '../../chat/reply.js';
 import {
   acquireSlot,
   consumeRateLimit,
@@ -274,17 +274,30 @@ export async function handleMaiChat(message) {
 
       if (!reply) return;
 
+      const embeds = gifEmbeds(reply.gifUrl);
+      if (!reply.text && embeds.length === 0) return;
+
+      // The GIF is an embed rather than a link in the text: a URL in the body
+      // is *shown* as a URL and unfurled below it, so the message came out with
+      // a raw address in the middle of her sentence. Either way it needs Embed
+      // Links in this channel, which is checked at startup for a guild that has
+      // GIFs switched on.
+      //
       // parse: [] blocks @everyone/role/user pings inside the LLM reply; the
       // reply-ping to the author is allowed explicitly.
       await message.reply({
-        content: reply,
+        content: reply.text,
+        embeds,
         allowedMentions: { parse: [], repliedUser: true },
       });
 
       rememberExchange(input, reply);
 
-      logger.info({ messageId: message.id, replyLength: reply.length }, 'Mai replied');
-      logger.debug({ messageId: message.id, reply }, 'Mai reply content');
+      logger.info(
+        { messageId: message.id, replyLength: reply.text.length, gif: Boolean(reply.gifUrl) },
+        'Mai replied',
+      );
+      logger.debug({ messageId: message.id, reply: reply.text }, 'Mai reply content');
     });
   } finally {
     releaseSlot();

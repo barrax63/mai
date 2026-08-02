@@ -17,7 +17,8 @@ import { logger } from '../logger.js';
  * @param {{ messageId: string, channelId: string, guildId: string | null, userId: string,
  *   username: string, content: string, replyTo?: object | null, threadTitle?: string | null,
  *   images?: string[], client?: object }} input
- * @returns {Promise<string | null>} Reply to post, or null when generation failed.
+ * @returns {Promise<{ text: string, gifUrl: string | null } | null>} What to post,
+ *   or null when generation failed.
  */
 export async function generateChatReply(input) {
   const history = recentTurns(input.channelId, config.chat.historyTurns);
@@ -53,7 +54,9 @@ export async function generateChatReply(input) {
         repliedTo: Boolean(input.replyTo),
         inThread: Boolean(input.threadTitle),
         model: config.openai.chatModel,
-        replyLength: reply.length,
+        replyLength: reply.text.length,
+        // Metadata: whether one was attached, never which.
+        gif: Boolean(reply.gifUrl),
       },
       'Generated chat reply',
     );
@@ -65,13 +68,33 @@ export async function generateChatReply(input) {
 }
 
 /**
+ * The GIF as Discord message embeds, which is how it reaches a channel without
+ * a URL in the text: a link in the body is rendered as a link *and* unfurled
+ * underneath, so the address ends up in the middle of her sentence. An embed
+ * carrying only an image shows the GIF and nothing else.
+ *
+ * Shared by both posting paths (chat and `/mai ask`), which build their
+ * messages in completely different shapes otherwise.
+ *
+ * @param {string | null | undefined} gifUrl
+ * @returns {object[]} Zero or one embed, ready for either API.
+ */
+export function gifEmbeds(gifUrl) {
+  if (!gifUrl) return [];
+
+  // Every GIF she posts came from the search, so the provider's mark belongs
+  // under every one of them: their terms ask for a visible attribution.
+  return [{ image: { url: gifUrl }, footer: { text: content.chat.gifAttribution } }];
+}
+
+/**
  * Stores the exchange as Mai's memory. Only what the member actually wrote is
  * kept: the quoted reply context and the images are prompt-time context, not
  * theirs to persist.
  *
  * @param {{ channelId: string, guildId: string | null, userId: string, username: string,
  *   content: string, images?: string[] }} input
- * @param {string} reply
+ * @param {{ text: string, gifUrl?: string | null }} reply
  */
 export function rememberExchange(input, reply) {
   const userContent = String(input.content ?? '').trim()
@@ -89,14 +112,22 @@ export function rememberExchange(input, reply) {
     });
   }
 
-  turns.push({
-    channelId: input.channelId,
-    guildId: input.guildId,
-    userId: null,
-    username: content.chat.prompt.assistantLabel,
-    role: 'assistant',
-    content: reply,
-  });
+  // A GIF is not stored either: the URL is a fact about a file somewhere, and
+  // in a week it may be a 404. What she keeps is that she sent one, the same
+  // way an image someone sent her is remembered as a placeholder.
+  const assistantContent = reply.text.trim()
+    || (reply.gifUrl ? content.chat.prompt.gifPlaceholder : '');
+
+  if (assistantContent) {
+    turns.push({
+      channelId: input.channelId,
+      guildId: input.guildId,
+      userId: null,
+      username: content.chat.prompt.assistantLabel,
+      role: 'assistant',
+      content: assistantContent,
+    });
+  }
 
   try {
     appendTurns(turns);

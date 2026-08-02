@@ -249,7 +249,8 @@ test('a tool call is served and the answer comes from the result', async () => {
   // The local rendering keeps the time, which is what "wann?" is about.
   assert.match(result.next_deletion_local, /\d{2}:\d{2}/);
 
-  assert.equal(reply, 'Noch 10 Minuten, dann ist die Nachricht weg.');
+  assert.equal(reply.text, 'Noch 10 Minuten, dann ist die Nachricht weg.');
+  assert.equal(reply.gifUrl, null);
 });
 
 test('a model that only ever asks for tools is cut off', async () => {
@@ -276,10 +277,10 @@ test('a model that only ever asks for tools is cut off', async () => {
   }
 
   assert.equal(calls, 3, 'two tool rounds, then one last try without tools');
-  assert.equal(reply, content.chat.fallbackReply);
+  assert.equal(reply.text, content.chat.fallbackReply);
 });
 
-test('tools ignore arguments the model made up', () => {
+test('tools ignore arguments the model made up', async () => {
   enqueue({
     messageId: 'tool-msg-2',
     guildId: 'g1',
@@ -291,7 +292,7 @@ test('tools ignore arguments the model made up', () => {
     scoldMessageId: null,
   });
 
-  const result = runTool(
+  const result = await runTool(
     {
       id: 'call-x',
       function: { name: 'get_my_violations', arguments: JSON.stringify({ user_id: 'victim-user' }) },
@@ -310,16 +311,16 @@ test('tool definitions accept no parameters at all', () => {
   }
 });
 
-test('server facts are unavailable in a DM, and unknown tools are refused', () => {
+test('server facts are unavailable in a DM, and unknown tools are refused', async () => {
   const context = { userId: 'u', guildId: null, client: null };
 
-  assert.deepEqual(runTool({ function: { name: 'get_server_info' } }, context), {
+  assert.deepEqual(await runTool({ function: { name: 'get_server_info' } }, context), {
     error: 'not_in_a_server',
   });
-  assert.deepEqual(runTool({ function: { name: 'rm_rf' } }, context), { error: 'unknown_tool' });
+  assert.deepEqual(await runTool({ function: { name: 'rm_rf' } }, context), { error: 'unknown_tool' });
 });
 
-test('a tool name from Object.prototype is not a tool', () => {
+test('a tool name from Object.prototype is not a tool', async () => {
   // The handler table is a plain object, so a bare lookup answers for
   // everything on the prototype chain too. `constructor` resolved to Object,
   // which the caller then invoked *with the chat context as its argument* and
@@ -328,19 +329,19 @@ test('a tool name from Object.prototype is not a tool', () => {
 
   for (const name of ['constructor', 'toString', 'hasOwnProperty', '__proto__', 'valueOf']) {
     assert.deepEqual(
-      runTool({ function: { name } }, context),
+      await runTool({ function: { name } }, context),
       { error: 'unknown_tool' },
       `${name} must not resolve to a handler`,
     );
   }
 });
 
-test('server facts come from the gateway, not from the model', () => {
+test('server facts come from the gateway, not from the model', async () => {
   const client = {
     guilds: { cache: new Map([['g1', { name: 'Katzenhaus', memberCount: 42, createdAt: new Date(0) }]]) },
   };
 
-  const result = runTool({ function: { name: 'get_server_info' } }, {
+  const result = await runTool({ function: { name: 'get_server_info' } }, {
     userId: 'u',
     guildId: 'g1',
     client,
@@ -350,7 +351,7 @@ test('server facts come from the gateway, not from the model', () => {
   assert.equal(result.members, 42);
 });
 
-test('the timeout tool reads the cache and never guesses', () => {
+test('the timeout tool reads the cache and never guesses', async () => {
   const timedOut = new Date(Date.now() + 600_000);
   const client = {
     guilds: {
@@ -360,7 +361,7 @@ test('the timeout tool reads the cache and never guesses', () => {
     },
   };
 
-  const result = runTool({ function: { name: 'get_my_timeout_status' } }, {
+  const result = await runTool({ function: { name: 'get_my_timeout_status' } }, {
     userId: 'u',
     guildId: 'g1',
     client,
@@ -372,24 +373,24 @@ test('the timeout tool reads the cache and never guesses', () => {
   // reported as unknown rather than invented.
   const expired = new Map([['u', { communicationDisabledUntil: new Date(Date.now() - 1000) }]]);
   assert.equal(
-    runTool({ function: { name: 'get_my_timeout_status' } }, {
+    (await runTool({ function: { name: 'get_my_timeout_status' } }, {
       userId: 'u',
       guildId: 'g1',
       client: { guilds: { cache: new Map([['g1', { members: { cache: expired } }]]) } },
-    }).timed_out,
+    })).timed_out,
     false,
   );
   assert.deepEqual(
-    runTool({ function: { name: 'get_my_timeout_status' } }, { userId: 'u', guildId: 'g1', client: {} }),
+    await runTool({ function: { name: 'get_my_timeout_status' } }, { userId: 'u', guildId: 'g1', client: {} }),
     { error: 'unknown_member' },
   );
   assert.deepEqual(
-    runTool({ function: { name: 'get_my_timeout_status' } }, { userId: 'u', guildId: null, client: {} }),
+    await runTool({ function: { name: 'get_my_timeout_status' } }, { userId: 'u', guildId: null, client: {} }),
     { error: 'not_in_a_server' },
   );
 });
 
-test('the appeal tool answers for the caller, in their guild only', () => {
+test('the appeal tool answers for the caller, in their guild only', async () => {
   recordViolation({
     guildId: 'g-appeal',
     userId: 'appellant',
@@ -405,7 +406,7 @@ test('the appeal tool answers for the caller, in their guild only', () => {
     action: ACTION_DELETED,
   });
 
-  const result = runTool({ function: { name: 'get_my_appeal_status' } }, {
+  const result = await runTool({ function: { name: 'get_my_appeal_status' } }, {
     userId: 'appellant',
     guildId: 'g-appeal',
     client: null,
@@ -417,12 +418,12 @@ test('the appeal tool answers for the caller, in their guild only', () => {
   assert.equal(result.can_appeal, false);
 
   assert.deepEqual(
-    runTool({ function: { name: 'get_my_appeal_status' } }, { userId: 'u', guildId: null }),
+    await runTool({ function: { name: 'get_my_appeal_status' } }, { userId: 'u', guildId: null }),
     { error: 'not_in_a_server' },
   );
 });
 
-test('the rules tool is only offered when there are rules to quote', () => {
+test('the rules tool is only offered when there are rules to quote', async () => {
   // Empty in the shipped config: a tool that answers "no rules" would send the
   // model straight back to inventing them, which is what it exists to prevent.
   assert.deepEqual(content.chat.rules, []);
@@ -431,13 +432,13 @@ test('the rules tool is only offered when there are rules to quote', () => {
     false,
   );
   // The handler still exists and answers truthfully if it is ever reached.
-  assert.deepEqual(runTool({ function: { name: 'get_server_rules' } }, { userId: 'u' }), {
+  assert.deepEqual(await runTool({ function: { name: 'get_server_rules' } }, { userId: 'u' }), {
     rules: [],
   });
 });
 
-test('the clock tool answers in the configured timezone', () => {
-  const result = runTool({ function: { name: 'get_current_time' } }, { userId: 'u', guildId: null });
+test('the clock tool answers in the configured timezone', async () => {
+  const result = await runTool({ function: { name: 'get_current_time' } }, { userId: 'u', guildId: null });
 
   assert.match(result.iso, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(result.timezone, process.env.TZ ?? 'UTC');
@@ -456,7 +457,7 @@ const guildWithEmotes = (guildId, emotes) => ({
   },
 });
 
-test('the emote tool hands over codes that render, sorted and capped', () => {
+test('the emote tool hands over codes that render, sorted and capped', async () => {
   const many = Array.from({ length: 45 }, (unused, index) => ({
     // Zero-padded so sorting by name is the same as sorting by index.
     name: `emote_${String(index).padStart(2, '0')}`,
@@ -467,7 +468,7 @@ test('the emote tool hands over codes that render, sorted and capped', () => {
   // Lost with a boost level: still cached, renders as raw text.
   many.push({ name: 'gone', id: '888888888888888888', available: false });
 
-  const result = runTool({ function: { name: 'get_server_emotes' } }, {
+  const result = await runTool({ function: { name: 'get_server_emotes' } }, {
     userId: 'u',
     guildId: 'g1',
     client: guildWithEmotes('g1', many),
@@ -486,18 +487,18 @@ test('the emote tool hands over codes that render, sorted and capped', () => {
   );
 });
 
-test('the emote tool refuses where there is nothing it could name', () => {
+test('the emote tool refuses where there is nothing it could name', async () => {
   const context = { userId: 'u', guildId: null, client: guildWithEmotes('g1', []) };
 
-  assert.deepEqual(runTool({ function: { name: 'get_server_emotes' } }, context), {
+  assert.deepEqual(await runTool({ function: { name: 'get_server_emotes' } }, context), {
     error: 'not_in_a_server',
   });
   assert.deepEqual(
-    runTool({ function: { name: 'get_server_emotes' } }, { ...context, guildId: 'g1' }),
+    await runTool({ function: { name: 'get_server_emotes' } }, { ...context, guildId: 'g1' }),
     { error: 'no_custom_emotes' },
   );
   assert.deepEqual(
-    runTool({ function: { name: 'get_server_emotes' } }, { userId: 'u', guildId: 'g-none', client: {} }),
+    await runTool({ function: { name: 'get_server_emotes' } }, { userId: 'u', guildId: 'g-none', client: {} }),
     { error: 'unknown_server' },
   );
 });
@@ -550,5 +551,5 @@ test('the reply is pruned before it is length-capped', async () => {
     restore();
   }
 
-  assert.equal(reply, 'miau 🐟');
+  assert.equal(reply.text, 'miau 🐟');
 });

@@ -1,0 +1,17 @@
+-- Whether Mai may send GIFs in this server, which is a server's decision and
+-- not the operator's taste.
+--
+-- She has no fixed list to pick from: she searches (GIPHY) and posts the result
+-- as an image on her reply. That is the whole feature, so this is one flag
+-- rather than a mode. What the model supplies is a *search term*, never an
+-- address; which URL ends up in a channel is decided in `chat/gif-search.js`,
+-- where the query is screened and the result's host is checked.
+--
+-- Folded in `effectiveSettings` against `GIPHY_API_KEY`: without a key there is
+-- nothing to search with, and what the code reads is then what really happens
+-- rather than what a server asked for. `/mod config set` stores the answer
+-- anyway and says plainly that nothing is happening yet, exactly like `welcome`
+-- does with the intent it rides on.
+--
+-- NULL = inherit, and the base is off: this is opted into, not switched off.
+ALTER TABLE guild_settings ADD COLUMN gifs_enabled INTEGER;

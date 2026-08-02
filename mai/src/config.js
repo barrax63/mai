@@ -350,6 +350,16 @@ const HISTORY_TURNS = 12;
 const MAX_REPLY_CHARS = 1800;
 const VISION_MAX_IMAGES = 2;
 const SHADOW_DAYS = 7;
+// GIF search. The timeout is short on purpose: this runs inside a chat turn
+// that is already waiting on a model, and a GIF is the most optional thing in
+// the reply, so it gives up long before the member does. Results are fetched a
+// handful at a time and one is picked at random, or the same query would always
+// produce the same GIF and she would look like a macro.
+const GIF_SEARCH_TIMEOUT_MS = 4_000;
+const GIF_SEARCH_RESULTS = 8;
+// GIPHY's own content rating, their side of the filter.
+// `g`, `pg`, `pg-13` and `r` exist.
+const GIF_SEARCH_RATING = 'r';
 
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
@@ -585,6 +595,22 @@ export const config = Object.freeze({
     rateLimitWindowMs: int('CHAT_RATE_LIMIT_WINDOW_MS', '60000', { min: 1000 }),
     // Hard cap on model calls in flight, across all channels.
     maxConcurrent: int('CHAT_MAX_CONCURRENT', '3', { min: 1 }),
+    // Live GIF search (GIPHY). A key is a secret and a deployment fact, so it
+    // belongs here; whether a *server* wants searched GIFs is the per-guild
+    // `gifs` setting. Without a key the tool does not exist and the catalog in
+    // the content file is the only source, which is the safer default and
+    // therefore the one that needs no configuration.
+    //
+    // GIPHY rather than Tenor: Google stopped accepting new Tenor API clients
+    // in January 2026 and shut the API down entirely that June, so a Tenor
+    // integration written today would never have worked at all.
+    gifSearch: {
+      apiKey: optional('GIPHY_API_KEY', ''),
+      enabled: Boolean(optional('GIPHY_API_KEY', '')),
+      timeoutMs: GIF_SEARCH_TIMEOUT_MS,
+      results: GIF_SEARCH_RESULTS,
+      rating: GIF_SEARCH_RATING,
+    },
   },
   db: {
     // Must be on a writable volume: the container rootfs is read-only.

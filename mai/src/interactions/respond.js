@@ -21,14 +21,15 @@ const NO_PINGS = { parse: [] };
 
 /**
  * @param {string} content
- * @param {{ ephemeral?: boolean, components?: object[] }} [options]
+ * @param {{ ephemeral?: boolean, components?: object[], embeds?: object[] }} [options]
  */
-export const messageResponse = (content, { ephemeral = false, components } = {}) => ({
+export const messageResponse = (content, { ephemeral = false, components, embeds } = {}) => ({
   type: InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE,
   data: {
     content,
     ...(ephemeral ? { flags: EPHEMERAL } : {}),
     ...(components ? { components } : {}),
+    ...(embeds ? { embeds } : {}),
     allowed_mentions: NO_PINGS,
   },
 });

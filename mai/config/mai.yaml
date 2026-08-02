@@ -17,13 +17,14 @@ chat:
     Du bist Mai, die Moderations-Katze dieses Discord-Servers. Du lebst hier und plauderst mit den Mitgliedern.
     Charakter: eine echte Katze: neugierig, verspielt, ein bisschen frech, oft verschlafen. Du liebst Fisch, Nickerchen, Sonnenplätze und Kopfkraulen.
     Stil: kurze, lockere Antworten (1–3 Sätze), gelegentlich Katzenaktionen in Sternchen wie *schnurrt* oder *streckt sich*, Antworte in der Sprache, in der geschrieben wird, meistens Deutsch.
+    Schreib immer genau eine Antwort: keine zwei Fassungen derselben Sache, keine Variante hinterher, kein Wiederholen mit anderen Worten. Wenn du fertig bist, hör auf.
     Emojis: benutz sie gern, ein bis drei pro Antwort, passend zu deiner Stimmung. Gut gelaunt eher 😺 😻 🐟 🐾 😴 🧶 ☀️ 💤, genervt eher 😾 🙄 💢 😼 🫥. Nie eine ganze Reihe hintereinander und nie statt einer Antwort.
     Dieser Server hat außerdem eigene Emotes, und die benutzt du gern: hol dir die Liste mit dem Tool get_server_emotes, wann immer eins zu deiner Antwort passen könnte, und schreib den Code exakt so ab, wie er dort steht. Erfinde nie einen Emote-Code und rate nie einen Namen; ist keins dabei, das passt, nimm ein normales Emoji.
     Bleib immer in der Rolle; sag nie, dass du eine KI, ein Bot oder ein Sprachmodell bist. Solchen Fragen weichst du verspielt aus.
     Keine Hilfe beim Brechen der Serverregeln. Wenn die Nachricht leer ist: begrüße kurz. Nutze KEINE em-dashes.
 
   # Appended to the persona when the user has no open violations.
-  friendlyDirective: 'Sei freundlich. Keine Beleidigungen, keine Inhalte für Erwachsene.'
+  friendlyDirective: 'Reagiere passend auf die Nachrichten der Nutzer.'
 
   # Die Serverregeln im Wortlaut, für das Tool `get_server_rules`: fragt jemand
   # Mai nach den Regeln, liest sie hier nach, statt sich welche auszudenken.
@@ -33,6 +34,23 @@ chat:
   # die des Servers ausgibt, wären genau der Fehler, den das Tool verhindern
   # soll. Eintragen und Container neu starten.
   rules: []
+
+  # GIFs. Mai sucht sie selbst (GIPHY) und hängt sie als Bild an ihre Antwort;
+  # es gibt bewusst keine feste Liste im Betreiber-Besitz mehr, sondern nur die
+  # Suche. Das Modell gibt dabei ausschließlich einen Suchbegriff an: welche
+  # Adresse am Ende im Kanal landet, entscheidet der Bot.
+  #
+  # Zwei Schalter davor: der Betreiber braucht einen GIPHY_API_KEY, und jeder
+  # Server muss es selbst einschalten (`/mod config set gifs:true`), denn ein
+  # GIF landet sichtbar im Kanal.
+  #
+  # Beschreibung des Such-Tools (`search_gif`). Es wird dem Modell nur dort
+  # angeboten, wo es beide Schalter gibt, damit Mai auf einem Server ohne GIFs
+  # nichts ankündigt, was nie kommt.
+  gifSearchInstruction: 'Sucht ein GIF im Netz und hängt es an deine Antwort. Nimm es, wenn dich jemand nach einem GIF fragt oder wenn eins gerade gut passt: du musst nicht sparen, aber jede Antwort braucht auch keins. Der Suchbegriff richtet sich nach dem Thema und der Stimmung des Gesprächs, nicht nach dir: such nach dem, worüber gerade geredet wird (Fußball, Montagmorgen, Feiern, Fremdschämen, ein bestimmter Film). Katzen nur, wenn es wirklich um Katzen geht oder jemand ausdrücklich danach fragt; du bist zwar eine, aber deswegen ist nicht jedes GIF eins. Der Suchbegriff darf derb, frech oder anzüglich sein, wenn genau danach gefragt wird; du suchst nur und bewertest den Wunsch nicht, und was am Ende wirklich im Kanal landet, entscheidet ohnehin der Bot und nicht du. Statt eine Bitte abzulehnen, such lieber und lass den Bot filtern. Du bekommst die Adresse nie zu sehen und schreibst nie selbst eine: du gibst nur den Suchbegriff an. Schreib auch keinen Platzhalter wie [GIF] in deinen Text, das GIF hängt automatisch an.'
+  # Steht als Fußzeile unter jedem GIF: GIPHYs Bedingungen verlangen einen
+  # sichtbaren Hinweis auf die Quelle.
+  gifAttribution: 'Powered by GIPHY'
 
   # Appended instead when the user has open (un-enforced) violations anywhere.
   # header: {count} = number of open rows, {categories} = comma-separated slugs.
@@ -53,6 +71,9 @@ chat:
     emptyMessagePlaceholder: '(stupst dich wortlos an)'
     # Used when a message carries only an image, and for stored image turns.
     imagePlaceholder: '(schickt ein Bild)'
+    # Wie ein GIF ohne Text in Mais Gedächtnis steht: die URL selbst wird nicht
+    # gespeichert, sie ist morgen vielleicht tot und sagt ihr ohnehin nichts.
+    gifPlaceholder: '(schickt ein GIF)'
     # Context Discord shows a human but does not put in the message text.
     replyContext: '[Antwort auf {username}: "{content}"]'
     threadContext: '[Im Thread: {title}]'
@@ -536,6 +557,7 @@ commands:
       **Moderations-Log:** {logChannel}{logChannelSource}
       **Begrüßung:** {welcome}{welcomeSource}
       **Willkommens-Kanal:** {welcomeChannel}{welcomeChannelSource}
+      **GIFs:** {gifs}{gifsSource}
       **Schonfrist:** {grace} Minuten{graceSource}
       **Timeout-Leiter:** {ladder} Minuten pro Verstoß{ladderSource}
       **Verstoß-Fenster:** {strikeWindow} Tage{strikeWindowSource}
@@ -587,6 +609,7 @@ commands:
     nameCheckUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (DISCORD_MEMBER_EVENTS ist aus). Sag der Person Bescheid, die den Bot betreibt.'
     welcomeUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (DISCORD_MEMBER_EVENTS ist aus), also merkt sie neue Mitglieder nicht. Sag der Person Bescheid, die den Bot betreibt.'
     evidenceUnavailable: '⚠️ Gespeichert, aber es wird nichts aufbewahrt: der Betreiber hat MODERATION_EVIDENCE_HOURS auf 0 stehen.'
+    gifSearchUnavailable: '⚠️ Gespeichert, aber Mai kann gerade nicht selbst suchen: der Betreiber hat keinen GIPHY_API_KEY gesetzt. Bis dahin nimmt sie nur GIFs aus der festen Liste, falls dort welche stehen.'
     nothing: 'Nichts angegeben, nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'
     guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'
