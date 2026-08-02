@@ -90,6 +90,10 @@ function formatUptime(seconds) {
  * guild, not an auditor of every other server Mai runs in, so the counters are
  * filtered to the calling guild unless the caller operates the bot itself.
  *
+ * Assumes a guild interaction: `undefined` means "every guild" to every reader
+ * downstream, and that is also what `interaction.guild_id` is worth in a DM, so
+ * a caller without one has to refuse before asking.
+ *
  * @param {object} interaction
  * @returns {string | undefined} A guild id to filter by, or undefined for all.
  */
@@ -102,6 +106,12 @@ const visibleScope = (interaction) =>
  * @param {object} interaction
  */
 function statusResponse(interaction) {
+  // Not reachable today: `mayModerate` reads `interaction.member`, which a DM
+  // has not got, so `/mod` is refused there long before this runs. Explicit
+  // anyway, because otherwise that unrelated check is the only thing standing
+  // between a DM invocation and process-wide counts for a non-operator.
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
   const enforcer = getEnforcerStatus();
   const scope = visibleScope(interaction);
   const history = historyStats(scope);
@@ -163,6 +173,9 @@ const formatNumber = (value) => new Intl.NumberFormat('de-DE').format(value ?? 0
  * reports back. Tokens, not currency: pricing changes and is per model.
  */
 function spendResponse(interaction) {
+  // Same reason as `statusResponse`: a scope of `undefined` is every guild.
+  if (!interaction.guild_id) return ephemeralResponse(content.commands.config.guildOnly);
+
   const scope = visibleScope(interaction);
   const today = totalsFor(dayKey(), scope);
   const month = totalsFor(monthKey(), scope);
@@ -504,8 +517,6 @@ async function simulateResponse(interaction) {
   const userId = interaction.member?.user?.id ?? '';
   if (!simulateLimiter.consume(userId)) return ephemeralResponse(lines.busy);
 
-  // `effectiveSettings(null)` in a DM yields the process defaults, which is a
-  // useful thing for an operator to be able to check.
   const settings = effectiveSettings(interaction.guild_id);
 
   let verdict;
@@ -710,7 +721,13 @@ function forgiveResponse(interaction) {
     'Forgave open violations',
   );
 
-  if (rows.length > 0) {
+  // Either half is worth an entry, and the strike wipe especially: a member with
+  // a record usually has an *empty* queue, because strikes are written after
+  // enforcement, so keying this on pending rows alone meant the more
+  // consequential half normally left no trace in the channel at all. One
+  // moderator could reset another's escalation ladder and delete the evidence
+  // for an appeal, with the only record an ephemeral message nobody else saw.
+  if (rows.length > 0 || strikesCleared > 0) {
     // Detached: the interaction must be answered inside Discord's window.
     void postModerationLog(getGatewayClient(), {
       type: LOG_FORGIVEN,
@@ -718,6 +735,7 @@ function forgiveResponse(interaction) {
       userId: String(userId),
       actorId,
       count: rows.length,
+      strikes: strikesCleared,
     });
   }
 
@@ -1357,9 +1375,13 @@ export const mod = {
     ],
   },
 
-  // Only `simulate` waits for anything: it is a model call. Everything else
-  // answers from the database inside Discord's window.
-  deferred: (interaction) => resolveSubcommand(interaction).name === 'simulate',
+  // `simulate` is a model call and `warn` is a user fetch plus a DM send: two
+  // Discord round trips, the same shape the report and appeal modals defer
+  // unconditionally. Without it, a rate limit costs the moderator "The
+  // application did not respond" while the DM, the ACTION_WARNED record and the
+  // log entry all still happen, and the obvious reaction is to run it again.
+  // Everything else answers from the database inside Discord's window.
+  deferred: (interaction) => ['simulate', 'warn'].includes(resolveSubcommand(interaction).name),
   // Every `/mod` answer is staff-only, and for the deferred one the flag has to
   // be set at defer time: the later edit cannot turn a public message private.
   ephemeral: true,

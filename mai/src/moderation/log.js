@@ -155,6 +155,13 @@ function fieldsFor(event) {
         ...head,
         { name: labels.actor, value: `<@${event.actorId}>`, inline: true },
         { name: labels.count, value: String(event.count ?? 0), inline: true },
+        // Only when `strikes:true` was passed. That half resets the escalation
+        // ladder and destroys the evidence an appeal would be reviewed against,
+        // so it is the more consequential of the two and has to be named. A
+        // count, like the one above it: still metadata.
+        ...(event.strikes
+          ? [{ name: labels.strikes, value: String(event.strikes), inline: true }]
+          : []),
       ];
 
     case LOG_REPORTED:

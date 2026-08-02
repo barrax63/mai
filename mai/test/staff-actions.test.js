@@ -21,8 +21,10 @@ import { notesFor } from '../src/db/notes.js';
 import { enqueue, findRow } from '../src/db/queue.js';
 import { resetSettings, updateSettings } from '../src/db/settings.js';
 import {
+  ACTION_DELETED,
   ACTION_WARNED,
   historyFor,
+  recordViolation,
   strikeCount,
   totalsFor,
 } from '../src/db/violations.js';
@@ -116,6 +118,15 @@ const route = async (payload) => {
   });
   return body;
 };
+
+/**
+ * The real answer, wherever it arrived. A deferred command answers twice: a
+ * placeholder now and the content as an edit through the interaction webhook.
+ */
+const answerContent = (body) =>
+  body.type === InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE
+    ? edits.at(-1).body.content
+    : body.data.content;
 
 const removeCommand = ({ member = STAFF, messageId = MESSAGE, bot = false } = {}) =>
   interaction({
@@ -288,8 +299,15 @@ test('/mod warn DMs the member and stays off the ladder', async () => {
   wipe();
   const record = stubGateway();
 
-  await route(warnCommand('Hör auf, Leute vollzuspammen.'));
+  const body = await route(warnCommand('Hör auf, Leute vollzuspammen.'));
   await settle();
+
+  // A user fetch plus a DM send: two Discord round trips, which under a rate
+  // limit outlast the ~3 s budget. Without the deferral the moderator sees "The
+  // application did not respond" while the DM, the record and the log entry all
+  // still happen, and runs it again.
+  assert.equal(body.type, InteractionResponseType.DEFERRED_CHANNEL_MESSAGE_WITH_SOURCE);
+  assert.equal(body.data.flags, 64, 'ephemeral is fixed at defer time');
 
   assert.equal(record.dms.length, 1);
   assert.equal(record.dms[0].userId, OFFENDER);
@@ -315,7 +333,7 @@ test('a warning that cannot be delivered says so, and still counts as said', asy
   const body = await route(warnCommand('Letzte Warnung.'));
   await settle();
 
-  assert.match(body.data.content, /DM/, 'the moderator is told to say it in the channel instead');
+  assert.match(answerContent(body), /DM/, 'the moderator is told to say it in the channel instead');
   assert.equal(historyFor(TEST_GUILD, OFFENDER).length, 1, 'the record has it either way');
   assert.equal(
     record.posted.at(-1).embeds[0].fields.find(
@@ -359,6 +377,62 @@ test('/mod forgive takes back every mark the flag left, not just the scold', asy
       encodeURIComponent(content.moderation.warningEmoji),
     ),
   ]);
+
+  // No `strikes:true`, so the record was untouched and the entry says nothing
+  // about it rather than showing a reassuring zero.
+  const embed = record.posted.at(-1).embeds[0];
+  assert.equal(
+    embed.fields.find((field) => field.name === content.moderation.log.fields.strikes),
+    undefined,
+  );
+});
+
+test('wiping a strike record lands in the channel, empty queue or not', async () => {
+  wipe();
+  const record = stubGateway();
+  recordViolation({
+    guildId: TEST_GUILD,
+    userId: OFFENDER,
+    messageId: MESSAGE,
+    categories: ['harassment'],
+    action: ACTION_DELETED,
+  });
+
+  await route(
+    modCommand([
+      {
+        name: 'forgive',
+        type: 1,
+        options: [
+          { name: 'user', value: OFFENDER },
+          { name: 'strikes', value: true },
+        ],
+      },
+    ]),
+  );
+  await settle();
+
+  // Strikes are written *after* enforcement, so a member with a record usually
+  // has an empty queue. Keying the entry on pending rows meant the half that
+  // resets the ladder and destroys the evidence an appeal is reviewed against
+  // normally left no trace anyone but the clicker could see.
+  const embed = record.posted.at(-1).embeds[0];
+  assert.equal(embed.title, content.moderation.log.titles.forgiven);
+  const value = (label) => embed.fields.find((field) => field.name === label)?.value;
+  assert.equal(value(content.moderation.log.fields.strikes), '1');
+  assert.equal(value(content.moderation.log.fields.count), '0', 'nothing was pending');
+  assert.equal(value(content.moderation.log.fields.actor), `<@${STAFF_ID}>`);
+  assert.equal(strikeCount(TEST_GUILD, OFFENDER, '2000-01-01T00:00:00.000Z'), 0, 'and it is gone');
+});
+
+test('a forgive that changed nothing stays out of the channel', async () => {
+  wipe();
+  const record = stubGateway();
+
+  await route(modCommand([{ name: 'forgive', type: 1, options: [{ name: 'user', value: OFFENDER }] }]));
+  await settle();
+
+  assert.deepEqual(record.posted, [], 'no rows, no strikes, nothing to report');
 });
 
 test('a forgiven row with no scold reply still loses its reaction', async () => {
@@ -444,7 +518,11 @@ test('notes and warnings are staff-only', async () => {
     noteCommand('add', [{ name: 'user', value: OFFENDER }, { name: 'text', value: 'nope' }]),
   ]) {
     const body = await route({ ...payload, member: plain });
-    assert.equal(body.data.content, content.commands.forbidden);
+    await settle();
+    // `warn` is deferred unconditionally, so a stranger's refusal arrives as an
+    // edit. Safe here, unlike the report buttons: every `/mod` answer is
+    // ephemeral, so there is no channel-visible entry for it to overwrite.
+    assert.equal(answerContent(body), content.commands.forbidden);
   }
 
   assert.equal(notesFor(TEST_GUILD, OFFENDER).length, 0);
@@ -478,8 +556,9 @@ test('/mod warn and /mod note need a guild', async () => {
       member: undefined,
       user: { id: STAFF_ID },
     });
+    await settle();
     // No member object in a DM means no Manage Messages, so the permission
     // check answers before the guild check does.
-    assert.equal(body.data.content, content.commands.forbidden);
+    assert.equal(answerContent(body), content.commands.forbidden);
   }
 });

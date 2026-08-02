@@ -170,14 +170,20 @@ record deliberately and deliberately do not.
 
 ### `/mod forgive <user> [strikes]`
 
-Drops that member's open violations in this server and cleans up the scold
-replies, so Mai stops hissing at them. Ephemeral.
+Drops that member's open violations in this server and takes back what the flag
+left on their messages (the scold replies and Mai's warning reaction), so she
+stops hissing at them. Ephemeral.
 
 `strikes:true` additionally wipes their strike record here, which resets the
 escalation ladder, and takes any appeal evidence kept about them with it: a
 pardon that leaves the quotes in the database is not a pardon. Staff notes are
 **not** cleared, because they are the team's own memory rather than a
 consequence; `/mod note clear` is for those.
+
+Either half posts an entry into the log channel, naming how many violations were
+dropped and, where the record was wiped, how many strikes went with it. Ephemeral
+is for the moderator who ran it; resetting a colleague's ladder is the rest of
+the team's business too.
 
 ### `/mod warn <user> [reason]`
 
