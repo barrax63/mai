@@ -2,7 +2,14 @@
  * The two flows that run entirely on components and modals: reporting a message
  * and appealing a warning.
  */
-import { interaction, openTestDatabase, stubFetch, TEST_GUILD, TEST_USER } from './setup.js';
+import {
+  interaction,
+  openTestDatabase,
+  OTHER_GUILD,
+  stubFetch,
+  TEST_GUILD,
+  TEST_USER,
+} from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
@@ -370,6 +377,47 @@ test('the appeal button opens a modal carrying the incident forward', async () =
   assert.equal(body.type, InteractionResponseType.MODAL);
   assert.equal(body.data.custom_id, `appeal-submit:${TEST_GUILD}:1785067200`);
   assert.equal(body.data.components[0].components[0].required, true);
+});
+
+test('an appeal naming a guild Mai no longer serves goes nowhere', async () => {
+  // Both interactions arrive from a DM, so `interaction.guild_id` is absent and
+  // the router's own allowlist check passes trivially: the guild being acted on
+  // is the one in the custom_id. The id can only have come from a warning DM Mai
+  // sent, but the operator may have dropped that guild from DISCORD_GUILD_IDS
+  // since, and an un-listed guild gets no behaviour at all.
+  const { sent } = stubGateway();
+
+  const opened = await route(
+    interaction({
+      type: InteractionType.MESSAGE_COMPONENT,
+      guild_id: undefined,
+      member: undefined,
+      user: { id: AUTHOR, username: 'author' },
+      data: { custom_id: `appeal:${OTHER_GUILD}:0`, component_type: 2 },
+    }),
+  );
+  assert.equal(opened.type, InteractionResponseType.CHANNEL_MESSAGE_WITH_SOURCE);
+  assert.equal(opened.data.content, content.commands.notActive);
+
+  // Checked again on submit: the modal open and its submit are two separate
+  // interactions, and the id in the custom_id is what decides where this lands.
+  const { edits } = await routeDeferred(
+    interaction({
+      type: InteractionType.MODAL_SUBMIT,
+      guild_id: undefined,
+      member: undefined,
+      user: { id: AUTHOR, username: 'author' },
+      data: {
+        custom_id: `appeal-submit:${OTHER_GUILD}:0`,
+        components: [
+          { type: 1, components: [{ type: 4, custom_id: 'text', value: 'trotzdem' }] },
+        ],
+      },
+    }),
+  );
+
+  assert.deepEqual(sent, [], 'nothing posted into a guild she is not allowed in');
+  assert.equal(edits.at(-1).body.content, content.commands.notActive);
 });
 
 test('a submitted appeal is forwarded to the guild it belongs to', async () => {

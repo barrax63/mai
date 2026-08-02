@@ -10,6 +10,7 @@
  * would go nowhere.
  */
 import { PermissionFlagsBits } from 'discord.js';
+import { isGuildAllowed } from '../config.js';
 import { content, fill } from '../content.js';
 import { evidenceFor } from '../db/evidence.js';
 import { effectiveSettings } from '../db/settings.js';
@@ -127,6 +128,14 @@ export const appealModal = (guildId, since) =>
 
 export const appealButtons = {
   appeal(interaction, [guildId, since]) {
+    // The router's own allowlist check passes trivially here: this button is
+    // clicked in a DM, so `interaction.guild_id` is absent and both gates read
+    // it as "not a guild interaction". The guild being acted on is the one in
+    // the `custom_id`, so it is the one that has to be checked. An id that only
+    // ever came from a warning DM Mai sent herself is still an id for a server
+    // the operator may have removed from DISCORD_GUILD_IDS since.
+    if (!isGuildAllowed(guildId)) return ephemeralResponse(content.commands.notActive);
+
     const member = actor(interaction);
     if (!mayOpenAppeal(member.id)) {
       return ephemeralResponse(content.moderation.appeal.busy);
@@ -187,18 +196,33 @@ const decisionButtons = (userId, since, guildId) => [
  * Tells the member what staff decided. Best effort: closed DMs are normal, and
  * the decision is already recorded in the channel either way.
  *
+ * Reached **through the deciding guild** rather than through `users.fetch`. The
+ * member id arrives in a `custom_id`, which names a target and never authorizes
+ * one, and the bot's client can DM any account it can see: `report-approve`,
+ * `threshold-undo` and `appeal-evidence` all prove their target against
+ * `interaction.guild_id` for the same reason, and the strike overturn beside
+ * this call already did. Costs no extra round trip, since fetching the member
+ * replaces fetching the user, and a target who is not in the guild simply throws
+ * into the catch below and is reported as undelivered.
+ *
+ * @param {string | undefined} guildId The guild whose staff decided.
  * @param {string} userId
  * @param {string} body
  * @returns {Promise<boolean>}
  */
-async function notifyMember(userId, body) {
+async function notifyMember(guildId, userId, body) {
+  if (!guildId) return false;
+
   try {
-    const user = await getGatewayClient()?.users?.fetch(userId);
-    if (!user) return false;
-    await user.send({ content: body, allowedMentions: { parse: [] } });
+    // Cache, not a fetch: every guild Mai is in is cached at ready, and this
+    // runs on a click with a deadline.
+    const guild = getGatewayClient()?.guilds?.cache?.get(guildId);
+    const member = await guild?.members?.fetch(userId);
+    if (!member) return false;
+    await member.send({ content: body, allowedMentions: { parse: [] } });
     return true;
   } catch (error) {
-    logger.info({ userId, err: error }, 'Could not deliver an appeal decision');
+    logger.info({ guildId, userId, err: error }, 'Could not deliver an appeal decision');
     return false;
   }
 }
@@ -334,7 +358,16 @@ async function decide(interaction, userId, since, granted) {
     overturned = overturnSince(interaction.guild_id, userId, incidentIso(since));
   }
 
-  const delivered = await notifyMember(userId, granted ? appeal.grantedDm : appeal.deniedDm);
+  // Deliberately not an early refusal for a missing `guild_id`: this handler is
+  // deferred for staff, and after a defer the response replaces the log entry
+  // itself. It falls through as a failed action instead, so the outcome lands
+  // *in* the entry (nothing overturned, decision not sent), which is the same
+  // shape `report-approve` uses for its own cross-guild check.
+  const delivered = await notifyMember(
+    interaction.guild_id,
+    userId,
+    granted ? appeal.grantedDm : appeal.deniedDm,
+  );
 
   logger.info(
     { guildId: interaction.guild_id, userId, granted, overturned, delivered, byUserId: staff.id },
@@ -362,6 +395,13 @@ appealDecisions['appeal-deny'].deferred = (interaction) => mayModerate(interacti
 
 export const appealModals = {
   async 'appeal-submit'(interaction, [guildId, since]) {
+    // Checked again on submit, not only when the modal opened: the id in the
+    // `custom_id` is what decides where this is posted, and the two are separate
+    // interactions. The kill switch is deliberately *not* checked: `/mod off` is
+    // a pause on Mai acting in a server, and a member answering for enforcement
+    // that already happened is the one thing that should still get through.
+    if (!isGuildAllowed(guildId)) return ephemeralResponse(content.commands.notActive);
+
     const member = actor(interaction);
     const text = modalValue(interaction, APPEAL_INPUT);
     if (!text) return ephemeralResponse(content.moderation.appeal.empty);

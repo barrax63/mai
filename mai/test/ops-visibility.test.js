@@ -37,25 +37,36 @@ const APPELLANT = 'b20000000000000001';
 updateSettings(TEST_GUILD, { 'log-channel': LOG_CHANNEL });
 
 /** Records what Mai posts to channels and DMs. */
-function stubGateway({ dmFails = false } = {}) {
+function stubGateway({ dmFails = false, notAMember = false } = {}) {
   const posted = [];
   const dms = [];
 
+  // Deliberately no `users.fetch`: an appeal decision reaches the member through
+  // the deciding guild, so a handler reaching for the client's global user
+  // manager instead would fail here rather than DM an arbitrary account.
+  const guild = {
+    id: TEST_GUILD,
+    members: {
+      fetch: async (id) => {
+        if (notAMember) throw Object.assign(new Error('Unknown Member'), { code: 10007 });
+        return {
+          id,
+          send: async (payload) => {
+            if (dmFails) throw new Error('Cannot send messages to this user');
+            dms.push({ userId: id, ...payload });
+          },
+        };
+      },
+    },
+  };
+
   setGatewayClient({
+    guilds: { cache: new Map([[TEST_GUILD, guild]]) },
     channels: {
       fetch: async (id) => ({
         id,
         isTextBased: () => true,
         send: async (payload) => posted.push({ channelId: id, ...payload }),
-      }),
-    },
-    users: {
-      fetch: async (id) => ({
-        id,
-        send: async (payload) => {
-          if (dmFails) throw new Error('Cannot send messages to this user');
-          dms.push({ userId: id, ...payload });
-        },
       }),
     },
   });
@@ -240,6 +251,23 @@ test('a closed DM still records the decision, and says it did not arrive', async
   stubGateway({ dmFails: true });
   const { edits } = await clickDecision(`appeal-grant:${APPELLANT}:0`);
 
+  const resolution = edits.at(-1).body.embeds[0].fields.at(-1);
+  assert.match(resolution.value, /Stattgegeben/);
+  assert.ok(resolution.value.includes(content.moderation.appeal.decisionNotSent));
+});
+
+test('a decision reaches the member through the deciding guild, or not at all', async () => {
+  // The member id rides in the custom_id, and the bot's client can DM any
+  // account it can see, so the target is proven against the clicking guild the
+  // same way the strike overturn beside it already was. `report-approve`,
+  // `threshold-undo` and `appeal-evidence` all do this; this one did not.
+  const { dms } = stubGateway({ notAMember: true });
+  const { edits } = await clickDecision(`appeal-grant:${APPELLANT}:0`);
+
+  assert.equal(dms.length, 0, 'nobody outside the guild hears from Mai');
+
+  // Recorded as a failed action rather than answered with a refusal: this
+  // handler is deferred for staff, so a refusal would replace the log entry.
   const resolution = edits.at(-1).body.embeds[0].fields.at(-1);
   assert.match(resolution.value, /Stattgegeben/);
   assert.ok(resolution.value.includes(content.moderation.appeal.decisionNotSent));
