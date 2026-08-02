@@ -1,5 +1,13 @@
 /**
- * Whether Mai can actually do what a server has asked her to do.
+ * Who may do what: Mai in a server, and staff through Mai.
+ *
+ * Most of this file is the first question. The second one is `mayModerate` at
+ * the top, which lives here because it was written out four times in four
+ * files, and it is the single most security-relevant predicate in the codebase:
+ * a change to it that reached three call sites out of four would be a hole
+ * nobody could see by reading any one of them.
+ *
+ * Whether Mai can actually do what a server has asked her to do:
  *
  * Every permission she needs is discovered at the worst possible moment
  * otherwise: Manage Messages when a deletion fails at the end of a grace
@@ -24,6 +32,38 @@ import { effectiveSettings, resumeEscalation, suspendEscalation } from './db/set
 import { getGatewayClient } from './gateway/client.js';
 import { logger } from './logger.js';
 import { LOG_CONFIG, postModerationLog } from './moderation/log.js';
+
+/**
+ * Whether the person behind an interaction is staff **in the guild it came
+ * from**. Manage Messages is what makes somebody staff there, and only there:
+ * this is the lower of the two authority tiers, the other being
+ * `isOperator()` in `config.js` for whoever runs the process.
+ *
+ * Read off `interaction.member.permissions`, which Discord computes for the
+ * guild the interaction happened in and sends inside the signature-verified
+ * payload, so it is the one permission fact that needs no lookup. Absent in a
+ * DM, which is why every caller of this refuses DMs as a side effect: there is
+ * nothing to moderate there anyway.
+ *
+ * The UI hides these commands and buttons from members without the permission
+ * (`default_member_permissions`), but that is a default a server admin can
+ * widen, so code decides. A declaration rather than a `const` arrow on purpose:
+ * this module and `gateway/client.js` import each other, and only a hoisted
+ * declaration is safe to call from either side of that cycle.
+ *
+ * @param {object} interaction Raw interaction payload from Discord.
+ * @returns {boolean}
+ */
+export function mayModerate(interaction) {
+  const raw = interaction?.member?.permissions;
+  if (!raw) return false;
+  try {
+    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
+  } catch {
+    // Discord sends this as a decimal string; anything BigInt refuses is not one.
+    return false;
+  }
+}
 
 /** Needed everywhere, for the pipeline to work at all. */
 const ALWAYS = Object.freeze([

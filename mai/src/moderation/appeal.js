@@ -9,7 +9,6 @@
  * The button only exists when the guild has a log channel, otherwise an appeal
  * would go nowhere.
  */
-import { PermissionFlagsBits } from 'discord.js';
 import { isGuildAllowed } from '../config.js';
 import { content, fill } from '../content.js';
 import { evidenceFor } from '../db/evidence.js';
@@ -25,6 +24,7 @@ import {
   updateResponse,
 } from '../interactions/respond.js';
 import { logger } from '../logger.js';
+import { mayModerate } from '../permissions.js';
 import { LOG_APPEALED, postModerationLog } from './log.js';
 import { sanitize } from './warning.js';
 import { createRateLimiter } from '../rate-limit.js';
@@ -33,17 +33,6 @@ const ACTION_ROW = 1;
 const BUTTON = 2;
 const STYLE_SECONDARY = 2;
 const STYLE_SUCCESS = 3;
-
-/** Same check as `/mod`: the UI hides these buttons, code decides. */
-const mayModerate = (interaction) => {
-  const raw = interaction.member?.permissions;
-  if (!raw) return false;
-  try {
-    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
-  } catch {
-    return false;
-  }
-};
 
 const APPEAL_INPUT = 'text';
 const APPEAL_MAX_LENGTH = 1000;

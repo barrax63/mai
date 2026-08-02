@@ -36,7 +36,7 @@ import { deleteMessageById, removeWarningReactionById } from '../moderation/clea
 import { contentViolations } from '../moderation/heuristics.js';
 import { preset, PRESET_NAMES } from '../moderation/presets.js';
 import { buildManualWarning } from '../moderation/warning.js';
-import { missingPermissions, permissionsComplete } from '../permissions.js';
+import { mayModerate, missingPermissions, permissionsComplete } from '../permissions.js';
 import { createRateLimiter } from '../rate-limit.js';
 import { ladderFor, strikeWindowStart } from '../moderation/escalation.js';
 import { getGatewayClient } from '../gateway/client.js';
@@ -56,21 +56,6 @@ const SIMULATE_SCORES = 5;
  * this is for.
  */
 const simulateLimiter = createRateLimiter({ max: 15, windowMs: 5 * 60_000, name: 'simulate' });
-
-/**
- * @param {object} interaction
- * @returns {boolean}
- */
-function mayModerate(interaction) {
-  // Absent in DMs, there is nothing to moderate there anyway.
-  const raw = interaction.member?.permissions;
-  if (!raw) return false;
-  try {
-    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
-  } catch {
-    return false;
-  }
-}
 
 /**
  * @param {number} seconds

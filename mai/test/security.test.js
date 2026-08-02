@@ -23,6 +23,7 @@ import { recordUsage, totalsFor, dayKey } from '../src/db/usage.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { routeInteraction } from '../src/interactions/router.js';
 import { screenInput } from '../src/moderation/screen.js';
+import { mayModerate } from '../src/permissions.js';
 
 await openTestDatabase();
 
@@ -68,6 +69,25 @@ test('a flagged question is never repeated, and costs no completion', async () =
   }
   assert.equal(calls.some((url) => url.includes('/chat/completions')), false, 'no tokens spent');
   assert.equal(edits.length, 1, 'the deferred placeholder was still filled in');
+});
+
+test('staff is decided in one place, from the payload Discord signed', () => {
+  const MANAGE_MESSAGES = 1n << 13n;
+  const at = (bits) => ({ member: { permissions: String(bits) } });
+
+  assert.equal(mayModerate(at(MANAGE_MESSAGES)), true);
+  assert.equal(mayModerate(at(MANAGE_MESSAGES | (1n << 3n))), true, 'a superset still counts');
+
+  assert.equal(mayModerate(at(0n)), false);
+  assert.equal(mayModerate(at(1n << 3n)), false, 'a different permission is not this one');
+  // No member object at all: a DM, where there is nothing to moderate anyway.
+  assert.equal(mayModerate({ user: { id: MEMBER } }), false);
+  assert.equal(mayModerate({}), false);
+  assert.equal(mayModerate(undefined), false);
+  // A value BigInt refuses throws rather than returning, and a throw here would
+  // be an unhandled rejection on a public endpoint, not a refusal.
+  assert.equal(mayModerate({ member: { permissions: 'alle' } }), false);
+  assert.equal(mayModerate({ member: { permissions: null } }), false);
 });
 
 test('the guild decides where its line is here too, but only downwards', async () => {

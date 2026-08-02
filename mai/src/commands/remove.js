@@ -32,18 +32,9 @@ import { ephemeralResponse } from '../interactions/respond.js';
 import { logger } from '../logger.js';
 import { deleteMessageById, markOwnDeletion } from '../moderation/cleanup.js';
 import { LOG_MANUAL_DELETE, postModerationLog } from '../moderation/log.js';
+import { mayModerate } from '../permissions.js';
 
 const actor = (interaction) => interaction.member?.user ?? interaction.user ?? {};
-
-const mayModerate = (interaction) => {
-  const raw = interaction.member?.permissions;
-  if (!raw) return false;
-  try {
-    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
-  } catch {
-    return false;
-  }
-};
 
 /**
  * A message Mai had already flagged and was waiting to enforce: staff got there

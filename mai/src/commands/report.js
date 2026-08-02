@@ -9,7 +9,6 @@
  * Like the rest of the log, the entry is metadata plus the reporter's own words:
  * the reported message itself is only linked, never copied.
  */
-import { PermissionFlagsBits } from 'discord.js';
 import { content, fill } from '../content.js';
 import { effectiveSettings } from '../db/settings.js';
 import { getGatewayClient } from '../gateway/client.js';
@@ -24,6 +23,7 @@ import {
 import { logger } from '../logger.js';
 import { markOwnDeletion } from '../moderation/cleanup.js';
 import { LOG_REPORTED, postModerationLog } from '../moderation/log.js';
+import { mayModerate } from '../permissions.js';
 import { createRateLimiter } from '../rate-limit.js';
 
 const ACTION_ROW = 1;
@@ -38,16 +38,6 @@ const REASON_MAX_LENGTH = 500;
 const reportLimiter = createRateLimiter({ max: 5, windowMs: 10 * 60_000, name: 'report' });
 
 const actor = (interaction) => interaction.member?.user ?? interaction.user ?? {};
-
-const mayModerate = (interaction) => {
-  const raw = interaction.member?.permissions;
-  if (!raw) return false;
-  try {
-    return (BigInt(raw) & PermissionFlagsBits.ManageMessages) === PermissionFlagsBits.ManageMessages;
-  } catch {
-    return false;
-  }
-};
 
 /**
  * Buttons under a fresh report.
