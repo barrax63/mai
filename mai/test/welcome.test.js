@@ -11,9 +11,10 @@ import './setup-welcome.js';
 import { openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { PermissionFlagsBits } from 'discord.js';
+import { GatewayIntentBits, Partials, PermissionFlagsBits } from 'discord.js';
 import { content } from '../src/content.js';
 import { resetSettings, updateSettings } from '../src/db/settings.js';
+import { createGatewayClient } from '../src/gateway/client.js';
 import { onGuildMemberAdd } from '../src/gateway/events/guild-member-add.js';
 
 await openTestDatabase();
@@ -192,4 +193,18 @@ test('a paused guild is not welcomed into either: /mod off means off', async () 
 
   assert.deepEqual(record.sent, []);
   updateSettings(TEST_GUILD, { enabled: 'true' });
+});
+
+test('the privileged intent is requested here, because the operator said so', () => {
+  // `DISCORD_MEMBER_EVENTS=true` in setup-welcome.js, which is the only thing
+  // that may request GuildMembers: an intent is chosen once, at login, for the
+  // whole process, so no per-guild setting can ever turn one on.
+  const client = createGatewayClient();
+
+  assert.equal(client.options.intents.has(GatewayIntentBits.GuildMembers), true);
+  // DMs need the non-privileged intent plus the channel partial, and neither is
+  // obvious from a stack trace when it is missing: an event simply never fires.
+  assert.equal(client.options.intents.has(GatewayIntentBits.DirectMessages), true);
+  assert.ok(client.options.partials.includes(Partials.Channel));
+  client.destroy();
 });

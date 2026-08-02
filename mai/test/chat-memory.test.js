@@ -272,6 +272,33 @@ test('memory loss is survivable: the reply was already delivered', () => {
   );
 });
 
+test('/mai forget builds its buttons around the caller own id', async () => {
+  // The two button handlers were tested, the command that produces them was
+  // not, so nothing asserted that the id in the custom_id is the caller's. It
+  // is the whole basis of the check the handlers perform: a button built with
+  // somebody else's id would hand them a working wipe of that person's memory.
+  let body;
+  await routeInteraction(
+    interaction({
+      type: InteractionType.APPLICATION_COMMAND,
+      guild_id: undefined,
+      member: undefined,
+      user: { id: OTHER_USER, username: 'other' },
+      data: { name: 'mai', options: [{ name: 'forget', type: 1 }] },
+    }),
+    (sent) => {
+      body = sent;
+    },
+  );
+
+  assert.equal(body.data.flags, 64, 'ephemeral: this is nobody else business');
+  assert.deepEqual(
+    body.data.components[0].components.map((button) => button.custom_id),
+    [`forget:${OTHER_USER}`, `forget-cancel:${OTHER_USER}`],
+    'the caller id, taken from the interaction rather than from anything they sent',
+  );
+});
+
 test('/mai forget wipes only for the member who clicked', async () => {
   wipe();
   appendTurns([{ channelId: DM_CHANNEL, guildId: null, userId: TEST_USER, username: 'tester', role: 'user', content: 'privat' }]);

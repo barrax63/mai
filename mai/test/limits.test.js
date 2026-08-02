@@ -51,6 +51,53 @@ test('keys are separate buckets: one loud member does not silence the rest', () 
   assert.equal(limiter.size(), 2);
 });
 
+test('the map is swept once it is worth sweeping, and only of what has aged out', () => {
+  const realNow = Date.now;
+  let clock = 1_000_000;
+  Date.now = () => clock;
+
+  try {
+    const limiter = createRateLimiter({ max: 5, windowMs: 1000, name: 'sweep' });
+
+    // Past the sweep threshold, so the next call walks the map. Below it the
+    // sweep is deliberately not attempted at all: a scan per request would cost
+    // more than the entries it reclaims.
+    for (let index = 0; index <= 1000; index++) limiter.consume(`old-${index}`);
+    assert.equal(limiter.size(), 1001, 'nothing swept yet: none of it has aged out');
+
+    clock += 1500;
+    limiter.consume('fresh');
+
+    // Everything from before the window is gone, the caller that just arrived
+    // is not. Without this the map grows for the lifetime of the process.
+    assert.equal(limiter.size(), 1, 'only the live bucket survives');
+    assert.equal(limiter.consume('old-0'), true, 'and a returning caller starts clean');
+  } finally {
+    Date.now = realNow;
+  }
+});
+
+test('a sustained flood with fresh keys is the case the sweep cannot help with', () => {
+  const realNow = Date.now;
+  let clock = 2_000_000;
+  Date.now = () => clock;
+
+  try {
+    const limiter = createRateLimiter({ max: 5, windowMs: 60_000, name: 'sweep' });
+    for (let index = 0; index <= 1200; index++) limiter.consume(`key-${index}`);
+
+    // Every bucket is inside the window, so the sweep deletes nothing and the
+    // map keeps growing for the length of the window. Documented rather than
+    // fixed: the header is set by Cloudflare at the edge in this deployment and
+    // the port is published on the internal network only, so the keys are not
+    // attacker-chosen. Worth pinning so the assumption is visible if that
+    // changes.
+    assert.equal(limiter.size(), 1201);
+  } finally {
+    Date.now = realNow;
+  }
+});
+
 test('the window slides: grants age out instead of resetting on a fixed tick', () => {
   const realNow = Date.now;
   let clock = 1_000_000;

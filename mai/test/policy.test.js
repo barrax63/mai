@@ -6,20 +6,56 @@
  * just because it can read it.
  */
 import './setup-moderation.js';
-import { openTestDatabase, stubFetch, TEST_GUILD, TEST_USER } from './setup.js';
+import { interaction, openTestDatabase, stubFetch, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { applyPolicy, classify } from '../src/ai/moderation.js';
 import { parseCategoryList, parseThreshold } from '../src/config.js';
-import { content } from '../src/content.js';
+import { content, fill } from '../src/content.js';
 import { dueCount, dueRows, enqueue } from '../src/db/queue.js';
 import { effectiveSettings, resetSettings, updateSettings } from '../src/db/settings.js';
+import { routeInteraction } from '../src/interactions/router.js';
 import { isExemptChannel } from '../src/moderation/check.js';
 
 await openTestDatabase();
 
 const CHANNEL = '810000000000000001';
 const THREAD = '810000000000000002';
+
+const STAFF = { user: { id: TEST_USER, username: 'staff' }, permissions: String(1n << 13n) };
+
+/** `/mod exempt <name> [channel]` as Discord sends it: a subcommand group. */
+const exemptPayload = (name, channelId) =>
+  interaction({
+    type: 2,
+    member: STAFF,
+    data: {
+      name: 'mod',
+      options: [
+        {
+          name: 'exempt',
+          type: 2,
+          options: [
+            {
+              name,
+              type: 1,
+              options: channelId ? [{ name: 'channel', value: channelId }] : [],
+            },
+          ],
+        },
+      ],
+    },
+  });
+
+const route = async (payload) => {
+  let body;
+  await routeInteraction(payload, (sent) => {
+    body = sent;
+  });
+  return body;
+};
+
+const exemptCommand = (name, channelId) => route(exemptPayload(name, channelId));
 
 // A German insult the provider does not flag on its own: measured at
 // harassment 0.20, against 0.88 for the same words in English.
@@ -135,6 +171,61 @@ test('an exempt channel covers its threads too', () => {
 
   resetSettings(guildId, 'exempt-channels');
   assert.equal(isExemptChannel(guildId, CHANNEL), false);
+});
+
+test('/mod exempt edits the same list a picker instead of a text field', async () => {
+  const { exempt } = content.commands;
+  const other = '810000000000000003';
+  resetSettings(TEST_GUILD, 'exempt-channels');
+
+  const say = (line, channelId) => fill(line, { channelId });
+
+  assert.equal((await exemptCommand('add', CHANNEL)).data.content, say(exempt.added, CHANNEL));
+  assert.deepEqual(effectiveSettings(TEST_GUILD).exemptChannels, [CHANNEL]);
+
+  // Adding twice is not an error and does not duplicate the entry.
+  assert.equal(
+    (await exemptCommand('add', CHANNEL)).data.content,
+    say(exempt.alreadyAdded, CHANNEL),
+  );
+  assert.deepEqual(effectiveSettings(TEST_GUILD).exemptChannels, [CHANNEL]);
+
+  await exemptCommand('add', other);
+  const listed = (await exemptCommand('list')).data.content;
+  for (const id of [CHANNEL, other]) assert.match(listed, new RegExp(`<#${id}>`));
+
+  assert.equal((await exemptCommand('remove', other)).data.content, say(exempt.removed, other));
+  assert.equal(
+    (await exemptCommand('remove', other)).data.content,
+    say(exempt.notExempt, other),
+    'removing what is not there says so rather than failing',
+  );
+
+  // The last one out clears the override entirely, so the guild goes back to
+  // inheriting rather than storing an empty string, which would mean something
+  // else here: "off" and "not configured" are different answers.
+  await exemptCommand('remove', CHANNEL);
+  const settings = effectiveSettings(TEST_GUILD);
+  assert.deepEqual(settings.exemptChannels, []);
+  assert.equal(settings.inherited['exempt-channels'], true);
+
+  const empty = (await exemptCommand('list')).data.content;
+  assert.match(empty, new RegExp(exempt.empty.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+});
+
+test('/mod exempt needs a guild, and a channel to act on', async () => {
+  const inDm = await route({
+    ...exemptPayload('add', CHANNEL),
+    guild_id: undefined,
+    member: undefined,
+    user: { id: TEST_USER },
+  });
+  // No member object in a DM means no Manage Messages, so `/mod` refuses before
+  // the guild check does.
+  assert.equal(inDm.data.content, content.commands.forbidden);
+
+  const noChannel = await route(exemptPayload('add'));
+  assert.equal(noChannel.data.content, content.commands.error);
 });
 
 test('exempt channels are validated as channel ids', () => {

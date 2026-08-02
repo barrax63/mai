@@ -18,6 +18,7 @@ import { openTestDatabase, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { bumpAttempts, enqueue, findRow, remove } from '../src/db/queue.js';
+import { config } from '../src/config.js';
 import { content } from '../src/content.js';
 import {
   countShadowHit,
@@ -29,7 +30,7 @@ import {
 import { historyFor } from '../src/db/violations.js';
 import { explainError } from '../src/errors.js';
 import { clearOwnDeletions } from '../src/moderation/cleanup.js';
-import { getEnforcerStatus, runTick } from '../src/moderation/enforcer.js';
+import { getEnforcerStatus, runTick, startEnforcer } from '../src/moderation/enforcer.js';
 
 await openTestDatabase();
 
@@ -447,4 +448,97 @@ test('a row that throws counts as a failed attempt and is eventually given up on
 
   assert.equal(findRow(messageId), null, 'Mai stops trying instead of looping forever');
   assert.equal(record.deleted.length, 0, 'and never deleted anything on the way');
+});
+
+test('the loop ticks at once, skips an overlapping run, and stops when told', async () => {
+  // The interval is a minute, so the timer is captured rather than waited on:
+  // what is under test is the ordering inside the callback, not setInterval.
+  const realSetInterval = globalThis.setInterval;
+  const realClearInterval = globalThis.clearInterval;
+  const TIMER = Symbol('timer');
+  let fire = null;
+  let interval = null;
+  let cleared = 0;
+
+  globalThis.setInterval = (fn, ms) => {
+    fire = fn;
+    interval = ms;
+    return TIMER;
+  };
+  globalThis.clearInterval = (timer) => {
+    if (timer === TIMER) cleared += 1;
+  };
+
+  let release;
+  const hang = new Promise((resolve) => {
+    release = resolve;
+  });
+
+  let fetches = 0;
+  const { client } = fakeClient();
+  const channels = client.channels;
+  client.channels = {
+    fetch: async (id) => {
+      fetches += 1;
+      // The first tick never finishes until the test lets it.
+      if (fetches === 1) await hang;
+      return channels.fetch(id);
+    },
+  };
+
+  const messageId = '950000000000000900';
+  enqueue({
+    messageId,
+    guildId: TEST_GUILD,
+    channelId: CHANNEL,
+    userId: TEST_USER,
+    categories: ['harassment'],
+    warnedAt: new Date(Date.now() - 120_000).toISOString(),
+    dueAt: new Date(Date.now() - 60_000).toISOString(),
+    scoldMessageId: null,
+  });
+
+  let handle;
+  try {
+    handle = startEnforcer(client);
+
+    // Started, not scheduled: a restart must not leave a backlog sitting for a
+    // whole interval before anything happens to it.
+    assert.equal(interval, config.moderation.tickMs);
+    assert.equal(fetches, 1, 'the first tick ran immediately');
+    assert.equal(getEnforcerStatus().running, true);
+
+    // The interval fires again while the first is still going. It has to be
+    // skipped rather than piled on top: each row is several Discord calls, and
+    // two passes over the same row would enforce it twice.
+    await fire();
+    assert.equal(fetches, 1, 'the overlapping run did nothing');
+
+    release();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(getEnforcerStatus().running, false, 'and the flag is cleared in a finally');
+
+    // A second row, because the first one resolved: the point is that the loop
+    // is working again, not that it has anything left over from before.
+    enqueue({
+      messageId: '950000000000000901',
+      guildId: TEST_GUILD,
+      channelId: CHANNEL,
+      userId: TEST_USER,
+      categories: ['harassment'],
+      warnedAt: new Date(Date.now() - 120_000).toISOString(),
+      dueAt: new Date(Date.now() - 60_000).toISOString(),
+      scoldMessageId: null,
+    });
+
+    await fire();
+    assert.equal(fetches, 2, 'once it is free the next tick runs normally');
+  } finally {
+    handle?.stop();
+    globalThis.setInterval = realSetInterval;
+    globalThis.clearInterval = realClearInterval;
+  }
+
+  assert.equal(cleared, 1, 'stop() really clears the interval');
+  remove(messageId);
 });

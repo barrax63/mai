@@ -157,6 +157,36 @@ test('a flood trips once per burst, not once per message', () => {
   assert.equal(floodViolation(TEST_GUILD, TEST_USER, on, at(17)), true);
 });
 
+test('flood windows are swept, but never one still serving a cooldown', () => {
+  resetFloodWindows();
+  const on = rules({ floodRule: { messages: 3, seconds: 10 } });
+  const start = 3_000_000;
+
+  // One member who actually tripped the rule, so their entry is in cooldown.
+  for (const offset of [0, 1, 2, 3]) floodViolation(TEST_GUILD, 'tripper', on, start + offset);
+
+  // Enough idle members to push the map past the sweep threshold.
+  for (let index = 0; index <= 1000; index++) {
+    floodViolation(TEST_GUILD, `quiet-${index}`, on, start + 4);
+  }
+
+  // Well past the window, but still inside the tripper's cooldown (one window
+  // from the trip). The sweep runs and has to leave that one alone: dropping it
+  // would end the cooldown early, and the next message in the same burst would
+  // trip the rule a second time, which is the whole thing "once per burst"
+  // exists to prevent.
+  floodViolation(TEST_GUILD, 'someone-new', on, start + 11_000);
+  assert.equal(floodViolation(TEST_GUILD, 'tripper', on, start + 11_100), false, 'still cooling down');
+
+  // Once the cooldown has passed too, the entry is reclaimable like any other.
+  floodViolation(TEST_GUILD, 'someone-else', on, start + 60_000);
+  assert.equal(
+    floodViolation(TEST_GUILD, 'tripper', on, start + 60_001),
+    false,
+    'and a returning member starts from an empty window rather than mid-burst',
+  );
+});
+
 test('the flood window is per member and per guild', () => {
   resetFloodWindows();
   const on = rules({ floodRule: { messages: 2, seconds: 10 } });

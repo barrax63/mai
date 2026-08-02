@@ -2,8 +2,10 @@ import { interaction, openTestDatabase, OTHER_GUILD, stubFetch, TEST_GUILD, TEST
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
+import { GatewayIntentBits } from 'discord.js';
 import { content } from '../src/content.js';
 import { effectiveSettings, resetSettings, updateSettings } from '../src/db/settings.js';
+import { createGatewayClient } from '../src/gateway/client.js';
 import { optionValue, resolveSubcommand } from '../src/interactions/options.js';
 import { EPHEMERAL } from '../src/interactions/respond.js';
 import { parseCustomId } from '../src/interactions/registry.js';
@@ -436,4 +438,16 @@ test('parseCustomId splits the handler name from its arguments', () => {
   assert.deepEqual(parseCustomId('forget:123:extra'), { name: 'forget', args: ['123', 'extra'] });
   assert.deepEqual(parseCustomId('plain'), { name: 'plain', args: [] });
   assert.deepEqual(parseCustomId(undefined), { name: '', args: [] });
+});
+
+test('without the operator saying so, the privileged intent is not asked for', () => {
+  // The default here: `DISCORD_MEMBER_EVENTS` unset. Requesting GuildMembers
+  // without "Server Members Intent" switched on in the Developer Portal makes
+  // the gateway login fail outright, so this is not a feature degrading, it is
+  // Mai not starting.
+  const client = createGatewayClient();
+
+  assert.equal(client.options.intents.has(GatewayIntentBits.GuildMembers), false);
+  assert.equal(client.options.intents.has(GatewayIntentBits.MessageContent), true, 'still reads messages');
+  client.destroy();
 });
