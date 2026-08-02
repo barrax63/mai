@@ -530,6 +530,15 @@ export const config = Object.freeze({
     baseUrl: (optional('OPENAI_BASE_URL', 'https://api.openai.com/v1') ?? '').replace(/\/+$/, ''),
     moderationModel: optional('OPENAI_MODERATION_MODEL', 'omni-moderation-latest'),
     chatModel: optional('OPENAI_CHAT_MODEL', 'gpt-5.4-mini'),
+    // Sent as `reasoning_effort` on chat completions when set, omitted when
+    // not, because there is no value that is safe for every model: a reasoning
+    // model refuses `tools` unless this is `none` ("Function tools with
+    // reasoning_effort are not supported ... in /v1/chat/completions"), and a
+    // non-reasoning model refuses the parameter itself ("Unrecognized request
+    // argument"). So it belongs to whoever picked the model, next to the model
+    // name, and is free-form for the same reason that one is: the accepted
+    // values are the provider's to change, not ours to enumerate.
+    reasoningEffort: optional('OPENAI_REASONING_EFFORT', ''),
     timeoutMs: int('OPENAI_TIMEOUT_MS', '30000', { min: 1000 }),
     // Retries are safe here: an API call has no side effects of its own.
     maxRetries: int('OPENAI_MAX_RETRIES', '2'),

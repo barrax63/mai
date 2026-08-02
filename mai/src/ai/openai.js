@@ -142,6 +142,13 @@ export async function createChatCompletion({ messages, tools, guildId }) {
     model: config.openai.chatModel,
     messages,
     ...(tools?.length ? { tools } : {}),
+    // Only when the operator set one: the parameter is rejected outright by
+    // models that do not reason, and required as `none` by ones that do as
+    // soon as `tools` is present. See `reasoningEffort` in config.js. Not sent
+    // on /moderations, which takes no such thing.
+    ...(config.openai.reasoningEffort
+      ? { reasoning_effort: config.openai.reasoningEffort }
+      : {}),
   });
 
   account({

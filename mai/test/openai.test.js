@@ -83,6 +83,39 @@ test('a successful call returns the assistant message verbatim', async () => {
   assert.equal(calls[0].options.headers.Authorization, 'Bearer test-key');
   assert.equal(calls[0].body.model, 'test-chat-model');
   assert.ok(!('tools' in calls[0].body), 'no tools key when the caller passed none');
+  // Unset here, and it has to stay absent: a model that does not reason
+  // refuses the parameter outright ("Unrecognized request argument"), so
+  // sending a default would break every non-reasoning model.
+  assert.ok(!('reasoning_effort' in calls[0].body), 'not sent unless configured');
+});
+
+test('the configured reasoning effort rides along on chat completions', async () => {
+  // A reasoning model refuses `tools` on /chat/completions unless this says
+  // `none`, which is why the knob exists at all.
+  const previous = config.openai.reasoningEffort;
+  config.openai.reasoningEffort = 'none';
+
+  const bodies = [];
+  const restore = stubFetch((url, options) => {
+    bodies.push({ url, body: JSON.parse(options.body) });
+    return json(url.includes('/moderations') ? moderationBody() : chatBody());
+  });
+
+  try {
+    await createChatCompletion({
+      messages: [{ role: 'user', content: 'hi' }],
+      tools: [{ type: 'function', function: { name: 'x', parameters: {} } }],
+      guildId: TEST_GUILD,
+    });
+    await createModeration('hallo');
+  } finally {
+    restore();
+    config.openai.reasoningEffort = previous;
+  }
+
+  assert.equal(bodies[0].body.reasoning_effort, 'none');
+  // The moderations endpoint takes no such parameter.
+  assert.ok(!('reasoning_effort' in bodies[1].body), 'chat completions only');
 });
 
 test('an assistant message with tool calls comes back untouched', async () => {
