@@ -30,7 +30,7 @@ import { routeInteraction } from '../src/interactions/router.js';
 
 await openTestDatabase();
 
-const LOG_CHANNEL = 'b10000000000000001';
+const LOG_CHANNEL = '910000000000000001';
 const STAFF_PERMISSIONS = String(1n << 13n); // Manage Messages
 const APPELLANT = 'b20000000000000001';
 

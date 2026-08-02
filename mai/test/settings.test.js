@@ -79,9 +79,9 @@ test('a missing guild id (DM) still yields usable defaults', () => {
 
 test('setting one value leaves the others inherited', () => {
   const id = guild();
-  const settings = updateSettings(id, { 'log-channel': '4711' }, 'admin-1');
+  const settings = updateSettings(id, { 'log-channel': '940000000000004711' }, 'admin-1');
 
-  assert.equal(settings.logChannelId, '4711');
+  assert.equal(settings.logChannelId, '940000000000004711');
   assert.equal(settings.inherited['log-channel'], false);
   assert.equal(settings.inherited.grace, true);
   assert.equal(settings.gracePeriodMinutes, BASE_SETTINGS.grace);
@@ -90,10 +90,10 @@ test('setting one value leaves the others inherited', () => {
 
 test('a second update merges instead of replacing the row', () => {
   const id = guild();
-  updateSettings(id, { 'log-channel': '4711' });
+  updateSettings(id, { 'log-channel': '940000000000004711' });
   const settings = updateSettings(id, { grace: 3 }, 'admin-2');
 
-  assert.equal(settings.logChannelId, '4711', 'earlier override survives');
+  assert.equal(settings.logChannelId, '940000000000004711', 'earlier override survives');
   assert.equal(settings.gracePeriodMinutes, 3);
   assert.equal(rawSettings(id).updated_by, 'admin-2');
 });
@@ -156,19 +156,19 @@ test('unknown keys in a patch are ignored', () => {
 
 test('reset clears a single setting back to inherited', () => {
   const id = guild();
-  updateSettings(id, { 'log-channel': '4711', grace: 5 });
+  updateSettings(id, { 'log-channel': '940000000000004711', grace: 5 });
   const settings = resetSettings(id, 'grace', 'admin-3');
 
   assert.equal(settings.gracePeriodMinutes, BASE_SETTINGS.grace);
   assert.equal(settings.inherited.grace, true);
-  assert.equal(settings.logChannelId, '4711', 'other overrides untouched');
+  assert.equal(settings.logChannelId, '940000000000004711', 'other overrides untouched');
 });
 
 test('reset without a name clears everything', () => {
   const id = guild();
   updateSettings(id, {
-    'log-channel': '4711',
-    'welcome-channel': '4712',
+    'log-channel': '940000000000004711',
+    'welcome-channel': '940000000000004712',
     grace: 5,
     'timeout-ladder': '0,15',
     'strike-window': 14,
@@ -196,6 +196,31 @@ test('reset without a name clears everything', () => {
     'name-check': true,
     shadow: true,
   });
+});
+
+test('the two singular channel settings take a channel id and nothing else', () => {
+  const id = guild();
+
+  // Both arrive from a Discord CHANNEL option today, so the value is inside a
+  // signature-verified payload. They are validated anyway because that is not
+  // the only writer: `setProfile`'s extra and `ensureLogChannel` reach the same
+  // columns, and a bad value becomes a `<#garbage>` mention in
+  // `/mod config view` plus a `channels.fetch` that throws on every log write.
+  for (const bad of ['#mod-log', '4711', 'not an id', '9400000000000047110000000000']) {
+    for (const name of ['log-channel', 'welcome-channel']) {
+      assert.throws(() => updateSettings(id, { [name]: bad }), RangeError, `${name} accepted ${bad}`);
+    }
+  }
+
+  // A list is not a single channel either, however well formed its entries are.
+  assert.throws(
+    () => updateSettings(id, { 'log-channel': '940000000000004711,940000000000004712' }),
+    RangeError,
+  );
+
+  const settings = updateSettings(id, { 'log-channel': ' 940000000000004711 ' });
+  assert.equal(settings.logChannelId, '940000000000004711', 'trimmed, and stored as given');
+  assert.equal(updateSettings(id, { 'log-channel': null }).logChannelId, null, 'null still clears');
 });
 
 test('a link allowlist is normalized, and a URL is refused as a domain', () => {

@@ -183,7 +183,7 @@ async function processRow(client, row) {
       { messageId: row.messageId, guildId: row.guildId },
       'Skipping queue row: Mai is paused in this guild',
     );
-    return { enforced: null, keepRow: true, paused: true };
+    return { enforced: null, keepRow: true };
   }
 
   let channel = null;

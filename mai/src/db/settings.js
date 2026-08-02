@@ -41,7 +41,7 @@ const SNOWFLAKE = /^\d{5,25}$/;
  * @param {unknown} value Comma-separated channel ids.
  * @returns {string} Normalized, deduplicated, comma-separated.
  */
-export function parseChannelList(value, label = 'exempt-channels') {
+function parseChannelList(value, label = 'exempt-channels') {
   const ids = String(value ?? '')
     .split(',')
     .map((id) => id.trim())
@@ -52,6 +52,29 @@ export function parseChannelList(value, label = 'exempt-channels') {
   if (ids.length > 50) throw new RangeError(`${label} accepts at most 50 channels`);
 
   return [...new Set(ids)].join(',');
+}
+
+/**
+ * One channel id. Separate from `parseChannelList` deliberately: that one
+ * accepts up to fifty, and a `log-channel` holding two ids is a value nothing
+ * downstream can use.
+ *
+ * Both singular channel settings arrive from a Discord `CHANNEL` option today,
+ * so the value comes inside a signature-verified payload and can only be a
+ * channel of the calling guild. The validation is here anyway because this is
+ * not the only writer: `setProfile`'s `extra` and `ensureLogChannel` reach the
+ * same columns through `updateSettings`, and a bad value becomes a `<#garbage>`
+ * mention in `/mod config view` plus a `channels.fetch` that throws on every log
+ * write. Validation belongs where every writer passes through.
+ *
+ * @param {unknown} value
+ * @param {string} label For the error message.
+ * @returns {string}
+ */
+function parseChannelId(value, label) {
+  const id = String(value ?? '').trim();
+  if (!SNOWFLAKE.test(id)) throw new RangeError(`${label} must be a channel id, got: ${id}`);
+  return id;
 }
 
 const splitList = (value) =>
@@ -82,11 +105,11 @@ function toFlag(value, name) {
 export const SETTINGS = Object.freeze({
   'log-channel': {
     column: 'log_channel_id',
-    parse: (value) => (value === null ? null : String(value)),
+    parse: (value) => (value === null ? null : parseChannelId(value, 'log-channel')),
   },
   'welcome-channel': {
     column: 'welcome_channel_id',
-    parse: (value) => (value === null ? null : String(value)),
+    parse: (value) => (value === null ? null : parseChannelId(value, 'welcome-channel')),
   },
   welcome: {
     // Greet new members here at all. Rides the same privileged intent as
