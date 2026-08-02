@@ -186,6 +186,58 @@ export function buildMessages({
 }
 
 /**
+ * A custom emote as Discord parses it: `<:name:id>`, `<a:name:id>` animated.
+ * Used with `.replace()`, which starts at 0 and resets `lastIndex` itself, so
+ * the `g` flag is not the stateful trap it is for the `.test()` patterns in
+ * content.js.
+ */
+const CUSTOM_EMOTE = /<(a?):(\w{2,32}):(\d{15,25})>/g;
+
+/**
+ * Drops custom-emote codes whose id does not exist where the reply is going.
+ *
+ * `get_server_emotes` is what stops the model inventing these, but a model that
+ * saw one in the channel history (or simply made a plausible id up) can still
+ * emit one, and Discord does not fail loudly: an id it cannot resolve is posted
+ * as the literal text `<:catjam:123>` in the middle of her sentence.
+ *
+ * The set to check against is the set she can actually render: in a guild, that
+ * guild's own emotes, since using another server's needs Use External Emojis in
+ * the channel; in a DM, every emote the bot can reach. No client (before the
+ * gateway is ready, or `/mai ask` answering early) means nothing is verifiable,
+ * and an unverifiable code is dropped rather than posted broken.
+ *
+ * @param {string} raw
+ * @param {{ guildId?: string | null, client?: object }} [context]
+ * @returns {string}
+ */
+export function pruneInventedEmotes(raw, context) {
+  const text = String(raw ?? '');
+  if (!text.includes('<')) return text;
+
+  const known = context?.guildId
+    ? context.client?.guilds?.cache?.get(context.guildId)?.emojis?.cache
+    : context?.client?.emojis?.cache;
+
+  let dropped = 0;
+  const pruned = text.replace(CUSTOM_EMOTE, (match, animated, name, id) => {
+    if (known?.has?.(id)) return match;
+    dropped += 1;
+    return '';
+  });
+
+  if (dropped === 0) return text;
+
+  logger.debug({ dropped, guildId: context?.guildId ?? null }, 'Dropped unknown emote codes');
+  // Removing one leaves the spaces that surrounded it: a double space
+  // mid-sentence, a dangling one at the end of the line. Horizontal whitespace
+  // only, or the cleanup would eat her line breaks along with it.
+  return pruned
+    .replace(/[^\S\r\n]{2,}/g, ' ')
+    .replace(/[^\S\r\n]+(?=\r?\n|$)/g, '');
+}
+
+/**
  * Trims, length-caps and de-pings a model reply.
  *
  * @param {string} raw
@@ -250,7 +302,8 @@ export async function generateReply(messages, context) {
     });
 
     const calls = message?.tool_calls ?? [];
-    if (calls.length === 0) return normalizeReply(message?.content);
+    // Pruned before the length cap, so the cap applies to what is posted.
+    if (calls.length === 0) return normalizeReply(pruneInventedEmotes(message?.content, context));
 
     logger.info(
       { round, tools: calls.map((call) => call.function?.name) },

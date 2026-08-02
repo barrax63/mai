@@ -6,7 +6,7 @@ import './setup-chat.js';
 import { openTestDatabase, stubFetch } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { buildMessages, generateReply } from '../src/ai/chat.js';
+import { buildMessages, generateReply, pruneInventedEmotes } from '../src/ai/chat.js';
 import { runTool, toolDefinitions } from '../src/chat/tools.js';
 import { content } from '../src/content.js';
 import { enqueue } from '../src/db/queue.js';
@@ -442,4 +442,113 @@ test('the clock tool answers in the configured timezone', () => {
   assert.match(result.iso, /^\d{4}-\d{2}-\d{2}T/);
   assert.equal(result.timezone, process.env.TZ ?? 'UTC');
   assert.ok(result.local.length > 0);
+});
+
+/**
+ * A guild whose emote cache behaves like discord.js': keyed by id, so `has(id)`
+ * and `values()` both work off the same map.
+ */
+const guildWithEmotes = (guildId, emotes) => ({
+  guilds: {
+    cache: new Map([
+      [guildId, { emojis: { cache: new Map(emotes.map((emote) => [emote.id, emote])) } }],
+    ]),
+  },
+});
+
+test('the emote tool hands over codes that render, sorted and capped', () => {
+  const many = Array.from({ length: 45 }, (unused, index) => ({
+    // Zero-padded so sorting by name is the same as sorting by index.
+    name: `emote_${String(index).padStart(2, '0')}`,
+    id: `10000000000000000${String(index).padStart(2, '0')}`,
+    animated: false,
+  }));
+  many.push({ name: 'catjam', id: '999999999999999999', animated: true });
+  // Lost with a boost level: still cached, renders as raw text.
+  many.push({ name: 'gone', id: '888888888888888888', available: false });
+
+  const result = runTool({ function: { name: 'get_server_emotes' } }, {
+    userId: 'u',
+    guildId: 'g1',
+    client: guildWithEmotes('g1', many),
+  });
+
+  assert.equal(result.emotes.length, 40, 'capped, so the list cannot eat the prompt');
+  assert.deepEqual(result.emotes[0], {
+    name: 'catjam',
+    code: '<a:catjam:999999999999999999>',
+  });
+  assert.equal(result.emotes[1].code, '<:emote_00:1000000000000000000>');
+  assert.equal(
+    result.emotes.some((emote) => emote.name === 'gone'),
+    false,
+    'an unavailable emote would post as text',
+  );
+});
+
+test('the emote tool refuses where there is nothing it could name', () => {
+  const context = { userId: 'u', guildId: null, client: guildWithEmotes('g1', []) };
+
+  assert.deepEqual(runTool({ function: { name: 'get_server_emotes' } }, context), {
+    error: 'not_in_a_server',
+  });
+  assert.deepEqual(
+    runTool({ function: { name: 'get_server_emotes' } }, { ...context, guildId: 'g1' }),
+    { error: 'no_custom_emotes' },
+  );
+  assert.deepEqual(
+    runTool({ function: { name: 'get_server_emotes' } }, { userId: 'u', guildId: 'g-none', client: {} }),
+    { error: 'unknown_server' },
+  );
+});
+
+test('an emote code Mai did not look up is dropped, not posted as text', () => {
+  const client = guildWithEmotes('g1', [{ name: 'catjam', id: '999999999999999999' }]);
+  const context = { guildId: 'g1', client };
+
+  assert.equal(
+    pruneInventedEmotes('hi <a:catjam:999999999999999999> miau', context),
+    'hi <a:catjam:999999999999999999> miau',
+    'a real id is left alone, animated flag included',
+  );
+  // Invented: Discord resolves nothing and posts the code verbatim.
+  assert.equal(pruneInventedEmotes('hi <:nope:123456789012345678> miau', context), 'hi miau');
+  // Another guild's emote needs Use External Emojis, so it is not hers to use.
+  assert.equal(
+    pruneInventedEmotes(
+      'hi <:catjam:999999999999999999>',
+      { guildId: 'g2', client },
+    ),
+    'hi',
+  );
+  // Nothing to verify against: unverifiable is dropped rather than posted broken.
+  assert.equal(pruneInventedEmotes('hi <:catjam:999999999999999999>', { guildId: 'g1' }), 'hi');
+  // Line breaks survive the space cleanup.
+  assert.equal(pruneInventedEmotes('a <:xy:123456789012345678>\nb', context), 'a\nb');
+  // Discord's own minimum is two characters, so a one-character name is not an
+  // emote code and stays whatever text it is.
+  assert.equal(
+    pruneInventedEmotes('a <:x:123456789012345678>', context),
+    'a <:x:123456789012345678>',
+  );
+  // Plain unicode emoji never go through any of this.
+  assert.equal(pruneInventedEmotes('😺 miau 🐟', context), '😺 miau 🐟');
+});
+
+test('the reply is pruned before it is length-capped', async () => {
+  const restore = stubFetch(() =>
+    completion({ role: 'assistant', content: 'miau <:fake:123456789012345678> 🐟' }),
+  );
+
+  let reply;
+  try {
+    reply = await generateReply(
+      buildMessages({ history: [], username: 'noah', content: 'hi', violations: NO_VIOLATIONS }),
+      { userId: 'u', guildId: 'g1', client: guildWithEmotes('g1', []) },
+    );
+  } finally {
+    restore();
+  }
+
+  assert.equal(reply, 'miau 🐟');
 });

@@ -20,6 +20,16 @@ import { strikeWindowStart } from '../moderation/escalation.js';
 const NO_ARGUMENTS = { type: 'object', properties: {}, additionalProperties: false };
 
 /**
+ * How many of a guild's own emotes are handed to the model.
+ *
+ * A busy server has hundreds, and the whole list is a few thousand tokens on a
+ * request that already pays for a persona and twelve turns of history. Sorted
+ * by name before the cut so the same server always offers the same subset,
+ * rather than whatever order the cache happens to hold today.
+ */
+const MAX_EMOTES = 40;
+
+/**
  * Sent to the model with every tool-enabled request.
  *
  * `get_server_rules` is only offered where there *are* rules in the content
@@ -69,6 +79,19 @@ export const toolDefinitions = Object.freeze([
       name: 'get_my_appeal_status',
       description:
         'Ob die Person, die gerade schreibt, gegen ihre letzte Verwarnung Einspruch einlegen kann, wann diese war und ob frühere Einsprüche Erfolg hatten.',
+      parameters: NO_ARGUMENTS,
+    },
+  },
+  {
+    type: 'function',
+    function: {
+      name: 'get_server_emotes',
+      // Deliberately inviting: a call costs a second request to the provider,
+      // and that is the accepted price of her reaching for the server's own
+      // emotes as readily as for ordinary ones. The one thing this wording has
+      // to keep out is a guessed code, which is what the tool exists for.
+      description:
+        'Die eigenen Emotes dieses Servers, jeweils mit dem Code, den du wortwörtlich in deine Antwort schreiben musst, damit Discord sie als Bild anzeigt. Ruf es auf, wann immer ein Server-Emote zu deiner Antwort passen könnte; für normale Emojis brauchst du es nicht. In Direktnachrichten nicht verfügbar.',
       parameters: NO_ARGUMENTS,
     },
   },
@@ -208,6 +231,43 @@ const handlers = {
       overturned_total: totals.byAction.overturned ?? 0,
       timezone: config.timezone,
     };
+  },
+
+  /**
+   * The server's own emotes, with the code that actually renders them.
+   *
+   * Same reason as every other tool here: without it a model asked for a cat
+   * emote writes `<:catjam:123>`, Discord finds no such id and posts that text
+   * verbatim. The id is the part that cannot be guessed, so it has to be looked
+   * up. Cache read only, like `get_server_info`: emotes arrive with the guild,
+   * no privileged intent and no fetch involved.
+   *
+   * Unlike `get_server_rules` this one cannot be left out of `toolDefinitions`
+   * when there is nothing to say: that array is built once at import, and which
+   * guild is asking is only known per call. A server without emotes gets an
+   * error payload instead, which reads the same way to the model.
+   *
+   * @param {{ guildId: string | null, client: object | null }} context
+   */
+  get_server_emotes({ guildId, client }) {
+    if (!guildId) return { error: 'not_in_a_server' };
+
+    const guild = client?.guilds?.cache?.get(guildId);
+    if (!guild) return { error: 'unknown_server' };
+
+    const emotes = [...(guild.emojis?.cache?.values?.() ?? [])]
+      // `available: false` is an emote the server lost with a boost level: it
+      // still sits in the cache and renders as raw text.
+      .filter((emote) => emote?.id && emote?.name && emote.available !== false)
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, MAX_EMOTES)
+      .map((emote) => ({
+        name: emote.name,
+        code: `<${emote.animated ? 'a' : ''}:${emote.name}:${emote.id}>`,
+      }));
+
+    if (emotes.length === 0) return { error: 'no_custom_emotes' };
+    return { emotes };
   },
 
   /**
