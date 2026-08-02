@@ -291,6 +291,25 @@ test('the ladder comes back by itself when the permission does', () => {
   assert.equal(settings.inherited.escalation, true, 'back to the profile, not to an override');
 });
 
+test('the ladder stays off while the permission is still missing', () => {
+  wipe();
+  resetPermissionAudit();
+  const missing = () => fakeGuild({ permissions: PermissionFlagsBits.SendMessages }).guild;
+
+  // Three audits, one per process start, with the permission never granted.
+  // Deriving this from the missing-permission report instead of the permission
+  // made the suspension erase its own evidence: escalation off meant Moderate
+  // Members left the required list, which read as "she can time out again", so
+  // every second restart handed the ladder back and every timeout failed at
+  // `error` into the alert channel. Exactly what the suspension exists to stop.
+  for (const attempt of [1, 2, 3]) {
+    auditPermissions(missing());
+    const settings = effectiveSettings(TEST_GUILD);
+    assert.equal(settings.escalationEnabled, false, `still off after audit ${attempt}`);
+    assert.ok(settings.escalationSuspendedAt, `still hers to undo after audit ${attempt}`);
+  }
+});
+
 test('she does not overrule staff who switched escalation off themselves', () => {
   wipe();
   resetPermissionAudit();

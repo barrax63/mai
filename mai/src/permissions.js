@@ -152,7 +152,8 @@ export function auditPermissions(guild, { force = false } = {}) {
  * whole file exists to break.
  *
  * @param {import('discord.js').Guild} guild
- * @param {{ guild: string[], known: boolean }} report
+ * @param {{ guild: string[], known: boolean }} report Only `known` is read: see
+ *   below for why the missing-permission list is the wrong thing to ask.
  */
 function reconcileEscalation(guild, report) {
   // An unknown report is not evidence of anything: her own member object is
@@ -166,7 +167,16 @@ function reconcileEscalation(guild, report) {
   // half can fail on its own.
   try {
     const settings = effectiveSettings(guild.id);
-    const canTimeOut = !report.guild.includes('ModerateMembers');
+    // The permission itself, deliberately not `report.guild`. The report answers
+    // "what is missing for what this server switched on?", which narrows
+    // `required` to exclude Moderate Members the moment escalation is off: her
+    // own suspension would therefore erase the evidence for itself, and the next
+    // audit would hand the ladder straight back to a guild that still cannot
+    // carry it out. Reconciliation is asking a different question, so it reads
+    // the permission rather than the answer to that one.
+    const canTimeOut = Boolean(
+      guild.members?.me?.permissions?.has(PermissionFlagsBits.ModerateMembers),
+    );
 
     if (!canTimeOut && settings.escalationEnabled) {
       if (suspendEscalation(guild.id)) {
