@@ -45,6 +45,11 @@ pipeline having seen it, and why the question is **classified first**. A flagged
 question is refused rather than repeated, and the refusal costs no tokens
 because the screen runs before the model call.
 
+Flagged by whichever line is stricter: the provider's own verdict, or the
+server's `threshold` if it set one. Everywhere else a guild's threshold
+*replaces* the provider's verdict; here it may only tighten the guard, because
+this is the one path with no deletion to fall back on afterwards.
+
 Stateless on purpose: no channel history goes into the prompt and neither the
 question nor the answer is written to Mai's memory. One question, one answer.
 Subject to the same per-user rate limit and concurrency cap as ordinary chat,

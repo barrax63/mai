@@ -18,6 +18,7 @@ import { config, isOperator } from '../src/config.js';
 import { content } from '../src/content.js';
 import { appendTurns, stats as historyStats } from '../src/db/history.js';
 import { depth, enqueue, forgiveUser } from '../src/db/queue.js';
+import { resetSettings, updateSettings } from '../src/db/settings.js';
 import { recordUsage, totalsFor, dayKey } from '../src/db/usage.js';
 import { setGatewayClient } from '../src/gateway/client.js';
 import { routeInteraction } from '../src/interactions/router.js';
@@ -67,6 +68,46 @@ test('a flagged question is never repeated, and costs no completion', async () =
   }
   assert.equal(calls.some((url) => url.includes('/chat/completions')), false, 'no tokens spent');
   assert.equal(edits.length, 1, 'the deferred placeholder was still filled in');
+});
+
+test('the guild decides where its line is here too, but only downwards', async () => {
+  // `applyPolicy` exists because omni-moderation scores the same insult 0.88 in
+  // English and 0.20 in German, so a German server lowering its threshold to 0.2
+  // has told Mai where its line is. This was the one path ignoring it, on the
+  // command that publishes a member's words under her name with no deletion
+  // available afterwards.
+  const scored = (flagged, scores) =>
+    jsonResponse({ results: [{ flagged, categories: {}, category_scores: scores }] });
+
+  const restore = stubFetch(() => scored(false, { harassment: 0.3, violence: 0.01 }));
+  try {
+    updateSettings(TEST_GUILD, { threshold: 0.2 });
+    const refused = await screenInput('eine Beleidigung', { guildId: TEST_GUILD });
+    assert.equal(refused.ok, false, 'over the guild line, though the provider passed it');
+    assert.deepEqual(refused.categories, ['harassment'], 'the top score names itself');
+
+    // Above the guild's line is a refusal; below it is not, so the threshold
+    // really is what decided rather than the call always refusing.
+    updateSettings(TEST_GUILD, { threshold: 0.9 });
+    assert.equal((await screenInput('eine Beleidigung', { guildId: TEST_GUILD })).ok, true);
+  } finally {
+    resetSettings(TEST_GUILD, 'threshold');
+    restore();
+  }
+
+  // And the provider's own verdict still refuses on top of that, rather than
+  // being replaced by the guild's line the way it is for ordinary messages: a
+  // server that raised its threshold must not loosen the one guard that fails
+  // closed. Stricter of the two, never the guild's alone.
+  const restoreFlagged = stubFetch(() => scored(true, { harassment: 0.05 }));
+  try {
+    updateSettings(TEST_GUILD, { threshold: 0.9 });
+    const refused = await screenInput('etwas anderes', { guildId: TEST_GUILD });
+    assert.equal(refused.ok, false, 'the provider flagged it, so the answer is still no');
+  } finally {
+    resetSettings(TEST_GUILD, 'threshold');
+    restoreFlagged();
+  }
 });
 
 test('screenInput fails closed when the classifier is unreachable', async () => {

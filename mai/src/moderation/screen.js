@@ -10,6 +10,11 @@
  * cannot be taken back the same way, and there is no queue row for it. Refusing
  * costs a member one command.
  *
+ * Failing closed is also why the guild's threshold is applied *beside* the
+ * provider's verdict rather than in place of it: everywhere else a guild's line
+ * replaces the provider's, but here it may only make the guard stricter, never
+ * looser. See the comment on the check itself.
+ *
  * There is deliberately **no outbound screen on Mai's own replies.** Her persona
  * escalates with a member's open violations and at the top of that ladder she is
  * instructed to insult them outright ("Beleidigungen erwünscht" in
@@ -21,6 +26,7 @@
  */
 import { classify } from '../ai/moderation.js';
 import { config } from '../config.js';
+import { effectiveSettings } from '../db/settings.js';
 import { logger } from '../logger.js';
 
 const CLEAN = Object.freeze({ ok: true, categories: [] });
@@ -35,14 +41,35 @@ export async function screenInput(text, { guildId } = {}) {
   if (!String(text ?? '').trim()) return CLEAN;
 
   try {
+    const { threshold } = effectiveSettings(guildId);
     const verdict = await classify(text, [], { guildId });
-    if (!verdict.flagged) return CLEAN;
+
+    // The provider's line *and* the guild's, whichever is stricter. Passing the
+    // guild's policy into `classify` instead would be the naive fix and wrong in
+    // one direction: a `threshold` above 0 replaces `flagged` entirely, so a
+    // server that raised its threshold above the provider's line, or narrowed
+    // `categories` to an allowlist, would be loosening the one guard in the
+    // system that fails closed. Taking the stricter of the two can only tighten.
+    //
+    // It matters because `applyPolicy` exists for a measured reason:
+    // omni-moderation scores the same insult 0.88 in English and 0.20 in German,
+    // so a German server that lowered its threshold to 0.2 has told Mai where
+    // its line is, and this was the one path ignoring it. One API call and no
+    // new score exposure: the top score is already returned to this caller.
+    const overThreshold = threshold > 0 && verdict.topScore >= threshold;
+    if (!verdict.flagged && !overThreshold) return CLEAN;
+
+    // A verdict reached on the threshold alone has no flagged categories to
+    // name, so the top one stands in: the caller renders these for the member.
+    const categories = verdict.categories.length > 0
+      ? verdict.categories
+      : [verdict.topCategory].filter(Boolean);
 
     logger.info(
-      { guildId, categories: verdict.categories },
+      { guildId, categories, byThreshold: !verdict.flagged },
       'Refusing to repeat a flagged question',
     );
-    return { ok: false, categories: verdict.categories };
+    return { ok: false, categories };
   } catch (error) {
     // Deliberately not the fail-open rule the message pipeline follows: Mai
     // would be republishing this text herself.
