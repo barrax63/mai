@@ -45,7 +45,7 @@ src/http/                  server.js (interactions, healthz, landing page), metr
 src/interactions/          router.js (dispatch, allowlist, kill switch), registry.js (components +
                            modals), options.js (subcommand/option reading), respond.js (builders)
 src/commands/              slash commands: /ping, /mai, /mod, plus the two message commands:
-                           "Nachricht melden" (report.js) and "Löschen (Mai)" (remove.js)
+                           "Nachricht melden" (report.js) and "Löschen" (remove.js)
 ```
 
 ## Moderation
@@ -118,7 +118,7 @@ Every command and right-click action, option by option, lives in
 | `Nachricht melden` (right-click a message → Apps) | everyone |
 | `/mod setup`, `/mod status`, `/mod history`, `/mod forgive`, `/mod warn`, `/mod note`, `/mod simulate`, `/mod spend` | Manage Messages |
 | `/mod off` / `/mod on`, `/mod exempt`, `/mod config` | Manage Messages |
-| `Löschen (Mai)` (right-click a message → Apps) | Manage Messages |
+| `Löschen` (right-click a message → Apps) | Manage Messages |
 
 Discord hides the `/mod` subcommands from members without Manage Messages
 (`default_member_permissions`), but the check is repeated in code: that field is
@@ -217,7 +217,7 @@ Everything above is Mai deciding. Three commands let the team decide instead,
 and land in the same record so the next moderator sees one history rather than
 "what Mai did" plus whatever happened out of band:
 
-- **`Löschen (Mai)`** ([src/commands/remove.js](src/commands/remove.js)),
+- **`Löschen`** ([src/commands/remove.js](src/commands/remove.js)),
   right-click a message → *Apps*. The message goes and the strike is recorded,
   so it counts towards the *next* automatic escalation. No grace period (a human
   already looked), no timeout (Discord's own is right there, with the duration

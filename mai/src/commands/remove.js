@@ -1,5 +1,5 @@
 /**
- * "Löschen (Mai)": the staff message context-menu deletion.
+ * "Löschen": the staff message context-menu deletion.
  *
  * Right-click a message -> Apps -> the entry below -> the message is gone and
  * the strike is on the record. Mai could only ever act on her own verdict, so a
@@ -58,7 +58,7 @@ async function dropPendingRow(client, messageId, channelId) {
 export const removeMessage = {
   definition: {
     // Context-menu entries carry no description and show their name verbatim.
-    name: 'Löschen (Mai)',
+    name: 'Löschen',
     type: 3, // MESSAGE
     // Hides the entry from members without Manage Messages. The check is
     // repeated in code: this is a UI default a server admin can widen.

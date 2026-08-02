@@ -134,7 +134,7 @@ const removeCommand = ({ member = STAFF, messageId = MESSAGE, bot = false } = {}
     channel_id: CHANNEL,
     member,
     data: {
-      name: 'Löschen (Mai)',
+      name: 'Löschen',
       type: 3,
       target_id: messageId,
       resolved: {

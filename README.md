@@ -74,7 +74,7 @@ for:
 | take back a punishment | `/mod forgive <user> [strikes]` |
 | have a word with somebody, from the team | `/mod warn <user> [reason]` |
 | write down what the team knows about them | `/mod note add\|clear <user>` |
-| delete a message myself, on the record | right-click → *Apps* → *Löschen (Mai)* |
+| delete a message myself, on the record | right-click → *Apps* → *Löschen* |
 | find out where to put the threshold | `/mod simulate <text>`, or `shadow` mode |
 | stop her moderating one channel | `/mod exempt add <channel>` |
 | stop her completely, for now | `/mod off` (and `/mod on`) |

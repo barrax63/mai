@@ -300,7 +300,7 @@ For the guard rules, "off" and "not configured" are different answers:
 to what the server's profile says, which is what `/mod config reset flood` is
 for.
 
-### `Löschen (Mai)` (right-click a message, *Apps*)
+### `Löschen` (right-click a message, *Apps*)
 
 Deletes the message through Mai and records the strike, so a staff decision
 lands on the same record hers do and counts towards the next automatic

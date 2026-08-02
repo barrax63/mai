@@ -489,7 +489,7 @@ commands:
     # {reason} = Fehlername plus Status/Code, nie die Fehlermeldung selbst.
     failed: 'Die Prüfung hat nicht geklappt: {reason}'
 
-  # "Löschen (Mai)": Kontextmenü für das Team (Rechtsklick auf eine Nachricht).
+  # "Löschen": Kontextmenü für das Team (Rechtsklick auf eine Nachricht).
   remove:
     done: '*schnippt mit dem Schwanz* Weg damit. Der Verstoß steht in der Akte von <@{userId}>.'
     guildOnly: 'Das geht nur auf einem Server.'
