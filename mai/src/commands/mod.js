@@ -735,8 +735,8 @@ function forgiveResponse(interaction) {
 }
 
 /**
- * `/mod config view`: the effective settings of this guild, marking which ones
- * are inherited from the process defaults.
+ * `/mod config view`: the effective settings of this guild, marking for each one
+ * whether this server set it, its profile decided it, or it is the base value.
  *
  * @param {string} guildId
  */

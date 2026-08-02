@@ -41,7 +41,7 @@ services:
     tmpfs:
       - /tmp:rw,noexec,nosuid,size=16m
     volumes:
-      # DATABASE_PATH must point inside this mount — everything else is
+      # DATABASE_PATH must point inside this mount: everything else is
       # read-only or a tmpfs that does not survive a restart.
       - mai-data:/data
     healthcheck:

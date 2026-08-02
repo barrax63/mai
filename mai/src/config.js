@@ -335,10 +335,10 @@ deprecate(
  *
  * A second tier sits between this and the documented surface: the timings the
  * *test suite* varies (`OPENAI_MAX_RETRIES` and `OPENAI_TIMEOUT_MS` so a stubbed
- * failure does not sleep through its backoff, the four rate-limit knobs and
- * `MODERATION_MAX_ROWS_PER_TICK` / `MODERATION_DEGRADED_AFTER` so a test can
- * reach a limit in two steps instead of a hundred, `PRESENCE_ROTATE_HOURS` to
- * reach the interval clamp). Those keep reading the environment, because the
+ * failure does not sleep through its backoff, the four rate-limit knobs plus
+ * `CHAT_MAX_CONCURRENT`, and `MODERATION_MAX_ROWS_PER_TICK` /
+ * `MODERATION_DEGRADED_AFTER` so a test can reach a limit in two steps instead
+ * of a hundred, `PRESENCE_ROTATE_HOURS` to reach the interval clamp). Those keep reading the environment, because the
  * environment is already the seam the tests use and a test-only setter exported
  * from production code would be worse. They are gone from `.env.example` and the
  * README instead: reachable, not offered.
@@ -606,9 +606,10 @@ export const config = Object.freeze({
     maxConcurrent: int('CHAT_MAX_CONCURRENT', '3', { min: 1 }),
     // Live GIF search (GIPHY). A key is a secret and a deployment fact, so it
     // belongs here; whether a *server* wants searched GIFs is the per-guild
-    // `gifs` setting. Without a key the tool does not exist and the catalog in
-    // the content file is the only source, which is the safer default and
-    // therefore the one that needs no configuration.
+    // `gifs` setting. Without a key the tool does not exist at all and Mai
+    // never sends a GIF anywhere: there is no curated list to fall back on,
+    // which is the safer default and therefore the one that needs no
+    // configuration.
     //
     // GIPHY rather than Tenor: Google stopped accepting new Tenor API clients
     // in January 2026 and shut the API down entirely that June, so a Tenor

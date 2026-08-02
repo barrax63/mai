@@ -261,13 +261,16 @@ At most 50 channels.
 
 ### `/mod config view|set|reset`
 
-The per-server settings, marking which ones are inherited from the process
-defaults in `.env`. Ephemeral. Every run posts an entry into the log channel:
-staff change the rules on each other, and `updated_by` in a database nobody can
-read from Discord is not visibility.
+The per-server settings, marking where each value came from: this server set it,
+its profile decided it, or it is the built-in base. (`escalation` has a fourth
+answer, *self*, for the one setting Mai switches off on her own behalf when she
+has lost the permission to carry it out.) There is no `.env` layer under any of
+it. Ephemeral. Every run posts an entry into the log channel: staff change the
+rules on each other, and `updated_by` in a database nobody can read from Discord
+is not visibility.
 
-`set` takes any subset of the options below; `reset [setting]` returns one
-setting to the inherited default, or all of them when the setting is omitted.
+`set` takes any subset of the options below; `reset [setting]` hands one setting
+back to the profile or the base, or all of them when the setting is omitted.
 
 | Option | Effect |
 |---|---|

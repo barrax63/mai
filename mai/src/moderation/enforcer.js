@@ -657,8 +657,8 @@ const thresholdUndoButton = (guildId) => [
  * container unhealthy, but a restart policy does not act on health, so an
  * unhealthy Mai simply sits there being unhealthy.
  *
- * So the loop watches itself: if the last completed tick is older than
- * `MODERATION_STUCK_RESTART_TICKS` intervals, the process exits and the
+ * So the loop watches itself: if the last sign of life is older than
+ * `config.moderation.stuckRestartTicks` intervals, the process exits and the
  * container's restart policy (`unless-stopped`, which also restarts after a
  * non-zero exit) brings back a working one. Losing an in-flight tick costs
  * nothing, because every row it had not resolved is still in the queue and the

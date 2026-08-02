@@ -7,7 +7,10 @@
  *                       reached from outside through the cloudflared tunnel.
  *                       Dispatch lives in interactions/router.js.
  *   GET  /healthz       Liveness probe for Docker healthchecks.
- *   GET  /              Static landing page for visitors hitting the public
+ *   GET  /metrics       Prometheus text format, operator-only: 404 unless
+ *                       METRICS_TOKEN is set, then a bearer token is required.
+ *   GET  /              Static landing page plus /privacy-policy and
+ *                       /terms-of-service, for visitors hitting the public
  *                       tunnel URL in a browser (served from ./public).
  */
 import { timingSafeEqual } from 'node:crypto';

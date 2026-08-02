@@ -110,7 +110,7 @@
       <img class="cat" src="/mai.png" alt="Mai, a tabby cat" width="320" height="320" />
       <h1>Mai - Privacy Policy</h1>
     </div>
-    <p class="updated">Last updated: 26 July 2026</p>
+    <p class="updated">Last updated: 2 August 2026</p>
 
     <p>Mai is an open-source, self-hosted Discord bot with a cat persona: she chats
     when spoken to, reacts to keywords, can welcome new members, and quietly moderates
@@ -122,8 +122,9 @@
     <div class="card">
       <strong>In short:</strong>
       <ul>
-        <li>Mai does <strong>not</strong> store the content of your messages for moderation - only IDs, timestamps, and flagged category labels.</li>
-        <li>The <strong>only</strong> content Mai retains is short chat memory, and only for messages you deliberately address to her (mention, reply, or DM). It is encrypted at rest and auto-deleted within a couple of days.</li>
+        <li>Ordinary messages are checked and forgotten: nothing of their content is stored, only IDs, timestamps, and flagged category labels.</li>
+        <li>Message content is written to Mai's database in exactly <strong>two</strong> cases, both encrypted at rest and both short-lived: her chat memory of messages you deliberately addressed to her (mention, reply, or DM), and, <em>only where a server switched it on</em>, the text of a message she actually deleted, kept for a few hours so staff can review an appeal about it.</li>
+        <li>A record of enforcement actions against you in a server (IDs, category labels, outcome, timestamp: no content) is kept so the escalation ladder and <code>/mod history</code> work.</li>
         <li>Mai does not sell your data, show ads, build advertising profiles, or track you across servers.</li>
       </ul>
     </div>
@@ -138,11 +139,15 @@
     <h2>2. What data Mai processes</h2>
 
     <h3>Moderation (every message in an enabled server)</h3>
-    <p>When moderation is enabled for a server, Mai sends each new message to OpenAI's
-    moderation classifier to check it for policy violations. During this check the
-    message text is processed <strong>transiently</strong> - it is sent to the classifier
-    and used to produce a verdict, but it is <strong>not written to any Mai
-    database</strong>.</p>
+    <p>When moderation is enabled for a server, Mai sends each new message, and each
+    message that is edited, to OpenAI's moderation classifier to check it for policy
+    violations. Where the server has enabled image classification, the links to any
+    image attachments are sent along with it (OpenAI fetches them; Mai does not download
+    or store them). During this check the message text is processed
+    <strong>transiently</strong> - it is sent to the classifier and used to produce a
+    verdict, but it is <strong>not written to any Mai database</strong>. Some rules a
+    server can switch on (invite links, a link allowlist, a mention cap, a message-flood
+    rule) are applied inside the bot and send nothing anywhere at all.</p>
     <p>If a message is flagged, Mai stores only <strong>metadata</strong> in a short-lived
     queue so a scheduled task can enforce a grace period:</p>
     <ul>
@@ -153,6 +158,43 @@
     </ul>
     <p>No message content and no usernames are stored in this queue. Rows are removed
     once the message is deleted or the author removes it themselves.</p>
+
+    <h3>The enforcement record</h3>
+    <p>When a message is actually removed (or the author removes it during the grace
+    period, or edits the violation out, or staff act through Mai), that outcome is
+    recorded so the escalation ladder can count it and so a server's staff can look up
+    what happened. This record is <strong>metadata only</strong>: server, user and
+    message IDs, the category labels, what happened, and when. It holds no message text
+    and no usernames, it is per server, and rows are deleted automatically after the
+    operator's retention window (default: 90 days). If an appeal is granted, the strikes
+    it was about are marked as overturned rather than silently dropped, so the correction
+    stays visible to staff.</p>
+    <p>Staff can also write short notes about a member (<code>/mod note</code>), visible
+    only to staff of that server through <code>/mod history</code>. Those are the team's
+    own words rather than yours, are stored in plaintext, and are pruned on the same
+    window as the record above.</p>
+
+    <h3>Evidence for appeals (off unless a server enables it)</h3>
+    <p>Deciding an appeal is hard when the message in question is gone. A server can
+    therefore ask Mai to keep the text of the messages <strong>she deleted</strong>, so a
+    moderator reviewing an appeal can read what it is about. This is the second and
+    narrowest exception to the no-content rule, and it needs <strong>two</strong>
+    switches: the operator has to configure a retention window at all, and the server has
+    to opt in.</p>
+    <ul>
+      <li>Only messages Mai <strong>enforced</strong>, captured at the moment she deletes them. Attachments are counted, never fetched or stored.</li>
+      <li><strong>Encrypted at rest</strong> (AES-256-GCM, the same key as the chat memory).</li>
+      <li>Kept for <strong>hours, not days</strong>, and then deleted automatically. Setting the window back to zero clears what is left.</li>
+      <li>Read back only through a staff-only button on the appeal entry, shown privately to the one moderator who clicks it, never posted into a channel.</li>
+      <li>A staff pardon that wipes the record (<code>/mod forgive … strikes:true</code>) deletes it too.</li>
+    </ul>
+
+    <h3>Display names</h3>
+    <p>Where a server switches this on, Mai checks a member's display name against the
+    same classifier when they join and when they rename. The name is processed
+    transiently and <strong>no copy of it is stored or written into the log</strong>. The
+    strongest action she takes is removing the server nickname; a global Discord username
+    is never changed, and she never kicks or bans over a name.</p>
 
     <h3>Chat with Mai (mention, reply, or direct message)</h3>
     <p>When you deliberately address Mai - by @-mentioning her, replying to one of her
@@ -172,22 +214,30 @@
     <h3>Reports and appeals</h3>
     <p>If a server has set up a moderation log channel, two features let you send
     something to that server's staff <strong>by your own deliberate action</strong>:
-    reporting a message (right-click → Apps → "Mai: melden") and appealing a warning
-    (the button under Mai's warning DM). In both cases the text you type in the form
+    reporting a message (right-click → Apps → "Nachricht melden") and appealing a warning
+    (the button under Mai's warning DM, or <code>/mai appeal</code> if your DMs are
+    closed and the warning never arrived). In both cases the text you type in the form
     is posted into the staff channel of that server, together with the relevant IDs.
     Nothing is sent unless you press submit, and the reported message itself is only
-    linked, never copied.</p>
+    linked, never copied. The decision staff take is written back into that entry, and an
+    appeal decision is also sent to you by DM.</p>
 
-    <h3>Reactions and welcome messages</h3>
+    <h3>Reactions, welcome messages and GIFs</h3>
     <p>Keyword emoji reactions and optional welcome messages are generated in real time
     and store <strong>no</strong> data about you.</p>
+    <p>Where the operator has configured a GIPHY key and a server has switched GIFs on,
+    Mai can attach a GIF to a reply. What leaves the bot is a short <strong>search
+    term</strong> derived from the conversation, sent to GIPHY: no user, server or
+    message identifier goes with it. Search results are cached briefly by search term
+    only, and the GIF's address is not written into her memory.</p>
 
     <h2>3. What Mai does not do</h2>
     <ul>
       <li>No selling or renting of personal data.</li>
       <li>No advertising, ad profiles, or cross-server tracking.</li>
       <li>Message content is never written to operational logs - only metadata is. (Content may appear transiently in debug-level logs when debugging is explicitly enabled by the operator.)</li>
-      <li>No storage of moderation message content anywhere.</li>
+      <li>No message content in the staff log channel: entries carry IDs, category labels, timestamps and a link, never a copy of what was written. The only exceptions are the text you typed yourself into a report or an appeal form.</li>
+      <li>No storage of the content of messages that were merely checked. Only the two cases named above are stored at all.</li>
     </ul>
 
     <h2>4. Third-party services</h2>
@@ -196,6 +246,7 @@
       <li><strong>Discord</strong> - the platform Mai runs on; messages and IDs originate there (<a href="https://discord.com/privacy" rel="noopener">privacy policy</a>).</li>
       <li><strong>OpenAI</strong> - classifies messages for moderation and generates Mai's chat replies (<a href="https://openai.com/policies/privacy-policy" rel="noopener">privacy policy</a>). Message text is sent to OpenAI to produce a result.</li>
       <li><strong>Cloudflare</strong> - provides the secure tunnel that connects Discord to the bot (<a href="https://www.cloudflare.com/privacypolicy/" rel="noopener">privacy policy</a>).</li>
+      <li><strong>GIPHY</strong> - only where GIFs are enabled, and only a search term, with nothing that identifies you or your server (<a href="https://support.giphy.com/hc/en-us/articles/360032872931-GIPHY-Privacy-Policy" rel="noopener">privacy policy</a>).</li>
     </ul>
     <p>All other processing - the moderation queue, the grace period, chat memory - happens
     inside the bot itself, on infrastructure controlled by the operator. No further
@@ -205,15 +256,22 @@
     <ul>
       <li><strong>Moderation queue metadata:</strong> deleted as soon as the flagged message is removed or the grace period is enforced (typically minutes).</li>
       <li><strong>Chat history:</strong> automatically deleted after the configured window (default 48 hours).</li>
-      <li><strong>Message content for moderation:</strong> not retained at all.</li>
+      <li><strong>Enforcement record and staff notes:</strong> metadata only, deleted after the operator's retention window (default 90 days).</li>
+      <li><strong>Appeal evidence:</strong> off by default; where a server enables it, hours rather than days, then deleted automatically.</li>
+      <li><strong>Content of messages that were only checked:</strong> not retained at all.</li>
+      <li><strong>Operational counters:</strong> per-day totals of API calls and tokens per server and model, with nothing identifying a member.</li>
     </ul>
 
     <h2>6. Your rights</h2>
     <p>Depending on where you live (e.g. under the EU/UK GDPR), you may have the right to
     access, correct, or delete personal data, and to object to processing. Because Mai
     stores almost nothing and auto-deletes chat memory within a couple of days, most data
-    is short-lived by design. To make a request - for example, to have chat memory purged
-    immediately - contact the operator (below). Requests about data held by Discord,
+    is short-lived by design. You can clear Mai's chat memory of yourself at any time and
+    without asking anyone, with <code>/mai forget</code>; that deliberately does not touch
+    the enforcement record, which is a server's moderation history rather than chat
+    memory, and which the appeals process depends on. For anything else - for example
+    having that record removed - contact the operator (below), bearing in mind that a
+    server's own staff can already do it with <code>/mod forgive</code>. Requests about data held by Discord,
     OpenAI, or Cloudflare should be directed to those providers.</p>
 
     <h2>7. Children</h2>

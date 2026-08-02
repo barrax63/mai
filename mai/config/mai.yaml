@@ -611,7 +611,7 @@ commands:
     nameCheckUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (DISCORD_MEMBER_EVENTS ist aus). Sag der Person Bescheid, die den Bot betreibt.'
     welcomeUnavailable: '⚠️ Gespeichert, aber Mai bekommt auf diesem Bot gerade keine Mitglieder-Events (DISCORD_MEMBER_EVENTS ist aus), also merkt sie neue Mitglieder nicht. Sag der Person Bescheid, die den Bot betreibt.'
     evidenceUnavailable: '⚠️ Gespeichert, aber es wird nichts aufbewahrt: der Betreiber hat MODERATION_EVIDENCE_HOURS auf 0 stehen.'
-    gifSearchUnavailable: '⚠️ Gespeichert, aber Mai kann gerade nicht selbst suchen: der Betreiber hat keinen GIPHY_API_KEY gesetzt. Bis dahin nimmt sie nur GIFs aus der festen Liste, falls dort welche stehen.'
+    gifSearchUnavailable: '⚠️ Gespeichert, aber Mai kann gerade nicht suchen: der Betreiber hat keinen GIPHY_API_KEY gesetzt. Bis dahin schickt sie hier gar keine GIFs; sobald der Key da ist, gilt diese Einstellung sofort.'
     nothing: 'Nichts angegeben, nichts geändert.'
     invalid: 'Ungültiger Wert: {reason}'
     guildOnly: 'Einstellungen gibt es nur pro Server, nicht im DM.'

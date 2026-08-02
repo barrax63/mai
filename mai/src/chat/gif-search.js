@@ -1,10 +1,10 @@
 /**
  * Looking a GIF up instead of picking one off a list.
  *
- * The catalog in `chat.gifs` has one property this cannot have: every URL in it
- * was chosen by a human. A search gives that up in exchange for Mai being able
- * to answer "such mal ein GIF von einer Katze im Karton", so the property is
- * replaced by four narrower ones, and all four matter:
+ * The curated list this replaced had one property a search cannot have: every
+ * URL in it was chosen by a human. Searching gives that up in exchange for Mai
+ * being able to answer "such mal ein GIF von einer Katze im Karton", so the
+ * property is replaced by four narrower ones, and all four matter:
  *
  * 1. **The model emits a query, never an address.** The URL is resolved here and
  *    handed to the reply through the call context, so a prompt-injected model
@@ -27,7 +27,7 @@
  * The provider is GIPHY because Tenor is gone: Google stopped accepting new API
  * clients in January 2026 and shut the API down in June. Everything specific to
  * the provider is in four places on purpose (`ENDPOINT`, the parameters in
- * `fetchResults`, `ALLOWED_HOSTS`, and the one field read in `safeUrl`), so the
+ * `fetchResults`, `ALLOWED_HOST`, and the renditions read in `safeUrl`), so the
  * next time one of these disappears the swap is a small edit rather than a
  * rewrite.
  */

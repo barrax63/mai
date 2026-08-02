@@ -5,9 +5,11 @@
  * plausible invention. Each tool reads state Mai already owns and returns
  * metadata only.
  *
- * **No tool takes arguments from the model.** Who is asking and where comes from
+ * **No tool takes a target from the model.** Who is asking and where comes from
  * the interaction context the caller passes in, never from the completion: a
- * model that could pass a user id could read another member's record.
+ * model that could pass a user id could read another member's record. Only
+ * `search_gif` reads an argument at all, and a search term names no target: see
+ * the note above `searchTools` for why that is a different thing.
  */
 import { config } from '../config.js';
 import { content } from '../content.js';

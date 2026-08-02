@@ -7,11 +7,11 @@ Two connections to Discord run side by side:
 | Path | Transport | Purpose |
 |------|-----------|---------|
 | `POST /interactions` | HTTP (inbound via cloudflared) | Slash commands, autocomplete, buttons and modal submits, signature-verified with the app public key |
-| Gateway | WebSocket (outbound) | `messageCreate` / `messageUpdate` / `messageDelete` / `guildMemberAdd` events from every channel the bot can read |
+| Gateway | WebSocket (outbound) | `messageCreate` / `messageUpdate` / `messageDelete` from every channel the bot can read, `guildCreate` (the introduction), plus `guildMemberAdd` / `guildMemberUpdate` where `DISCORD_MEMBER_EVENTS=true` |
 
 The gateway connection is outbound, so message listening works even without the tunnel; cloudflared is only needed for the interactions endpoint.
 
-The HTTP server ([src/http/server.js](src/http/server.js)) additionally serves `GET /healthz` (liveness probe used by the Docker healthcheck, it also reports database reachability and the age of the last moderation tick: three missed ticks answer 503, with a startup grace period before the first one), `GET /metrics` (operator-only, off by default: see *Operations*) and a static landing page at `GET /` (from [src/http/public/](src/http/public/)) for browsers hitting the public tunnel URL.
+The HTTP server ([src/http/server.js](src/http/server.js)) additionally serves `GET /healthz` (liveness probe used by the Docker healthcheck, it also reports database reachability and the age of the last moderation tick: three missed ticks answer 503, with a startup grace period before the first one), `GET /metrics` (operator-only, off by default: see *Operations*) and the static pages in [src/http/public/](src/http/public/) for browsers hitting the public tunnel URL: a landing page at `GET /`, plus `/privacy-policy` and `/terms-of-service`, which is what Discord's app settings link to (the static middleware serves those extension-less URLs).
 
 ## Layout
 
@@ -39,7 +39,7 @@ src/moderation/            check.js (per message, incl. recheck + exemptions), e
                            health.js (degraded/recovered entries), names.js (display-name screen),
                            appeal.js (button, modal, decisions), screen.js (/mai ask input guard)
 src/chat/                  reply.js (turn orchestration), limits.js (rate limit, concurrency,
-                           serialization), tools.js (argument-free function calling)
+                           serialization), tools.js (function calling), gif-search.js (GIPHY)
 src/gateway/               client.js (intents + wiring), presence.js, events/
 src/http/                  server.js (interactions, healthz, landing page), metrics.js, public/
 src/interactions/          router.js (dispatch, allowlist, kill switch), registry.js (components +
@@ -325,6 +325,7 @@ about the server, not a stance on moderation.
 | `flood` | off | Burst rule as `count/seconds`, e.g. `6/10`; `off` disables it here |
 | `name-check` | `off` | Display names: `off`, `log`, or `reset` (also removes the server nickname). Reads as `off` unless `DISCORD_MEMBER_EVENTS` is on |
 | `welcome` | off | Greet new members at all. Reads as off unless `DISCORD_MEMBER_EVENTS` is on |
+| `gifs` | off | Let her search GIPHY for a GIF and post it. Reads as off unless the operator set a `GIPHY_API_KEY`. Persona rather than moderation, so no profile decides it |
 | `shadow` | off | Report every verdict in the log and act on none of them. `/mod setup observe` for a window that ends by itself, `/mod config set shadow:true` for an open-ended one |
 | `evidence` | off | Keep enforced messages (encrypted, `MODERATION_EVIDENCE_HOURS`) so staff can review an appeal |
 
@@ -342,13 +343,13 @@ column keeps them apart: `/mod config set flood:off` stores an explicit *no
 flood rule here* rather than falling back to whatever the profile says, which is
 what `/mod config reset flood` is for.
 
-Two settings need something only the operator can switch on, because a guild
-cannot: `name-check` rides on a gateway intent (requested once, at login, for
-the whole process) and `evidence` on a retention window in the operator's
-database. Both are stored anyway, so they take effect the moment that changes,
-and `/mod config set` says plainly that nothing is happening yet. Silently
-accepting a setting that does nothing is how a server ends up believing it is
-protected.
+Four settings need something only the operator can switch on, because a guild
+cannot: `welcome` and `name-check` ride on a gateway intent (requested once, at
+login, for the whole process), `evidence` on a retention window in the
+operator's database, and `gifs` on a `GIPHY_API_KEY`. All four are stored
+anyway, so they take effect the moment that changes, and `/mod config set` says
+plainly that nothing is happening yet. Silently accepting a setting that does
+nothing is how a server ends up believing it is protected.
 
 ### Kill switch
 
@@ -537,6 +538,14 @@ be imported **before** `setup.js`.
 | `setup-alerts.js` | `ALERT_CHANNEL_ID` and a `LOG_LEVEL` low enough that the pino hook is not a no-op |
 | `setup-openai.js` | Retries actually switched on, since the retry loop is what is under test |
 | `setup-presence.js` | An absurd rotation interval, so the 32-bit timer clamp is under test |
+| `setup-health.js` | Moderation with a degradation threshold of two, so an outage is two stubbed failures rather than a hundred |
+| `setup-evidence.js` | The enforcer plus a retention window and the key, with chat off, which also proves evidence alone requires the key |
+| `setup-names.js` | Moderation plus member events, for the display-name screen |
+| `setup-welcome.js` | Member events and nothing else: the greeting itself is a per-guild setting the tests write |
+| `setup-gifs.js` | Chat plus a `GIPHY_API_KEY`, which is what makes `search_gif` exist at all |
+| `setup-onboarding.js` | Member events, so the join path's presets and permission report are about the guild's settings rather than the operator's switch |
+| `setup-signature.js` | A real Ed25519 key pair (and the signer), for the one file that goes through `verifyKeyMiddleware` |
+| `setup-deprecated.js` | A retired variable set, so the startup report is what is under test |
 
 OpenAI and Discord are reached through a stubbed global `fetch`. Tests are not
 copied into the image (see `.dockerignore`): run them on the host.
@@ -561,7 +570,8 @@ SQLite via the builtin `node:sqlite` module (no native dependency), at `DATABASE
 | `chat_history` | Mai's short-term memory; `content`/`username` encrypted | `CHAT_HISTORY_MAX_AGE_HOURS` |
 | `evidence` | Enforced messages, for reviewing an appeal; `content` encrypted. Off by default | `MODERATION_EVIDENCE_HOURS` (0 = never stored) |
 | `member_notes` | What staff wrote down about a member (`/mod note`), plaintext: staff's own words about their own server | `VIOLATION_RETENTION_DAYS` |
-| `guild_settings` | Per-guild overrides of the process defaults; NULL = inherit | until changed |
+| `guild_settings` | Per-guild overrides, the chosen profile and Mai's own bookkeeping (onboarding, the shadow window); NULL = inherit the profile or the base | until changed |
+| `shadow_scores` | Score histogram of an observation period, per guild: bucket counts only, no id and no timestamp | dropped when the period ends |
 | `usage_daily` | Call and token counters per day, guild, model and purpose | kept |
 | `schema_migrations` | Which numbered migration files have been applied | kept |
 
@@ -651,7 +661,7 @@ docker run --rm -v mai_mai-data:/data -v "$PWD:/backup" alpine tar czf /backup/m
    - *Bot* → enable **Server Members Intent** (privileged) **only if** you set `DISCORD_MEMBER_EVENTS=true`, which is what makes the bot request the `GuildMembers` intent; login fails when the portal toggle is off. That one variable covers both features that need it (`welcome` and `name-check`, both per server). Screening display names also wants **Manage Nicknames** on the invite if you use `name-check: reset`.
    - Direct-message replies need **no** portal toggle: the non-privileged `DirectMessages` intent is requested in code. Users can DM Mai once they share a server with her (subject to their Discord privacy settings).
    - Copy *Application ID*, *Public Key* (General Information) and *Bot Token* (Bot) into `.env`.
-   - Invite the bot with the `bot` + `applications.commands` scopes. Permissions needed: Read Messages, Send Messages, Embed Links (moderation log), Add Reactions, Manage Messages (deleting flagged messages), and **Moderate Members** for the escalation timeouts. Mai's role must sit above the members she is expected to time out: Discord refuses otherwise, and admins and the owner can never be timed out.
+   - Invite the bot with the `bot` + `applications.commands` scopes. What [src/permissions.js](src/permissions.js) audits, and therefore what she needs: View Channel, Send Messages, Read Message History, Add Reactions and Manage Messages everywhere (that is the pipeline itself), Embed Links in the log channel (and in every channel where the guild switched `gifs` on), **Moderate Members** for the escalation timeouts, **Manage Nicknames** for `name-check: reset`, and **Manage Channels** if you want her to create a log channel on joining rather than adopt or do without one. Mai's role must sit above the members she is expected to time out: Discord refuses otherwise, and admins and the owner can never be timed out.
 2. **Secrets**: `OPENAI_API_KEY`, and `CHAT_HISTORY_KEY` from `openssl rand -base64 32`.
 3. **Cloudflare tunnel**: route your public hostname to `http://mai:3000`.
 4. **Interactions Endpoint URL** (General Information): set to `https://<your-hostname>/interactions`. Discord sends a signed PING to verify: the stack must be running first.

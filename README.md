@@ -26,7 +26,7 @@ flowchart LR
     browser -- "HTTPS<br/>GET / (landing page)" --> tunnel
     tunnel --> cloudflared
     cloudflared -- "edge network" --> mai
-    mai <-- "gateway WebSocket, outbound:<br/>messageCreate, messageUpdate,<br/>messageDelete, guildMemberAdd<br/>plus every REST action" --> discord
+    mai <-- "gateway WebSocket, outbound:<br/>messageCreate, messageUpdate, messageDelete,<br/>guildCreate, guildMemberAdd, guildMemberUpdate<br/>plus every REST action" --> discord
     mai -- "HTTPS, outbound:<br/>/moderations, /chat/completions" --> openai
     mai --> data
 ```
@@ -99,7 +99,7 @@ that Docker will not restart is a bot that is quietly doing nothing.
 
 ## Mai: the bot persona
 
-The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message gets an in-character reply (OpenAI, cat persona, short per-channel memory). Direct messages skip moderation (a bot cannot delete a DM) and are only accepted from users who share an allowlisted server with her. Her conversation memory is kept a few hours to give her context, then deleted; it is encrypted at rest (AES-256-GCM). While a member has an un-enforced violation, Mai turns aggressive toward them wherever they talk to her. She also reacts to trigger words (🐟, 😺) and can welcome new members ([mai/README.md](mai/README.md)).
+The bot is **Mai**, the server's cat-moderator. Mentioning her, replying to her messages, or sending her a direct message gets an in-character reply (OpenAI, cat persona, short per-channel memory). Direct messages skip moderation (a bot cannot delete a DM) and are only accepted from users who share an allowlisted server with her. Her conversation memory is kept a few hours to give her context, then deleted; it is encrypted at rest (AES-256-GCM). While a member has an un-enforced violation, Mai turns aggressive toward them wherever they talk to her. She also reacts to trigger words (🐟, 😺), uses the server's own emotes rather than inventing codes for them, and can welcome new members ([mai/README.md](mai/README.md)). Where the operator set a `GIPHY_API_KEY` and the server ran `/mod config set gifs:true`, she can also search for a GIF and hang it on her reply: the model writes a search term and never an address, and only a GIPHY media host is ever posted.
 
 Everything she says (persona, prompts, scold lines, welcome messages, reaction triggers) lives in [mai/config/mai.yaml](mai/config/mai.yaml). Secrets, models and limits live in `.env`.
 
