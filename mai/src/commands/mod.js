@@ -32,6 +32,7 @@ import {
   strikeCount,
   totalsFor as violationTotals,
 } from '../db/violations.js';
+import { deleteMessageById, removeWarningReactionById } from '../moderation/cleanup.js';
 import { contentViolations } from '../moderation/heuristics.js';
 import { preset, PRESET_NAMES } from '../moderation/presets.js';
 import { buildManualWarning } from '../moderation/warning.js';
@@ -655,25 +656,29 @@ function noteResponse(interaction) {
 }
 
 /**
- * Best-effort cleanup of the scold replies belonging to forgiven rows. Runs
- * detached: the interaction must be answered within Discord's 3 s window.
+ * Takes back everything a flag put on the forgiven messages: the scold reply and
+ * the warning reaction. Best effort, and detached: the interaction must be
+ * answered within Discord's 3 s window.
  *
- * @param {{ channelId: string, scoldMessageId: string | null }[]} rows
+ * Both halves, because a pardon that leaves the warning emoji in place has the
+ * channel still saying Mai flagged the member while the record says she did not.
+ * `clearFlag` on the edit path already undoes both, and this is the only other
+ * way a flag is undone.
+ *
+ * The deletion goes through `deleteMessageById` rather than a fetch-and-delete
+ * of its own: that helper marks the id as Mai's own work first, and the
+ * invariant is stated absolutely, so the one deletion in the codebase that
+ * skipped it was a trap waiting for the next person who moved this code.
+ *
+ * @param {{ channelId: string, messageId: string, scoldMessageId: string | null }[]} rows
  */
-function cleanUpScolds(rows) {
+function undoFlagMarks(rows) {
   const client = getGatewayClient();
   if (!client) return;
 
-  for (const row of rows.filter((entry) => entry.scoldMessageId)) {
-    client.channels
-      .fetch(row.channelId)
-      .then((channel) => channel?.messages?.delete(row.scoldMessageId))
-      .catch((error) => {
-        logger.debug(
-          { channelId: row.channelId, messageId: row.scoldMessageId, err: error },
-          'Deleting forgiven scold reply failed',
-        );
-      });
+  for (const row of rows) {
+    void deleteMessageById(client, row.channelId, row.scoldMessageId);
+    void removeWarningReactionById(client, row.channelId, row.messageId);
   }
 }
 
@@ -689,7 +694,7 @@ function forgiveResponse(interaction) {
   if (!userId) return ephemeralResponse(content.commands.error);
 
   const rows = forgiveUser(interaction.guild_id, String(userId));
-  cleanUpScolds(rows);
+  undoFlagMarks(rows);
 
   // Optional second step: also wipe the strike record, so the escalation ladder
   // starts from zero for this member in this guild. Any evidence kept for an

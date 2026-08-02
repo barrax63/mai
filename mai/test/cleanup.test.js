@@ -18,6 +18,7 @@ import {
   isOwnDeletion,
   markOwnDeletion,
   removeWarningReaction,
+  removeWarningReactionById,
 } from '../src/moderation/cleanup.js';
 
 const CHANNEL = '840000000000000001';
@@ -243,6 +244,43 @@ test('without a client user there is nobody to remove a reaction for', async () 
   await removeWarningReaction(message);
 
   assert.deepEqual(record.restDeleted, []);
+});
+
+test('two ids are enough to take the reaction back', async () => {
+  // `/mod forgive` walks rows out of the queue and never holds a message object,
+  // so fetching one just to remove a reaction would be a Discord round trip per
+  // forgiven message for something the /@me route does without a cache.
+  const { client, record } = fakeClient();
+
+  await removeWarningReactionById(client, CHANNEL, MESSAGE);
+
+  assert.deepEqual(record.restDeleted, [
+    Routes.channelMessageOwnReaction(
+      CHANNEL,
+      MESSAGE,
+      encodeURIComponent(content.moderation.warningEmoji),
+    ),
+  ]);
+  assert.deepEqual(record.fetched, [], 'no channel fetch, which is the point');
+});
+
+test('the id variant is best effort and refuses to call with nothing', async () => {
+  const { client, record } = fakeClient();
+
+  await removeWarningReactionById(client, CHANNEL, null);
+  await removeWarningReactionById(client, null, MESSAGE);
+  await removeWarningReactionById(null, CHANNEL, MESSAGE);
+  assert.deepEqual(record.restDeleted, []);
+
+  const failing = {
+    rest: {
+      delete: async () => {
+        throw Object.assign(new Error('Unknown Message'), { code: 10008 });
+      },
+    },
+  };
+  // An already-gone reaction is the normal case here, not an incident.
+  await assert.doesNotReject(() => removeWarningReactionById(failing, CHANNEL, MESSAGE));
 });
 
 test('a failing reaction removal is best effort, like the delete', async () => {

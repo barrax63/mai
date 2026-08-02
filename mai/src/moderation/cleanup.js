@@ -81,20 +81,45 @@ export async function removeWarningReaction(message) {
   const botId = message?.client?.user?.id;
   if (!botId) return;
 
-  try {
-    const cached = message.reactions?.cache?.get(emoji);
-    if (cached) {
-      await cached.users.remove(botId);
-      return;
-    }
+  const cached = message.reactions?.cache?.get(emoji);
+  if (!cached) {
+    await removeWarningReactionById(message.client, message.channelId, message.id);
+    return;
+  }
 
-    await message.client.rest.delete(
-      Routes.channelMessageOwnReaction(message.channelId, message.id, encodeURIComponent(emoji)),
-    );
+  try {
+    await cached.users.remove(botId);
   } catch (error) {
+    // Deliberately not falling back to the REST route: the cache said the
+    // reaction is there, so a failure here is a permission or a network
+    // problem, and a second attempt at the same thing would fail the same way.
     logger.debug(
       { messageId: message.id, err: error },
       'Removing the warning reaction failed',
     );
+  }
+}
+
+/**
+ * The same removal for a caller holding two ids and no message object, which is
+ * every path that undoes a flag without having fetched the message: `/mod
+ * forgive` walks rows out of the queue. `/@me` again, and idempotent, so a
+ * message whose reaction is already gone costs one 404 at `debug`.
+ *
+ * @param {import('discord.js').Client} client
+ * @param {string} channelId
+ * @param {string} messageId
+ */
+export async function removeWarningReactionById(client, channelId, messageId) {
+  if (!client?.rest || !channelId || !messageId) return;
+
+  try {
+    await client.rest.delete(
+      Routes.channelMessageOwnReaction(channelId, messageId, encodeURIComponent(
+        content.moderation.warningEmoji,
+      )),
+    );
+  } catch (error) {
+    logger.debug({ channelId, messageId, err: error }, 'Removing the warning reaction failed');
   }
 }

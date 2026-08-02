@@ -14,6 +14,7 @@ import { interaction, openTestDatabase, stubFetch, TEST_GUILD, TEST_USER } from 
 import assert from 'node:assert/strict';
 import test from 'node:test';
 import { InteractionResponseType, InteractionType } from 'discord-interactions';
+import { Routes } from 'discord.js';
 import { content } from '../src/content.js';
 import { getDb } from '../src/db/index.js';
 import { notesFor } from '../src/db/notes.js';
@@ -69,10 +70,13 @@ function stubGateway({
   // was posted about the attempt.
   targetMissing = false,
 } = {}) {
-  const record = { posted: [], deleted: [], dms: [] };
+  const record = { posted: [], deleted: [], dms: [], restDeleted: [] };
 
   setGatewayClient({
     guilds: { cache: new Map([[TEST_GUILD, { id: TEST_GUILD, name: 'Katzenhaus' }]]) },
+    // The warning reaction goes back through the /@me route, which needs no
+    // cache and no fetched message.
+    rest: { delete: async (route) => record.restDeleted.push(route) },
     channels: {
       fetch: async (id) => {
         if (targetMissing && id === CHANNEL) return null;
@@ -319,6 +323,65 @@ test('a warning that cannot be delivered says so, and still counts as said', asy
     ).value,
     content.commands.warn.notDelivered,
   );
+});
+
+test('/mod forgive takes back every mark the flag left, not just the scold', async () => {
+  wipe();
+  const record = stubGateway();
+  const SCOLD = '900000000000000009';
+  enqueue({
+    messageId: MESSAGE,
+    guildId: TEST_GUILD,
+    channelId: CHANNEL,
+    userId: OFFENDER,
+    categories: ['harassment'],
+    warnedAt: new Date().toISOString(),
+    dueAt: new Date(Date.now() + 600_000).toISOString(),
+    scoldMessageId: SCOLD,
+  });
+
+  await route(modCommand([{ name: 'forgive', type: 1, options: [{ name: 'user', value: OFFENDER }] }]));
+  await settle();
+
+  assert.equal(findRow(MESSAGE), null, 'the row is gone');
+  assert.ok(record.deleted.includes(SCOLD), 'and so is the scold reply');
+  // The deletion goes through the shared helper now, so it is registered like
+  // every other deletion Mai performs rather than re-implemented without that.
+  assert.equal(isOwnDeletion(SCOLD), true);
+
+  // A pardoned member kept a public warning emoji on their message forever: the
+  // channel still said Mai flagged them while the record said she did not. The
+  // edit path undoes both, and this is the only other way a flag is undone.
+  assert.deepEqual(record.restDeleted, [
+    Routes.channelMessageOwnReaction(
+      CHANNEL,
+      MESSAGE,
+      encodeURIComponent(content.moderation.warningEmoji),
+    ),
+  ]);
+});
+
+test('a forgiven row with no scold reply still loses its reaction', async () => {
+  wipe();
+  const record = stubGateway();
+  enqueue({
+    messageId: MESSAGE,
+    guildId: TEST_GUILD,
+    channelId: CHANNEL,
+    userId: OFFENDER,
+    categories: ['spam'],
+    warnedAt: new Date().toISOString(),
+    dueAt: new Date(Date.now() + 600_000).toISOString(),
+    scoldMessageId: null,
+  });
+
+  await route(modCommand([{ name: 'forgive', type: 1, options: [{ name: 'user', value: OFFENDER }] }]));
+  await settle();
+
+  // The old filter skipped a row without a scold reply entirely, so its reaction
+  // was never a candidate for removal in the first place.
+  assert.deepEqual(record.deleted, [], 'nothing to delete');
+  assert.equal(record.restDeleted.length, 1);
 });
 
 test('/mod note writes to the file the next moderator reads', async () => {
