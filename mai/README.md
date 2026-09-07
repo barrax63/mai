@@ -23,6 +23,7 @@ src/errors.js              describeError (operator) / explainError (guild staff)
 src/alerts.js              error+fatal log lines into ALERT_CHANNEL_ID, wired in as a pino hook
 src/logger.js              pino, plus the hook that raises those alerts
 src/rate-limit.js          the shared token bucket (interactions, chat, reports, appeals, DM checks)
+src/zoomies.js             the burst of energy she gets for no reason: presence, reactions, tone
 src/ai/                    openai.js (HTTP client + retries + token accounting), moderation.js
                            (classify + applyPolicy), chat.js (prompt build, tool loop, normalize)
 src/permissions.js         what she is missing per guild, and switching escalation off when she
@@ -111,6 +112,7 @@ Every non-bot guild message with text content is classified when it is posted **
 - **Reactions** ([src/gateway/events/reactions.js](src/gateway/events/reactions.js)): keyword triggers (fish, cat words, meowing, "gute Katze") get an emoji reaction, some only with a random chance. At most one reaction per message. The last trigger may leave its `pattern` out, which makes it match anything: that is the cat putting a paw on something for no reason, and the shipped one fires at 1%. It has to be last and there can only be one, because the loop stops at the first match and an aloof roll does not fall through, so anything below such a trigger could never fire; `content.js` refuses to start otherwise. Triggers live in `config/mai.yaml`, and `content.js` strips `g` and `y` from their `flags`: the patterns are used with `.test()`, where either flag walks `lastIndex` and makes the same message match, then not, then match again. A reaction firing every other time is not something anyone would go looking for in a config file.
 - **Welcome messages** ([src/gateway/events/guild-member-add.js](src/gateway/events/guild-member-add.js)): new members are greeted in the guild's `welcome-channel`, falling back to its system channel (and to silence if neither is reachable). Off until a server turns it on (`/mod config set welcome:true`), and it needs `DISCORD_MEMBER_EVENTS=true` as well: that variable gates the `GuildMembers` intent, because logging in with a privileged intent that is not enabled in the portal fails.
 - **Presence** ([src/gateway/presence.js](src/gateway/presence.js)): custom status ("😺 schnurrt irgendwo in der Nähe", …) picked at random on gateway ready and rotated every five hours.
+- **Zoomies** ([src/zoomies.js](src/zoomies.js)): every quarter of an hour Mai rolls for a burst of energy, and a handful of times a day she gets one and tears through the place for four minutes. It changes three things and nothing else: she rotates through the `presence.zoomies` statuses, she is three times as likely to react to a trigger word (capped at every message), and `chat.zoomiesDirective` is *added* to whichever tone is in force, so a hissing cat with the zoomies still hisses. Bursts do not stack, one ends itself, and a restart is a nap: the state is in memory. It is process-wide on purpose, not a per-guild setting: this is a property of the cat rather than a policy about a server, and the custom status is one status for the whole bot anyway. Nothing about moderation reads it. `ZOOMIES_CHANCE=0` switches it off for good.
 
 ## Slash commands
 
@@ -546,6 +548,7 @@ be imported **before** `setup.js`.
 | `setup-onboarding.js` | Member events, so the join path's presets and permission report are about the guild's settings rather than the operator's switch |
 | `setup-signature.js` | A real Ed25519 key pair (and the signer), for the one file that goes through `verifyKeyMiddleware` |
 | `setup-deprecated.js` | A retired variable set, so the startup report is what is under test |
+| `setup-zoomies.js` | `ZOOMIES_CHANCE=0`, so "off" can be shown to mean no dice rather than dice she always loses |
 
 OpenAI and Discord are reached through a stubbed global `fetch`. Tests are not
 copied into the image (see `.dockerignore`): run them on the host.
@@ -555,7 +558,7 @@ copied into the image (see `.dockerignore`): run them on the host.
 Two surfaces, both read once at startup:
 
 - **`.env`**: secrets, models, deployment facts (ports, paths, ids) and the feature flags an operator has a reason to set. See [../.env.example](../.env.example). Changing it requires a container **recreate** (`docker compose up -d mai`), not just a restart.
-- **`config/mai.yaml`**: everything Mai says: persona, prompt scaffolding, moderation tone directives, scold lines, warning-DM template, `/mai` and `/mod` replies, log-embed titles and field labels, the Discord error codes explained to staff (`moderation.errors`), welcome lines, reaction triggers, presence statuses. Loaded and validated by [src/content.js](src/content.js). **No handler may contain a literal string Mai says**: adding wording means a YAML key plus a validated field in `content.js`. Point `MAI_CONFIG_PATH` at a read-only bind mount to edit it without rebuilding the image; a restart applies it.
+- **`config/mai.yaml`**: everything Mai says: persona, prompt scaffolding, moderation tone directives, scold lines, warning-DM template, `/mai` and `/mod` replies, log-embed titles and field labels, the Discord error codes explained to staff (`moderation.errors`), welcome lines, reaction triggers, presence statuses (calm and zoomies). Loaded and validated by [src/content.js](src/content.js). **No handler may contain a literal string Mai says**: adding wording means a YAML key plus a validated field in `content.js`. Point `MAI_CONFIG_PATH` at a read-only bind mount to edit it without rebuilding the image; a restart applies it.
 
 Timings nobody had a reason to change are values in [src/config.js](src/config.js) rather than variables: the enforcer interval, the per-tick row cap, the interactions body cap, the number of chat turns and images sent to the model, the reply length cap, the wedged-loop threshold. A knob that is never turned is not flexibility, it is another line the operator has to form an opinion about before the bot starts. A stale `.env` line for one of them is reported at startup through `deprecatedEnv` rather than silently ignored.
 

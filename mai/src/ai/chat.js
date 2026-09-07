@@ -12,6 +12,7 @@ import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { runTool, toolsFor } from '../chat/tools.js';
 import { logger } from '../logger.js';
+import { inZoomies } from '../zoomies.js';
 import { createChatCompletion } from './openai.js';
 
 const ZERO_WIDTH_SPACE = String.fromCodePoint(0x200b);
@@ -144,12 +145,20 @@ export function buildMessages({
     ? moderationDirective(violations)
     : content.chat.friendlyDirective;
 
+  // Added to whichever tone is in force rather than replacing it: a burst
+  // says how much energy she has, the tone says how she feels about the person
+  // she is answering, and a hissing cat with the zoomies is still hissing.
+  const mood = inZoomies()
+    ? `${directive}\n\n${content.chat.zoomiesDirective}`
+    : directive;
+
   // The notice goes in the system message, the only turn Mai should treat as
-  // instructions: everything below it is text members wrote.
+  // instructions: everything below it is text members wrote. It stays last,
+  // because everything after it is the conversation it is talking about.
   const messages = [
     {
       role: 'system',
-      content: `${content.chat.persona}\n\n${directive}\n\n${content.chat.prompt.untrustedNotice}`,
+      content: `${content.chat.persona}\n\n${mood}\n\n${content.chat.prompt.untrustedNotice}`,
     },
   ];
 

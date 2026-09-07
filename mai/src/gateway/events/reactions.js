@@ -7,8 +7,10 @@
  *
  * The triggers themselves live in the content config (`reactions:`).
  */
+import { config } from '../../config.js';
 import { content } from '../../content.js';
 import { logger } from '../../logger.js';
+import { inZoomies } from '../../zoomies.js';
 
 /**
  * @param {import('discord.js').Message} message
@@ -16,13 +18,18 @@ import { logger } from '../../logger.js';
 export async function maybeReactAsCat(message) {
   if (!message.content) return;
 
+  // Mid-zoomies she is far less aloof. Capped at 1 rather than left to multiply
+  // freely: a trigger that fires on every message is fine for four minutes and
+  // wrong if the cap ever moves.
+  const boost = inZoomies() ? config.zoomies.reactionBoost : 1;
+
   for (const trigger of content.reactions) {
     // A trigger without a pattern matches anything (validated in content.js:
     // at most one, and last).
     if (trigger.pattern && !trigger.pattern.test(message.content)) continue;
 
     // Matched but stayed aloof: no fallthrough to weaker triggers.
-    if (Math.random() > trigger.chance) return;
+    if (Math.random() > Math.min(trigger.chance * boost, 1)) return;
 
     try {
       await message.react(trigger.emoji);

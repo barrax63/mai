@@ -112,6 +112,9 @@ function loadContent() {
     chat: Object.freeze({
       persona: str(chat, ['chat', 'persona']).trim(),
       friendlyDirective: str(chat, ['chat', 'friendlyDirective']),
+      // Appended to whichever tone directive is in force while she has the
+      // zoomies, never in place of one: see buildMessages.
+      zoomiesDirective: str(chat, ['chat', 'zoomiesDirective']),
       // The server's rules in the operator's own words, for the
       // `get_server_rules` tool. Optional and empty by default: no rules here
       // means the tool is not offered at all, which is better than offering one
@@ -531,6 +534,10 @@ function loadContent() {
     ),
     presence: Object.freeze({
       statuses: Object.freeze(strings(presence, ['presence', 'statuses'])),
+      // What she rotates through during a burst. Required rather than optional:
+      // an empty list would leave the status untouched through the one part of
+      // a burst anybody outside the channel can see.
+      zoomies: Object.freeze(strings(presence, ['presence', 'zoomies'])),
     }),
   });
 }

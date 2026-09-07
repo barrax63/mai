@@ -289,6 +289,16 @@ const amount = (name, fallback, unit) => {
 
 const hours = (name, fallback) => amount(name, fallback, 'hours');
 
+/** A share of 1, where 0 means never and 1 means always. */
+const ratio = (name, fallback) => {
+  const raw = optional(name, fallback);
+  const value = decimalNumber(raw);
+  if (!Number.isFinite(value) || value < 0 || value > 1) {
+    throw new Error(`Environment variable ${name} must be a number between 0 and 1, got: ${raw}`);
+  }
+  return value;
+};
+
 /**
  * Environment variables that used to do something and no longer do.
  *
@@ -360,6 +370,19 @@ const GIF_SEARCH_RESULTS = 8;
 // GIPHY's own content rating, their side of the filter.
 // `g`, `pg`, `pg-13` and `r` exist.
 const GIF_SEARCH_RATING = 'r';
+
+// Zoomies: the burst of energy a cat gets for no reason and loses again just as
+// suddenly. How often the dice are rolled and how long a burst lasts are values
+// rather than knobs, because nobody has an opinion about them that is not
+// already covered by ZOOMIES_CHANCE (0 switches the whole thing off). The tests
+// reach the behaviour through `rollZoomies(now)` and `inZoomies(now)`, which
+// take the clock as an argument, so neither of these needs an environment seam.
+const ZOOMIES_ROLL_MINUTES = 15;
+const ZOOMIES_MINUTES = 4;
+// What a burst does to the ambient reaction chances. Capped at 1 where it is
+// applied, so a generous multiplier cannot turn a rare trigger into every
+// message forever; a burst is four minutes long.
+const ZOOMIES_REACTION_BOOST = 3;
 
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
@@ -640,6 +663,16 @@ export const config = Object.freeze({
     // and never rotate. Validated like every other knob: a typo used to become
     // NaN and silently disable rotation instead of failing at startup.
     rotateHours: hours('PRESENCE_ROTATE_HOURS', '5'),
+  },
+  zoomies: {
+    // The chance that a burst starts, rolled every ZOOMIES_ROLL_MINUTES. The
+    // default works out to a handful a day. 0 = never, which is the switch for
+    // a deployment that wants none of it: this is process-wide whimsy and not a
+    // per-server policy, so it is not a guild setting.
+    chance: ratio('ZOOMIES_CHANCE', '0.05'),
+    rollMinutes: ZOOMIES_ROLL_MINUTES,
+    minutes: ZOOMIES_MINUTES,
+    reactionBoost: ZOOMIES_REACTION_BOOST,
   },
   timezone: optional('TZ', 'UTC'),
   logLevel: optional('LOG_LEVEL', 'info'),

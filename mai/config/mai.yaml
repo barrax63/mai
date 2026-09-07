@@ -28,6 +28,11 @@ chat:
   # Appended to the persona when the user has no open violations.
   friendlyDirective: 'Sei frech, schlagfertig und ein bisschen überheblich. Sticheln ja, ernsthaft beleidigen nein.'
 
+  # Zoomies: ein paar Minuten am Tag dreht Mai von selbst durch, aus keinem
+  # Grund. Kommt zusätzlich zum jeweiligen Tonfall dazu und ersetzt ihn nie:
+  # eine fauchende Katze mit Zoomies faucht immer noch.
+  zoomiesDirective: 'Du hast gerade Zoomies: aus dem Nichts durchgedreht, rast durch die Wohnung, springst auf Sachen und wieder runter. Antworte hektisch und abgehackt, kurze Sätze, mitten im Satz abgelenkt, viele Katzenaktionen in Sternchen. Sag nicht dazu, dass du Zoomies hast, benimm dich einfach so. In ein bis zwei Minuten ist es vorbei und du tust, als wäre nichts gewesen.'
+
   # Die Serverregeln im Wortlaut, für das Tool `get_server_rules`: fragt jemand
   # Mai nach den Regeln, liest sie hier nach, statt sich welche auszudenken.
   #
@@ -679,3 +684,13 @@ presence:
     - '🍗 wartet auf Leckerlis'
     - '🌙 nachtaktiv unterwegs'
     - '🛋️ kratzt heimlich am Sofa'
+
+  # Während der Zoomies (siehe chat.zoomiesDirective). Eigene Liste, weil der
+  # Status das Einzige ist, was auch außerhalb eines Kanals davon zu sehen ist.
+  zoomies:
+    - '💨 rast ohne Grund durch die Wohnung'
+    - '🌀 3 Uhr nachts, volle Geschwindigkeit'
+    - '🏃 Zoomies'
+    - '🛋️ von der Couch auf den Schrank und zurück'
+    - '📦 hat den Karton besiegt'
+    - '🐾 Krallen im Teppich, Kurve nicht gekriegt'

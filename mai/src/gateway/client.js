@@ -25,6 +25,7 @@ import { onMessageDelete } from './events/message-delete.js';
 import { onGuildMemberAdd } from './events/guild-member-add.js';
 import { onGuildMemberUpdate } from './events/guild-member-update.js';
 import { startPresenceRotation } from './presence.js';
+import { startZoomies } from '../zoomies.js';
 
 /** @type {import('discord.js').Client | null} */
 let readyClient = null;
@@ -89,6 +90,9 @@ export function createGatewayClient() {
     );
 
     startPresenceRotation(ready);
+    // After the presence, which registers itself as a listener first: a burst
+    // starting before that would flip a status nobody is watching for yet.
+    startZoomies();
 
     // Every permission Mai lacks is otherwise discovered at the worst possible
     // moment, by failing. Once per process, per guild, at `warn`.
