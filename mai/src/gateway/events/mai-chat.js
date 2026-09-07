@@ -6,6 +6,7 @@
  * posting the answer) and the guards in front of the model call; the reply
  * itself comes from chat/reply.js.
  */
+import { isSulking } from '../../chat/petting.js';
 import { generateChatReply, gifEmbeds, rememberExchange } from '../../chat/reply.js';
 import {
   acquireSlot,
@@ -206,9 +207,10 @@ export async function isMaiChatTrigger(message) {
  * Reaction instead of an answer: Mai is rate-limited or at her concurrency cap.
  *
  * @param {import('discord.js').Message} message
+ * @param {string} [emoji]
  */
-const reactBusy = (message) =>
-  message.react(content.chat.busyEmoji).catch((error) => {
+const reactBusy = (message, emoji = content.chat.busyEmoji) =>
+  message.react(emoji).catch((error) => {
     logger.debug({ messageId: message.id, err: error }, 'Busy reaction failed');
   });
 
@@ -237,6 +239,15 @@ export async function handleMaiChat(message) {
     // Tools read guild facts through the client; the model never gets it.
     client: message.client,
   };
+
+  // Bitten this member recently and still sulking with them. First, because it
+  // is the cheapest check here and because the whole point is that she is not
+  // talking to them: nothing below should run. A reaction rather than plain
+  // silence, or a sulking cat is indistinguishable from a broken bot.
+  if (isSulking(input.userId)) {
+    await reactBusy(message, content.chat.sulkingEmoji);
+    return;
+  }
 
   // Out of budget for the month: she still reacts, she just stops talking.
   if (!withinBudget()) {

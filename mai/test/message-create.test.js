@@ -13,12 +13,14 @@ import './setup-gateway.js';
 import { openTestDatabase, stubFetch, OTHER_GUILD, TEST_GUILD, TEST_USER } from './setup.js';
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { config } from '../src/config.js';
 import { content } from '../src/content.js';
 import { depth, findRow } from '../src/db/queue.js';
 import { getDb } from '../src/db/index.js';
 import { updateSettings } from '../src/db/settings.js';
 import { clearDmGateCache } from '../src/gateway/events/mai-chat.js';
 import { onMessageCreate } from '../src/gateway/events/message-create.js';
+import { pet, resetPetting } from '../src/chat/petting.js';
 import { maybeReactAsCat } from '../src/gateway/events/reactions.js';
 
 await openTestDatabase();
@@ -454,4 +456,32 @@ test('a plain message may still get an ambient reaction while being moderated', 
 
   assert.equal(calls.moderation, 1);
   assert.equal(record.reacted.length, 1, 'the two run side by side, they are independent');
+});
+
+test('a member she is sulking with gets a look, not a reply, and is still moderated', async () => {
+  wipe();
+  resetPetting();
+  // Petted her one stroke past what she puts up with, which is the only way
+  // into this state and always the member's own doing.
+  for (let i = 0; i <= config.petting.patience; i++) pet(TEST_USER, Date.now() + i);
+
+  const { message, record } = fakeMessage({
+    id: '881000000000000019',
+    text: 'sorry Mai',
+    mentionsBot: true,
+  });
+  const { calls, restore } = stubApi({ flagged: false });
+
+  try {
+    await onMessageCreate(message);
+  } finally {
+    restore();
+    resetPetting();
+  }
+
+  assert.equal(calls.chat, 0, 'she is not talking to them');
+  assert.deepEqual(record.replies, []);
+  assert.deepEqual(record.reacted, [content.chat.sulkingEmoji], 'silence alone reads as broken');
+  // The sulk is persona: it must never buy anybody a pass on moderation.
+  assert.equal(calls.moderation, 1);
 });

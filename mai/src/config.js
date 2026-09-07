@@ -384,6 +384,17 @@ const ZOOMIES_MINUTES = 4;
 // message forever; a burst is four minutes long.
 const ZOOMIES_REACTION_BOOST = 3;
 
+// The petting threshold: how many strokes she enjoys, how many more she puts up
+// with, how long the memory of being petted lasts, and how long she sulks after
+// biting. Values rather than knobs for the same reason as the zoomies: the
+// tests pass the clock into `pet(userId, now)`, so none of this needs an
+// environment seam, and an operator has no reason to hold an opinion about the
+// patience of a cat.
+const PETTING_HAPPY_PETS = 2;
+const PETTING_PATIENCE = 4;
+const PETTING_WINDOW_MINUTES = 5;
+const PETTING_BITE_MINUTES = 10;
+
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
 const retired = (name) =>
@@ -673,6 +684,14 @@ export const config = Object.freeze({
     rollMinutes: ZOOMIES_ROLL_MINUTES,
     minutes: ZOOMIES_MINUTES,
     reactionBoost: ZOOMIES_REACTION_BOOST,
+  },
+  petting: {
+    // Pets in one window that make her happy; up to `patience` are tolerated,
+    // and the next one bites.
+    happyPets: PETTING_HAPPY_PETS,
+    patience: PETTING_PATIENCE,
+    windowMs: PETTING_WINDOW_MINUTES * 60_000,
+    biteMs: PETTING_BITE_MINUTES * 60_000,
   },
   timezone: optional('TZ', 'UTC'),
   logLevel: optional('LOG_LEVEL', 'info'),

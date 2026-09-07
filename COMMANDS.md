@@ -58,6 +58,22 @@ she cannot be bothered right now.
 
 `frage` is required, at most 400 characters.
 
+### `/mai pet`
+
+Strokes the cat. Ephemeral: no, because getting bitten in front of everybody is
+the point. Costs nothing: no model call, no database, no Discord round trip.
+
+Cats have a petting threshold and so does Mai. The first two strokes get a purr,
+the next two a warning, and the one after that she bites and then sulks with you
+for ten minutes: she stops answering you in chat and through `/mai ask`, and a
+mention gets a 😾 instead of a reply (plain silence would just look like a
+broken bot). She gets over it on her own, the counter fades after five minutes
+of leaving her alone, and she keeps talking to everybody else the whole time.
+
+Persona only. A sulking Mai still moderates you exactly as before: the sulk is
+never a way to make her stop deleting anything. The numbers are values in
+`src/config.js`, not settings; the lines are `commands.pet` in the YAML.
+
 ### `/mai forget`
 
 Wipes what Mai remembers about you, behind a *Ja, vergiss alles* / *Abbrechen*

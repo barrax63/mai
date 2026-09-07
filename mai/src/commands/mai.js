@@ -5,13 +5,15 @@
  * with a placeholder first and edits it when the reply is ready. `forget` is the
  * self-service side of the privacy policy: it wipes what Mai remembers about the
  * caller, behind a confirmation button. `appeal` is the second door into the
- * appeals process, for members whose warning DM never arrived.
+ * appeals process, for members whose warning DM never arrived. `pet` is a cat
+ * being a cat: costs nothing, calls nothing, and can end in a bite.
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
 import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../chat/limits.js';
 import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
-import { content, fill } from '../content.js';
+import { content, fill, pick } from '../content.js';
+import { isSulking, pet } from '../chat/petting.js';
 import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { effectiveSettings } from '../db/settings.js';
@@ -53,6 +55,9 @@ async function ask(interaction) {
   // afterwards (the edit ignores `flags`), so every refusal below is a public,
   // in-character message rather than a private notice.
   if (!config.chat.enabled) return messageResponse(content.commands.ask.disabled);
+  // Still sulking with this member after biting them: she stops answering
+  // them, and this is one of the two places answering happens.
+  if (isSulking(user.id)) return messageResponse(pick(content.commands.pet.sulking));
   if (!question) return messageResponse(content.commands.ask.empty);
   if (!withinBudget()) return messageResponse(content.commands.ask.busy);
   if (!consumeRateLimit(user.id)) return messageResponse(content.commands.ask.busy);
@@ -110,6 +115,24 @@ async function ask(interaction) {
   } finally {
     releaseSlot();
   }
+}
+
+/**
+ * `/mai pet`: stroke the cat.
+ *
+ * Synchronous and free: no model call, no database, no Discord round trip, just
+ * a counter in memory and a line from the config. The answer is public, because
+ * getting bitten in front of everybody is the joke.
+ *
+ * @param {object} interaction
+ */
+function petMai(interaction) {
+  const user = actor(interaction);
+  const outcome = pet(user.id);
+
+  logger.info({ userId: user.id, outcome }, 'Mai was petted');
+
+  return messageResponse(pick(content.commands.pet[outcome]));
 }
 
 /**
@@ -234,6 +257,11 @@ export const mai = {
         ],
       },
       {
+        name: 'pet',
+        description: 'Streichle Mai (auf eigene Gefahr)',
+        type: 1, // SUB_COMMAND
+      },
+      {
         name: 'forget',
         description: 'Lösche, was Mai sich von dir gemerkt hat',
         type: 1, // SUB_COMMAND
@@ -246,8 +274,8 @@ export const mai = {
     ],
   },
 
-  // `ask` waits for the model; `forget` and `appeal` answer instantly, and
-  // `appeal` answers with a modal, which cannot be deferred at all.
+  // `ask` waits for the model; `pet`, `forget` and `appeal` answer instantly,
+  // and `appeal` answers with a modal, which cannot be deferred at all.
   deferred: (interaction) => resolveSubcommand(interaction).name === 'ask',
   ephemeral: false,
 
@@ -257,6 +285,7 @@ export const mai = {
    */
   execute(interaction) {
     const { name } = resolveSubcommand(interaction);
+    if (name === 'pet') return petMai(interaction);
     if (name === 'forget') return forget(interaction);
     if (name === 'appeal') return appeal(interaction);
     return ask(interaction);

@@ -86,6 +86,7 @@ function loadContent() {
   const commands = section(parsed, 'commands');
   const ask = section(commands, 'ask');
   const appealCommand = section(commands, 'appeal');
+  const petSection = section(commands, 'pet');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
   const setupSection = section(commands, 'setup');
@@ -134,6 +135,9 @@ function loadContent() {
       gifAttribution: str(chat, ['chat', 'gifAttribution']),
       fallbackReply: str(chat, ['chat', 'fallbackReply']),
       busyEmoji: str(chat, ['chat', 'busyEmoji']),
+      // Reaction instead of a reply while she is sulking with the member who
+      // would not stop petting her: silence on its own reads as a broken bot.
+      sulkingEmoji: str(chat, ['chat', 'sulkingEmoji']),
       flagged: Object.freeze({
         header: str(flagged, ['chat', 'flagged', 'header']),
         footer: str(flagged, ['chat', 'flagged', 'footer']),
@@ -366,6 +370,14 @@ function loadContent() {
             }),
           ),
         ),
+      }),
+      // One list per stage of being petted, keyed by what `pet()` returns, so
+      // the handler picks a line rather than deciding what to say.
+      pet: Object.freeze({
+        happy: Object.freeze(strings(petSection, ['commands', 'pet', 'happy'])),
+        annoyed: Object.freeze(strings(petSection, ['commands', 'pet', 'annoyed'])),
+        bite: Object.freeze(strings(petSection, ['commands', 'pet', 'bite'])),
+        sulking: Object.freeze(strings(petSection, ['commands', 'pet', 'sulking'])),
       }),
       appeal: Object.freeze({
         guildOnly: str(appealCommand, ['commands', 'appeal', 'guildOnly']),

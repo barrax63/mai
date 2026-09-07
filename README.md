@@ -66,6 +66,7 @@ for:
 |---|---|
 | set her up on a new server | `/mod setup <preset>`, or the buttons she posts on joining |
 | ask Mai something in public | `/mai ask <frage>` |
+| stroke the cat, at my own risk | `/mai pet` |
 | make her forget what I told her | `/mai forget` |
 | appeal a warning whose DM never arrived | `/mai appeal` |
 | report a message to the team | right-click → *Apps* → *Nachricht melden* |

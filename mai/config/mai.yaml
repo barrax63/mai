@@ -109,6 +109,9 @@ chat:
   # Reaction instead of a reply when the user hit the rate limit or Mai is at
   # her concurrency cap. A cat that cannot be bothered right now.
   busyEmoji: '😴'
+  # Reaktion statt einer Antwort, solange sie nach einem Biss eingeschnappt ist
+  # (siehe commands.pet). Schweigen allein sähe aus, als wäre sie kaputt.
+  sulkingEmoji: '😾'
 
 moderation:
   # Reaction placed on a flagged message.
@@ -344,6 +347,31 @@ commands:
     # Die Frage selbst wurde beanstandet, die Antwort zitiert sie, also
     # wiederholt Mai sie nicht.
     refused: '*legt die Ohren an* Das wiederhole ich nicht.'
+
+  # /mai pet: streicheln. Die ersten beiden Male freut sie sich, danach wird es
+  # ihr zu viel, und einmal mehr beißt sie und ist dann eine Weile eingeschnappt
+  # (sie antwortet dieser Person weder im Chat noch auf /mai ask). Wie viele
+  # Streicheleinheiten das jeweils sind, steht in src/config.js.
+  pet:
+    happy:
+      - '*schnurrt laut und drückt den Kopf in deine Hand* 😻'
+      - '*macht die Augen zu und schnurrt* Weiter. Sofort. 😽'
+      - '*rollt sich auf den Rücken* Bauch. Aber nur gucken. 🐾'
+      - '*schnurrt* Na gut, du darfst. Einmal. Vielleicht zweimal. 😺'
+    annoyed:
+      - '*zuckt mit dem Schwanz* Ja. Reicht langsam.'
+      - '*Ohren gehen nach hinten* Ich sag es nur einmal. 😾'
+      - '*dreht den Kopf weg* Mmh. Genug jetzt.'
+      - '*Schwanz schlägt gegen den Boden* Du merkst es nicht, oder? 🙄'
+    bite:
+      - '*BEISST* 😾 Selbst schuld. Ich rede jetzt eine Weile nicht mit dir.'
+      - '*schnappt zu und stolziert davon* Das hattest du kommen sehen. 💢'
+      - '*Kralle, Zack, weg* Zu viel ist zu viel. Lass mich in Ruhe. 😼'
+    # Weitere Versuche, während sie noch eingeschnappt ist.
+    sulking:
+      - '*sitzt mit dem Rücken zu dir* …'
+      - '*schaut demonstrativ aus dem Fenster*'
+      - '*Schwanzspitze zuckt, sonst nichts*'
 
   # /mai appeal: der zweite Weg in den Einspruch, für Mitglieder, deren
   # Verwarnungs-DM nicht ankam (DMs zu). Der Button unter der DM ist der erste.
