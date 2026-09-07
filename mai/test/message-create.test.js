@@ -351,7 +351,9 @@ test('a trigger word earns a reaction, and only one', async () => {
 
   assert.equal(record.reacted.length, 1);
   // First match in the configured order wins, there is no fallthrough.
-  const first = content.reactions.find((trigger) => trigger.pattern.test(message.content));
+  const first = content.reactions.find(
+    (trigger) => !trigger.pattern || trigger.pattern.test(message.content),
+  );
   assert.equal(record.reacted[0], first.emoji);
 });
 
@@ -373,7 +375,8 @@ test('an aloof cat stays aloof instead of falling through to a weaker trigger', 
 
 test('a message with nothing to match gets no reaction', async () => {
   const realRandom = Math.random;
-  Math.random = () => 0;
+  // Above the pattern-less trigger's chance: nothing matched, nothing rolled.
+  Math.random = () => 0.999;
 
   try {
     for (const text of ['', 'völlig unauffälliger text']) {
@@ -384,6 +387,23 @@ test('a message with nothing to match gets no reaction', async () => {
   } finally {
     Math.random = realRandom;
   }
+});
+
+test('a trigger without a pattern knocks something off the table anyway', async () => {
+  const ambient = content.reactions.at(-1);
+  assert.equal(ambient.pattern, null, 'the shipped config ends with one');
+
+  const { message, record } = fakeMessage({ text: 'völlig unauffälliger text' });
+  const realRandom = Math.random;
+  Math.random = () => 0;
+
+  try {
+    await maybeReactAsCat(message);
+  } finally {
+    Math.random = realRandom;
+  }
+
+  assert.deepEqual(record.reacted, [ambient.emoji]);
 });
 
 test('a refused reaction is not worth an exception', async () => {

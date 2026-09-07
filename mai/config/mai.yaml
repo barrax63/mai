@@ -660,6 +660,11 @@ reactions:
     chance: 0.2
     pattern: '\b(katzen?|kater|cats?|kitt(y|ies)|kitten|kätzchen)\b'
     flags: 'i'
+  # No pattern: matches anything, so it has to stay the last entry. Mai puts a
+  # paw on something for no reason at all and does nothing else with it. Keep
+  # the chance tiny; the joke is that it is rare and unexplained.
+  - emoji: '🫳'
+    chance: 0.01
 
 # Rotating custom status (PRESENCE_ROTATE_HOURS controls the interval).
 presence:

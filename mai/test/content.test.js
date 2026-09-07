@@ -19,6 +19,13 @@ test('compiles reaction triggers into working regexes', () => {
   for (const trigger of content.reactions) {
     assert.ok(trigger.chance >= 0 && trigger.chance <= 1);
   }
+  // A trigger with no pattern matches anything, so anything after it is
+  // unreachable: only the last one may leave it out, and only one of them may.
+  const ambient = content.reactions.filter((trigger) => trigger.pattern === null);
+  assert.ok(ambient.length <= 1, 'at most one pattern-less trigger');
+  if (ambient.length === 1) {
+    assert.equal(content.reactions.at(-1), ambient[0], 'it is the last one');
+  }
 });
 
 test('fill substitutes known placeholders and leaves unknown ones visible', () => {

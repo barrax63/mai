@@ -1,7 +1,9 @@
 /**
  * Ambient cat behavior: Mai reacts with an emoji when a message matches one
- * of her trigger words. At most one reaction per message; `chance` keeps the
- * common triggers from firing on every single message (cats are aloof).
+ * of her trigger words, plus a rare one that needs no reason at all: the last
+ * trigger may have no pattern, which is the cat knocking something off the
+ * table. At most one reaction per message; `chance` keeps the common triggers
+ * from firing on every single message (cats are aloof).
  *
  * The triggers themselves live in the content config (`reactions:`).
  */
@@ -15,7 +17,9 @@ export async function maybeReactAsCat(message) {
   if (!message.content) return;
 
   for (const trigger of content.reactions) {
-    if (!trigger.pattern.test(message.content)) continue;
+    // A trigger without a pattern matches anything (validated in content.js:
+    // at most one, and last).
+    if (trigger.pattern && !trigger.pattern.test(message.content)) continue;
 
     // Matched but stayed aloof: no fallthrough to weaker triggers.
     if (Math.random() > trigger.chance) return;

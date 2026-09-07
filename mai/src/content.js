@@ -502,6 +502,17 @@ function loadContent() {
         const path = ['reactions', String(index)];
         const emoji = str(trigger, [...path, 'emoji']);
         const chance = num(trigger, [...path, 'chance'], { min: 0, max: 1 });
+        // A trigger with no pattern matches anything: the cat knocking a glass
+        // off the table for no reason. Only the last entry may be one. The loop
+        // stops at the first match and an aloof roll deliberately does not fall
+        // through, so a trigger below one could never fire, and a second one is
+        // the same bug again. Both cases fail here rather than going unnoticed.
+        if (trigger.pattern === undefined) {
+          if (index !== reactions.length - 1) {
+            fail(`reactions[${index}] has no pattern, so it must be the last trigger`);
+          }
+          return Object.freeze({ emoji, chance, pattern: null });
+        }
         const source = str(trigger, [...path, 'pattern']);
         // `g` and `y` are stripped on purpose: the trigger is used with
         // `.test()`, and either flag makes that stateful through `lastIndex`:

@@ -263,6 +263,8 @@ test('reaction triggers cannot be made stateful by a YAML flag', () => {
   // `g` or `y` would make .test() walk lastIndex, so the same message would
   // match, then not match, then match again.
   for (const trigger of content.reactions) {
+    // The last trigger may have no pattern at all, and has no state either.
+    if (!trigger.pattern) continue;
     assert.equal(trigger.pattern.global, false, trigger.pattern.source);
     assert.equal(trigger.pattern.sticky, false, trigger.pattern.source);
 
