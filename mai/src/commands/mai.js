@@ -80,6 +80,7 @@ async function ask(interaction) {
       content: question,
       // Same grudge as in chat: an open violation makes her hiss here too.
       violations: openViolations(user.id),
+      guildId: interaction.guild_id ?? null,
     });
 
     const reply = await generateReply(messages, {

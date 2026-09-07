@@ -34,6 +34,9 @@ export async function generateChatReply(input) {
     replyTo: input.replyTo,
     threadTitle: input.threadTitle,
     images: input.images ?? [],
+    // Only so the prompt knows whether her nose is working here: a DM has no
+    // guild and is therefore never under the weather.
+    guildId: input.guildId,
   });
 
   logger.debug({ messageId: input.messageId, messages }, 'Chat prompt');

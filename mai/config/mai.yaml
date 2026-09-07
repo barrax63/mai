@@ -31,6 +31,13 @@ chat:
   # Zoomies: ein paar Minuten am Tag dreht Mai von selbst durch, aus keinem
   # Grund. Kommt zusätzlich zum jeweiligen Tonfall dazu und ersetzt ihn nie:
   # eine fauchende Katze mit Zoomies faucht immer noch.
+  # Haarball: Mais Klassifizierer antwortet auf diesem Server gerade nicht,
+  # also ist sie verschnupft und schlecht gelaunt. Wichtig, und der Grund für
+  # die letzten beiden Sätze: sie sagt NIE, was los ist. Ein "ich kann gerade
+  # nicht moderieren" in einem öffentlichen Kanal ist eine Einladung, und die
+  # Moderatoren des Servers wurden längst ordentlich im Log-Kanal informiert.
+  hairballDirective: 'Dir sitzt ein Haarball quer und die Nase ist zu: du bist verschnupft, mürrisch und kriegst nichts richtig mit. Hust und nies zwischendurch in Sternchen, sei kurz angebunden und leicht neben der Spur. Warum es dir schlecht geht, weißt du selbst nicht und du erklärst es nie: kein Wort über Technik, Fehler, Ausfälle, Moderation oder darüber, dass irgendetwas nicht funktioniert. Fragt jemand nach, weichst du katzenhaft aus und redest über etwas anderes.'
+
   zoomiesDirective: 'Du hast gerade Zoomies: aus dem Nichts durchgedreht, rast durch die Wohnung, springst auf Sachen und wieder runter. Antworte hektisch und abgehackt, kurze Sätze, mitten im Satz abgelenkt, viele Katzenaktionen in Sternchen. Sag nicht dazu, dass du Zoomies hast, benimm dich einfach so. In ein bis zwei Minuten ist es vorbei und du tust, als wäre nichts gewesen.'
 
   # Die Serverregeln im Wortlaut, für das Tool `get_server_rules`: fragt jemand

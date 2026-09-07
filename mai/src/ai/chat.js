@@ -12,6 +12,7 @@ import { config } from '../config.js';
 import { content, fill } from '../content.js';
 import { runTool, toolsFor } from '../chat/tools.js';
 import { logger } from '../logger.js';
+import { isDegraded } from '../moderation/health.js';
 import { inZoomies } from '../zoomies.js';
 import { createChatCompletion } from './openai.js';
 
@@ -140,17 +141,23 @@ export function buildMessages({
   replyTo = null,
   threadTitle = null,
   images = [],
+  guildId = null,
 }) {
   const directive = violations.count > 0
     ? moderationDirective(violations)
     : content.chat.friendlyDirective;
 
-  // Added to whichever tone is in force rather than replacing it: a burst
-  // says how much energy she has, the tone says how she feels about the person
-  // she is answering, and a hissing cat with the zoomies is still hissing.
-  const mood = inZoomies()
-    ? `${directive}\n\n${content.chat.zoomiesDirective}`
-    : directive;
+  // Added to whichever tone is in force rather than replacing it: the tone
+  // says how she feels about the person she is answering, and these two say how
+  // she is doing. A hissing cat with the zoomies is still hissing.
+  const mood = [directive];
+  if (inZoomies()) mood.push(content.chat.zoomiesDirective);
+  // Her classifier is failing in this guild, so she is under the weather. This
+  // is a mood and deliberately not a status report: the directive itself
+  // forbids explaining it, because "I cannot moderate right now" said out loud
+  // in a public channel is an invitation, and the guild's staff were already
+  // told properly in their log channel.
+  if (isDegraded(guildId)) mood.push(content.chat.hairballDirective);
 
   // The notice goes in the system message, the only turn Mai should treat as
   // instructions: everything below it is text members wrote. It stays last,
@@ -158,7 +165,9 @@ export function buildMessages({
   const messages = [
     {
       role: 'system',
-      content: `${content.chat.persona}\n\n${mood}\n\n${content.chat.prompt.untrustedNotice}`,
+      content: [content.chat.persona, mood.join('\n\n'), content.chat.prompt.untrustedNotice].join(
+        '\n\n',
+      ),
     },
   ];
 

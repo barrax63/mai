@@ -115,6 +115,10 @@ function loadContent() {
       // Appended to whichever tone directive is in force while she has the
       // zoomies, never in place of one: see buildMessages.
       zoomiesDirective: str(chat, ['chat', 'zoomiesDirective']),
+      // Appended the same way while this guild's classifier is failing. It has
+      // one hard requirement, which is that it must not tell anybody why: an
+      // outage is not something to announce in a public channel.
+      hairballDirective: str(chat, ['chat', 'hairballDirective']),
       // The server's rules in the operator's own words, for the
       // `get_server_rules` tool. Optional and empty by default: no rules here
       // means the tool is not offered at all, which is better than offering one

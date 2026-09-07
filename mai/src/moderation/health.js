@@ -65,6 +65,21 @@ export function recordClassifierSuccess(guildId) {
 }
 
 /**
+ * Whether this one guild's classifier is currently known to be failing.
+ *
+ * The same state `degradedGuildIds()` reports, asked about one guild, because
+ * the chat path asks per turn and would otherwise build the whole list to look
+ * for one id in it. Also read by the chat prompt, where it does **not** become
+ * an announcement: see `chat.hairballDirective` in the content config.
+ *
+ * @param {string | null | undefined} guildId
+ * @returns {boolean}
+ */
+export function isDegraded(guildId) {
+  return guildId ? guilds.get(guildId)?.announced === true : false;
+}
+
+/**
  * Guilds where moderation is currently known to be failing open. Read by
  * `/mod status`, so staff asking "is Mai working?" get the honest answer.
  *
