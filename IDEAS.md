@@ -102,24 +102,6 @@ no counts, no dates. Careful with the trigger too, because "their last strike
 aged out" is a fact about a clock rather than an event, so it is read on the next
 turn and not announced into a channel nobody is reading.
 
-### Nickname judging, non-punitive
-
-`name-check` already screens display names on join and rename, with `off`, `log`
-and `reset`. The idea is a fourth behaviour that is pure persona: she reacts to a
-*rename* with an emoji opinion and never acts on it.
-
-Seam: `screenMemberName` in `moderation/names.js`, plus the `guildMemberUpdate`
-handler that already compares display names before doing anything.
-
-Constraints: it rides on the privileged `GuildMembers` intent, so it exists only
-where `DISCORD_MEMBER_EVENTS=true`, and an intent is never decided by a guild
-setting. The name screen **fails open** on purpose and the ceiling is a nickname
-reset; a reaction must not quietly become a fifth rung on that ladder. The
-per-member limiter (3 per 10 minutes) stays, or a rename storm becomes a
-reaction storm. And an emoji on a rename is a comment on a person in front of
-their server, which is a different thing from a comment on a message: worth
-deciding deliberately whether it is funny or just mean.
-
 ## Shipped, so do not propose these again
 
 | Idea | Where it went |
@@ -128,3 +110,4 @@ deciding deliberately whether it is funny or just mean.
 | Zoomies | [mai/src/zoomies.js](mai/src/zoomies.js), `078526f` |
 | Hairball on a classifier outage | `chat.hairballDirective`, `ba98c96` |
 | `/mai pet` and the bite | [mai/src/chat/petting.js](mai/src/chat/petting.js), `274d908` |
+| A look at a new name | [mai/src/gateway/renames.js](mai/src/gateway/renames.js) |

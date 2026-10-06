@@ -5,17 +5,36 @@
  * table. At most one reaction per message; `chance` keeps the common triggers
  * from firing on every single message (cats are aloof).
  *
+ * A member who just renamed themselves jumps the queue: their next message gets
+ * a look about it instead (see gateway/renames.js). It is about them rather
+ * than about what they wrote, which is also why it comes first and why an
+ * attachment with no text still earns one.
+ *
  * The triggers themselves live in the content config (`reactions:`).
  */
 import { config } from '../../config.js';
-import { content } from '../../content.js';
+import { content, pick } from '../../content.js';
 import { logger } from '../../logger.js';
+import { takeRenameLook } from '../renames.js';
 import { inZoomies } from '../../zoomies.js';
 
 /**
  * @param {import('discord.js').Message} message
  */
 export async function maybeReactAsCat(message) {
+  // Checked before the content guard: a new name is worth a look whatever they
+  // posted, including a message that is only a picture.
+  if (takeRenameLook(message.guildId, message.author?.id)) {
+    const emoji = pick(content.renames.looks);
+    try {
+      await message.react(emoji);
+      logger.debug({ messageId: message.id, emoji }, 'Had a look at a new name');
+    } catch (error) {
+      logger.debug({ messageId: message.id, err: error }, 'Rename look failed');
+    }
+    return;
+  }
+
   if (!message.content) return;
 
   // Mid-zoomies she is far less aloof. Capped at 1 rather than left to multiply

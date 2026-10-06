@@ -706,6 +706,20 @@ reactions:
   - emoji: '🫳'
     chance: 0.01
 
+# Hat sich jemand umbenannt, bekommt dessen nächste Nachricht genau einen
+# dieser Blicke als Reaktion. Nur ein Emoji, mit Absicht: ein Satz über den
+# neuen Namen von jemandem wäre ein Urteil vor dem ganzen Server, ein Blick
+# ist ein Witz. Der Name selbst wird dabei nie gelesen, geprüft oder
+# gespeichert; das macht name-check, und das ist etwas völlig anderes.
+renames:
+  looks:
+    - '👀'
+    - '🤨'
+    - '😼'
+    - '🙄'
+    - '😺'
+    - '🧐'
+
 # Rotating custom status (PRESENCE_ROTATE_HOURS controls the interval).
 presence:
   statuses:

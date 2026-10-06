@@ -106,6 +106,8 @@ function loadContent() {
   const welcome = section(parsed, 'welcome');
   const presence = section(parsed, 'presence');
 
+  const renames = section(parsed, 'renames');
+
   const reactions = parsed.reactions;
   if (!Array.isArray(reactions)) fail('section "reactions" must be an array');
 
@@ -548,6 +550,13 @@ function loadContent() {
         return Object.freeze({ emoji, chance, pattern });
       }),
     ),
+    renames: Object.freeze({
+      // One of these lands on the next message from somebody who renamed
+      // themselves. An emoji and nothing else, deliberately: a line about a
+      // member's new name is a comment on a person in front of their server,
+      // and a look is a joke where a sentence would be a verdict.
+      looks: Object.freeze(strings(renames, ['renames', 'looks'])),
+    }),
     presence: Object.freeze({
       statuses: Object.freeze(strings(presence, ['presence', 'statuses'])),
       // What she rotates through during a burst. Required rather than optional:

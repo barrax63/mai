@@ -395,6 +395,12 @@ const PETTING_PATIENCE = 4;
 const PETTING_WINDOW_MINUTES = 5;
 const PETTING_BITE_MINUTES = 10;
 
+// How long Mai remembers that somebody renamed themselves, so their next
+// message earns one emoji look. Half an hour: long enough that the look lands
+// on a message they actually wrote, short enough that a rename somebody has
+// clearly moved on from gets no comment.
+const RENAME_LOOK_MINUTES = 30;
+
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
 const retired = (name) =>
@@ -684,6 +690,9 @@ export const config = Object.freeze({
     rollMinutes: ZOOMIES_ROLL_MINUTES,
     minutes: ZOOMIES_MINUTES,
     reactionBoost: ZOOMIES_REACTION_BOOST,
+  },
+  renames: {
+    lookMs: RENAME_LOOK_MINUTES * 60_000,
   },
   petting: {
     // Pets in one window that make her happy; up to `patience` are tolerated,
