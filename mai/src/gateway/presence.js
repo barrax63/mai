@@ -4,19 +4,25 @@
  * rotation). Presence is gateway-side only: no Discord API rate limit
  * concerns at this frequency.
  *
- * During zoomies she rotates through a different list instead, and the status
- * flips at both edges of the burst rather than at the next scheduled rotation:
- * a burst is minutes long and the rotation is hours apart, so a status that
- * waited for one would never show up while it was true.
+ * During zoomies, and during her nap hours, she rotates through a different
+ * list instead, and the status flips at both edges of either rather than at the
+ * next scheduled rotation: a burst is minutes long and the rotation is hours
+ * apart, so a status that waited for one would never show up while it was true.
+ *
+ * Asleep wins over the zoomies, and cannot be contradicted by one: `rollZoomies`
+ * refuses to start a burst during a nap, so "asleep" and "tearing through the
+ * flat" can never both be true.
  */
 import { ActivityType } from 'discord.js';
 import { config } from '../config.js';
 import { content } from '../content.js';
 import { logger } from '../logger.js';
+import { napping, onNapChange } from '../naps.js';
 import { inZoomies, onZoomiesChange } from '../zoomies.js';
 
 const STATUSES = content.presence.statuses;
 const ZOOMIES_STATUSES = content.presence.zoomies;
+const NAP_STATUSES = content.presence.naps;
 
 /**
  * Node stores a timer delay in a 32-bit int. Anything larger overflows to 1 ms,
@@ -33,8 +39,13 @@ export function startPresenceRotation(client) {
   // changes when a burst starts, and an index would point into the other one.
   let current = '';
 
+  const statusesNow = () => {
+    if (napping()) return NAP_STATUSES;
+    return inZoomies() ? ZOOMIES_STATUSES : STATUSES;
+  };
+
   const rotate = () => {
-    const statuses = inZoomies() ? ZOOMIES_STATUSES : STATUSES;
+    const statuses = statusesNow();
     let next;
     do {
       next = statuses[Math.floor(Math.random() * statuses.length)];
@@ -56,6 +67,7 @@ export function startPresenceRotation(client) {
 
   rotate();
   onZoomiesChange(rotate);
+  onNapChange(rotate);
 
   const { rotateHours } = config.presence;
   if (rotateHours > 0) {

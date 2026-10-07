@@ -14,6 +14,7 @@ import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
 import { content, fill, pick } from '../content.js';
 import { isSulking, pet } from '../chat/petting.js';
+import { napping } from '../naps.js';
 import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { effectiveSettings } from '../db/settings.js';
@@ -55,6 +56,9 @@ async function ask(interaction) {
   // afterwards (the edit ignores `flags`), so every refusal below is a public,
   // in-character message rather than a private notice.
   if (!config.chat.enabled) return messageResponse(content.commands.ask.disabled);
+  // Asleep, which is the other half of the chat path: a command is not a
+  // reason to wake a cat.
+  if (napping()) return messageResponse(content.commands.ask.sleeping);
   // Still sulking with this member after biting them: she stops answering
   // them, and this is one of the two places answering happens.
   if (isSulking(user.id)) return messageResponse(pick(content.commands.pet.sulking));

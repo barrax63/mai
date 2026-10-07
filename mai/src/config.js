@@ -289,6 +289,42 @@ const amount = (name, fallback, unit) => {
 
 const hours = (name, fallback) => amount(name, fallback, 'hours');
 
+/**
+ * Nap hours, written the way somebody would say them: "23-6".
+ *
+ * Empty means she never sleeps, which is the default, because switching an
+ * existing deployment to going quiet every night is not an upgrade anybody
+ * asked for and the hours would be wrong anyway (the process clock is `TZ`,
+ * the operator's, and nothing here knows what time it is where the server's
+ * members live).
+ *
+ * Equal hours are refused rather than interpreted: "3-3" is either no nap at
+ * all or a permanent one, and guessing which would be a bot that went silent
+ * forever over a typo.
+ *
+ * @param {string} name
+ * @returns {{ startHour: number | null, endHour: number | null }}
+ */
+const napHours = (name) => {
+  const raw = optional(name, '').trim();
+  if (!raw) return { startHour: null, endHour: null };
+
+  const parts = raw.split('-');
+  const hours = parts.map((part) => wholeNumber(part));
+  const bad =
+    parts.length !== 2 ||
+    hours.some((hour) => !Number.isInteger(hour) || hour < 0 || hour > 23) ||
+    hours[0] === hours[1];
+  if (bad) {
+    throw new Error(
+      `Environment variable ${name} must be two different whole hours between 0 and 23, ` +
+        `written as "start-end" (for example "23-6"), got: ${raw}`,
+    );
+  }
+
+  return { startHour: hours[0], endHour: hours[1] };
+};
+
 /** A share of 1, where 0 means never and 1 means always. */
 const ratio = (name, fallback) => {
   const raw = optional(name, fallback);
@@ -694,6 +730,11 @@ export const config = Object.freeze({
   renames: {
     lookMs: RENAME_LOOK_MINUTES * 60_000,
   },
+  // The hours she spends asleep, on the process clock (`TZ`). Empty = never,
+  // which is the default. Process-wide rather than per guild: the one place a
+  // nap is visible is the custom status, and that is one status for the whole
+  // bot. Moderation is untouched by it, deliberately and without exception.
+  naps: napHours('NAP_HOURS'),
   petting: {
     // Pets in one window that make her happy; up to `patience` are tolerated,
     // and the next one bites.

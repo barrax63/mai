@@ -112,6 +112,9 @@ chat:
   # Reaktion statt einer Antwort, solange sie nach einem Biss eingeschnappt ist
   # (siehe commands.pet). Schweigen allein sähe aus, als wäre sie kaputt.
   sulkingEmoji: '😾'
+  # Dasselbe für die Stunden, in denen sie schläft (NAP_HOURS). Moderation
+  # läuft die ganze Nacht weiter, nur geredet wird nicht.
+  sleepingEmoji: '💤'
 
 moderation:
   # Reaction placed on a flagged message.
@@ -344,6 +347,8 @@ commands:
     busy: '*gähnt und dreht sich weg* Nicht jetzt, ich hab schon genug geredet. Frag später nochmal.'
     empty: '*schaut dich fragend an* Du hast nichts gefragt.'
     disabled: '*putzt sich* Ich hab gerade keine Lust zu reden.'
+    # Während der Nickerchen-Stunden (NAP_HOURS).
+    sleeping: '*zusammengerollt, ein Ohr zuckt* 💤 Komm später wieder.'
     # Die Frage selbst wurde beanstandet, die Antwort zitiert sie, also
     # wiederholt Mai sie nicht.
     refused: '*legt die Ohren an* Das wiederhole ich nicht.'
@@ -733,6 +738,15 @@ presence:
     - '🍗 wartet auf Leckerlis'
     - '🌙 nachtaktiv unterwegs'
     - '🛋️ kratzt heimlich am Sofa'
+
+  # Während der Nickerchen-Stunden (NAP_HOURS). Der Status ist das Einzige,
+  # woran man von außen sieht, dass sie schläft und nicht kaputt ist.
+  naps:
+    - '😴 schläft tief und fest'
+    - '💤 zusammengerollt, bitte nicht wecken'
+    - '🌙 pennt irgendwo im Dunkeln'
+    - '🛏️ belegt das halbe Bett'
+    - '😽 träumt von Fisch'
 
   # Während der Zoomies (siehe chat.zoomiesDirective). Eigene Liste, weil der
   # Status das Einzige ist, was auch außerhalb eines Kanals davon zu sehen ist.

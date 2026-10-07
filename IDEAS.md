@@ -22,28 +22,6 @@ does not belong here:
 
 ## Open
 
-### Cat naps
-
-She sleeps on a schedule. While asleep, a mention gets a sleepy line or just a
-reaction, and the presence says so truthfully (`presence.statuses` already
-claims "hält ein Nickerchen in der Sonne" at moments when she is wide awake).
-
-Seam: the shape of `src/zoomies.js` almost exactly, which is the argument for
-building it: an interval, a window, a listener the presence registers for, and
-one directive added to the prompt. Unlike the zoomies it is predictable rather
-than rolled, so it wants a window of hours rather than a chance.
-
-Constraints: **moderation keeps running while she sleeps**, without exception,
-which also means the enforcer tick, the warning DMs and the log entries are
-untouched. A sleeping bot that stops answering with no explanation reads as
-broken, so a nap needs a visible tell in the presence and probably a reaction
-rather than pure silence, the same reasoning as `chat.sulkingEmoji`. The open
-question is the clock: a server in one timezone is not a fact the process knows,
-and `TZ` is the operator's, so either the nap hours are the deployment's
-(simple, slightly wrong for a multi-region bot) or they become a per-guild
-setting (correct, and a migration plus a `SETTINGS` entry plus an option on
-`/mod config set`).
-
 ### Gift dropping
 
 Cats bring you things. Once every few hours Mai posts unprompted into one
@@ -111,3 +89,4 @@ turn and not announced into a channel nobody is reading.
 | Hairball on a classifier outage | `chat.hairballDirective`, `ba98c96` |
 | `/mai pet` and the bite | [mai/src/chat/petting.js](mai/src/chat/petting.js), `274d908` |
 | A look at a new name | [mai/src/gateway/renames.js](mai/src/gateway/renames.js) |
+| Cat naps | [mai/src/naps.js](mai/src/naps.js), `NAP_HOURS`. The timezone question was settled process-wide: the presence is a nap's only tell, and that is one status for the whole bot |

@@ -7,6 +7,7 @@
  * itself comes from chat/reply.js.
  */
 import { isSulking } from '../../chat/petting.js';
+import { napping } from '../../naps.js';
 import { generateChatReply, gifEmbeds, rememberExchange } from '../../chat/reply.js';
 import {
   acquireSlot,
@@ -239,6 +240,16 @@ export async function handleMaiChat(message) {
     // Tools read guild facts through the client; the model never gets it.
     client: message.client,
   };
+
+  // Asleep. Before the budget and the limits because it costs nothing to
+  // check and nothing below should run, and with a reaction rather than plain
+  // silence for the same reason as the sulk: a quiet bot is indistinguishable
+  // from a broken one. Moderation is untouched by this and keeps running: see
+  // naps.js.
+  if (napping()) {
+    await reactBusy(message, content.chat.sleepingEmoji);
+    return;
+  }
 
   // Bitten this member recently and still sulking with them. First, because it
   // is the cheapest check here and because the whole point is that she is not

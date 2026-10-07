@@ -18,6 +18,7 @@
  */
 import { config } from './config.js';
 import { logger } from './logger.js';
+import { napping } from './naps.js';
 
 /** Epoch ms the current burst ends at; 0 = not running. */
 let until = 0;
@@ -72,7 +73,12 @@ export function inZoomies(now = Date.now()) {
  */
 export function rollZoomies(now = Date.now()) {
   const { chance, minutes } = config.zoomies;
-  if (chance <= 0 || inZoomies(now) || Math.random() >= chance) return false;
+  // Asleep beats a burst, or the presence would claim both at once and the
+  // nap would be a nap in name only. The roll is simply lost: a cat does get
+  // 3am zoomies, but modelling that needs her to wake up, and a nap with an
+  // exception in it stops being something anybody can predict.
+  if (chance <= 0 || napping(new Date(now)) || inZoomies(now)) return false;
+  if (Math.random() >= chance) return false;
 
   const length = minutes * 60_000;
   until = now + length;

@@ -140,6 +140,8 @@ function loadContent() {
       // Reaction instead of a reply while she is sulking with the member who
       // would not stop petting her: silence on its own reads as a broken bot.
       sulkingEmoji: str(chat, ['chat', 'sulkingEmoji']),
+      // The same, for the hours she spends asleep (NAP_HOURS).
+      sleepingEmoji: str(chat, ['chat', 'sleepingEmoji']),
       flagged: Object.freeze({
         header: str(flagged, ['chat', 'flagged', 'header']),
         footer: str(flagged, ['chat', 'flagged', 'footer']),
@@ -319,6 +321,9 @@ function loadContent() {
         busy: str(ask, ['commands', 'ask', 'busy']),
         empty: str(ask, ['commands', 'ask', 'empty']),
         disabled: str(ask, ['commands', 'ask', 'disabled']),
+        // Answered during her nap hours (NAP_HOURS). One line rather than a
+        // list: a command refused is not a performance.
+        sleeping: str(ask, ['commands', 'ask', 'sleeping']),
         // The question itself was flagged, so Mai will not repeat it.
         refused: str(ask, ['commands', 'ask', 'refused']),
       }),
@@ -563,6 +568,10 @@ function loadContent() {
       // an empty list would leave the status untouched through the one part of
       // a burst anybody outside the channel can see.
       zoomies: Object.freeze(strings(presence, ['presence', 'zoomies'])),
+      // What she rotates through while asleep. Required like the zoomies list:
+      // the status is the one place a nap is visible at all, and a nap nobody
+      // can see is a bot that stopped answering.
+      naps: Object.freeze(strings(presence, ['presence', 'naps'])),
     }),
   });
 }
