@@ -25,11 +25,12 @@ export const ladderFor = (guildId) => effectiveSettings(guildId).timeoutLadder;
 
 /**
  * @param {string} guildId
+ * @param {number} [now] Epoch ms; the real clock unless a caller has its own.
  * @returns {string} ISO cutoff for counting strikes.
  */
-export const strikeWindowStart = (guildId) => {
+export const strikeWindowStart = (guildId, now = Date.now()) => {
   const days = effectiveSettings(guildId).strikeWindowDays;
-  return new Date(Date.now() - days * 86_400_000).toISOString();
+  return new Date(now - days * 86_400_000).toISOString();
 };
 
 /**

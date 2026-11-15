@@ -451,6 +451,14 @@ const BOT_HISS_COOLDOWN_MINUTES = 60;
 // reads, so it needs no environment seam.
 const VET_MINUTES = 30;
 
+// How long after somebody's last strike leaves the strike window she still
+// remembers to say she is over it. Past that, nobody, her included, remembers
+// what it was about, and a line out of nowhere would be stranger than silence.
+// It also bounds the one thing a restart can do here: the memory of having
+// already said it is in memory, so a restart can earn a member the line a
+// second time, but only inside these two weeks.
+const GRUDGE_MEMORY_DAYS = 14;
+
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
 const retired = (name) =>
@@ -748,6 +756,9 @@ export const config = Object.freeze({
   },
   bots: {
     hissCooldownMs: BOT_HISS_COOLDOWN_MINUTES * 60_000,
+  },
+  grudges: {
+    memoryMs: GRUDGE_MEMORY_DAYS * 86_400_000,
   },
   // The hours she spends asleep, on the process clock (`TZ`). Empty = never,
   // which is the default. Process-wide rather than per guild: the one place a

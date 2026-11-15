@@ -116,6 +116,20 @@ chat:
   # läuft die ganze Nacht weiter, nur geredet wird nicht.
   sleepingEmoji: '💤'
 
+  # Einmal gesagt, vor ihrer eigentlichen Antwort: der letzte Strike von
+  # jemandem auf diesem Server ist aus dem Strike-Fenster gefallen, und beim
+  # nächsten Gespräch dort sagt Mai, dass sie drüber weg ist. Wichtig, und der
+  # Grund, warum das feste Sätze sind und nichts, was sich das Modell ausdenkt:
+  # sie fallen in einem öffentlichen Kanal, vor allen anderen. Deshalb sagen
+  # sie NIE, worum es ging: keine Kategorie, keine Zahl, kein Datum, und kein
+  # Wort wie Regel, Strike, Verwarnung, Verstoß oder gelöscht. Höchstens 190
+  # Zeichen pro Satz.
+  letGo:
+    - '*streicht dir einmal um die Beine* Schon gut. Ich bin dir nicht mehr böse.'
+    - '*blinzelt dich langsam an* Weißt du was? Ich hab beschlossen, dass wir wieder gut sind.'
+    - '*schnuppert kurz an dir und schnurrt* Na gut. Vergeben und vergessen.'
+    - '*legt sich demonstrativ neben dich* Ich bin drüber weg. Erwähn es nie wieder.'
+
 moderation:
   # Reaction placed on a flagged message.
   warningEmoji: '😡'

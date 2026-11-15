@@ -61,25 +61,6 @@ activity record and exactly the kind of thing `/metrics` is forbidden from
 labelling by channel; a random eligible channel avoids that question entirely
 and is almost as funny.
 
-### Grudge memory, and letting it go
-
-She already reads the *queue* for her tone, so enforcement makes her friendly
-again immediately. The record is longer: `violations` keeps strikes for
-`VIOLATION_RETENTION_DAYS`. The idea is that when somebody's last strike ages
-out of the window cleanly, the next time they talk to her she says one line
-about it, unprompted, and is done with it.
-
-Seam: `strikeCount(guildId, userId, sinceIso)` and `totalsFor` already exist, so
-nothing new in SQL. Needs a once-only flag per member in memory, or she repeats
-the line every turn.
-
-Constraints: it is the one idea here that has Mai *mention* somebody's record in
-a channel, and a strike is metadata about an enforcement that already happened,
-so the line must say she is over it without saying what it was: no categories,
-no counts, no dates. Careful with the trigger too, because "their last strike
-aged out" is a fact about a clock rather than an event, so it is read on the next
-turn and not announced into a channel nobody is reading.
-
 ## Shipped, so do not propose these again
 
 | Idea | Where it went |
@@ -93,3 +74,4 @@ turn and not announced into a channel nobody is reading.
 | Seasons (the Christmas tree, the fireworks) | [mai/src/seasons.js](mai/src/seasons.js), `seasons:` in the YAML |
 | Hissing at other bots | `maybeHissAtBot` in [mai/src/gateway/events/reactions.js](mai/src/gateway/events/reactions.js), `bots:` in the YAML |
 | Back from the vet after a restart | [mai/src/gateway/presence.js](mai/src/gateway/presence.js), `presence.vet` |
+| Grudge memory, and letting it go | [mai/src/chat/grudges.js](mai/src/chat/grudges.js), `chat.letGo`. The "no categories, no counts, no dates" constraint became fixed lines the model is never told about, scoped to the guild the strikes were in and to two weeks after the window |

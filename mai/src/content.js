@@ -56,6 +56,12 @@ const section = (root, name) => {
 };
 
 /**
+ * Room left for the let-go line in front of a reply that is already at
+ * `MAX_REPLY_CHARS` (1800), plus the line break, under Discord's 2000.
+ */
+const LET_GO_MAX_CHARS = 190;
+
+/**
  * Month lengths in a leap year, because 29 February is a real day to have a
  * season on: in the other three years it simply does not come round.
  */
@@ -253,6 +259,19 @@ function loadContent() {
       sulkingEmoji: str(chat, ['chat', 'sulkingEmoji']),
       // The same, for the hours she spends asleep (NAP_HOURS).
       sleepingEmoji: str(chat, ['chat', 'sleepingEmoji']),
+      // Said once, ahead of her answer, when somebody's last strike in that
+      // server has aged out (chat/grudges.js). Fixed lines rather than a
+      // directive, so the model is never told and cannot say what it was.
+      letGo: Object.freeze(
+        strings(chat, ['chat', 'letGo']).map((line, index) => {
+          // It is put in front of a reply that may already be at the length
+          // cap, and the sum has to stay under Discord's 2000 characters.
+          if (line.length > LET_GO_MAX_CHARS) {
+            fail(`chat.letGo[${index}] must be at most ${LET_GO_MAX_CHARS} characters`);
+          }
+          return line;
+        }),
+      ),
       flagged: Object.freeze({
         header: str(flagged, ['chat', 'flagged', 'header']),
         footer: str(flagged, ['chat', 'flagged', 'footer']),

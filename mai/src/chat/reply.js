@@ -8,10 +8,11 @@
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
 import { config } from '../config.js';
-import { content } from '../content.js';
+import { content, pick } from '../content.js';
 import { appendTurns, recentTurns } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { logger } from '../logger.js';
+import { takeGrudgeRelease } from './grudges.js';
 
 /**
  * @param {{ messageId: string, channelId: string, guildId: string | null, userId: string,
@@ -25,6 +26,11 @@ export async function generateChatReply(input) {
   // Any guild: Mai is one persona, so a strike anywhere makes her mad at that
   // user everywhere, DMs included. Categories are slugs, never content.
   const violations = openViolations(input.userId);
+  // Their last strike in this server has aged out, so she says once that she is
+  // over it. Never while she is hissing at them about something open, and
+  // decided here rather than by the model: the model is never told, so it
+  // cannot say what it was about (see chat/grudges.js).
+  const lettingGo = violations.count === 0 && takeGrudgeRelease(input.guildId, input.userId);
 
   const messages = buildMessages({
     history,
@@ -60,10 +66,15 @@ export async function generateChatReply(input) {
         replyLength: reply.text.length,
         // Metadata: whether one was attached, never which.
         gif: Boolean(reply.gifUrl),
+        lettingGo,
       },
       'Generated chat reply',
     );
-    return reply;
+    if (!lettingGo) return reply;
+
+    // Ahead of her answer, on a line of its own, and stored with it, so the
+    // next turn knows she has already said it.
+    return { ...reply, text: [pick(content.chat.letGo), reply.text].filter(Boolean).join('\n') };
   } catch (error) {
     logger.error({ messageId: input.messageId, err: error }, 'Chat generation failed');
     return null;
