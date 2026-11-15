@@ -61,6 +61,25 @@ const section = (root, name) => {
  */
 const LET_GO_MAX_CHARS = 190;
 
+/** Discord refuses a button label longer than this. */
+const BUTTON_LABEL_MAX_CHARS = 80;
+
+/**
+ * A template that has to carry the score: without both placeholders the line
+ * would report a game without saying how it went.
+ *
+ * @param {object} node
+ * @param {string[]} path
+ * @returns {string}
+ */
+const scoreLine = (node, path) => {
+  const value = str(node, path);
+  for (const placeholder of ['{caught}', '{tries}']) {
+    if (!value.includes(placeholder)) fail(`${path.join('.')} must contain ${placeholder}`);
+  }
+  return value;
+};
+
 /**
  * Month lengths in a leap year, because 29 February is a real day to have a
  * season on: in the other three years it simply does not come round.
@@ -210,6 +229,7 @@ function loadContent() {
   const appealCommand = section(commands, 'appeal');
   const petSection = section(commands, 'pet');
   const moodSection = section(commands, 'mood');
+  const laserSection = section(commands, 'laser');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
   const setupSection = section(commands, 'setup');
@@ -534,6 +554,25 @@ function loadContent() {
         annoyed: Object.freeze(strings(petSection, ['commands', 'pet', 'annoyed'])),
         bite: Object.freeze(strings(petSection, ['commands', 'pet', 'bite'])),
         sulking: Object.freeze(strings(petSection, ['commands', 'pet', 'sulking'])),
+      }),
+      // `/mai laser`: the button, her pounces, and the score. How many moves
+      // one message allows is a cap and lives in config.js.
+      laser: Object.freeze({
+        // Per move: the chance that she lands on the dot.
+        chance: num(laserSection, ['commands', 'laser', 'chance'], { min: 0, max: 1 }),
+        button: (() => {
+          const value = str(laserSection, ['commands', 'laser', 'button']);
+          if (value.length > BUTTON_LABEL_MAX_CHARS) {
+            fail(`commands.laser.button must be at most ${BUTTON_LABEL_MAX_CHARS} characters`);
+          }
+          return value;
+        })(),
+        start: Object.freeze(strings(laserSection, ['commands', 'laser', 'start'])),
+        caught: Object.freeze(strings(laserSection, ['commands', 'laser', 'caught'])),
+        missed: Object.freeze(strings(laserSection, ['commands', 'laser', 'missed'])),
+        score: scoreLine(laserSection, ['commands', 'laser', 'score']),
+        done: scoreLine(laserSection, ['commands', 'laser', 'done']),
+        sleeping: str(laserSection, ['commands', 'laser', 'sleeping']),
       }),
       // `/mai mood`: one list per thing she can be doing, in the same order of
       // precedence as her status, plus the line about her territory. There is

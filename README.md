@@ -68,6 +68,7 @@ for:
 | ask Mai something in public | `/mai ask <frage>` |
 | stroke the cat, at my own risk | `/mai pet` |
 | ask how she is doing | `/mai mood` |
+| give her a laser dot to chase | `/mai laser` |
 | make her forget what I told her | `/mai forget` |
 | appeal a warning whose DM never arrived | `/mai appeal` |
 | report a message to the team | right-click → *Apps* → *Nachricht melden* |

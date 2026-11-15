@@ -404,6 +404,36 @@ commands:
       - '*schaut demonstrativ aus dem Fenster*'
       - '*Schwanzspitze zuckt, sonst nichts*'
 
+  # /mai laser: ein roter Punkt mit einem Knopf darunter. Jeder im Kanal darf
+  # ihn bewegen, und bei jedem Klick springt Mai: mit der Wahrscheinlichkeit
+  # chance landet sie drauf (caught), sonst daneben (missed). Nach einer festen
+  # Zahl von Zügen (src/config.js) verliert sie das Interesse und der Knopf
+  # verschwindet. {caught} = erwischt, {tries} = Züge bisher.
+  laser:
+    # Selten, denn einen Laserpunkt fängt man nun mal nicht.
+    chance: 0.3
+    # Beschriftung des Knopfs, höchstens 80 Zeichen.
+    button: '🔴 Laser bewegen'
+    start:
+      - '*Pupillen werden riesig* Da! Ein roter Punkt! 🔴'
+      - '*duckt sich, der Hintern wackelt* Ich seh ihn. Beweg ihn. Los.'
+      - '*sitzt plötzlich kerzengerade* Was. Ist. DAS. 🔴'
+    caught:
+      - '*springt und landet mit beiden Pfoten drauf* HAB IHN! …wo ist er hin?'
+      - '*Pfote klatscht auf den Boden* Erwischt! Glaub ich. 🐾'
+      - '*schnappt zu* Gefangen. Ich lass ihn gleich wieder frei, ich bin ja großzügig.'
+    missed:
+      - '*schießt los und knallt gegen den Schrank* Das war Absicht.'
+      - '*schlittert über den Boden* Er war schneller als erlaubt.'
+      - '*springt eine Sekunde zu spät* Ich hab ihn nur getestet. 😼'
+      - '*starrt auf die Wand, wo er eben noch war* …'
+    score: '🔴 Erwischt: {caught} von {tries}'
+    # Nach dem letzten Zug, statt der Punktzeile.
+    done: '*legt sich hin und putzt sich* Der Punkt ist langweilig geworden. Endstand: {caught} von {tries}. 😼'
+    # Während der Nickerchen-Stunden (NAP_HOURS), auch für ein Spiel, das
+    # schon läuft: ein Laser ist kein Grund, eine Katze zu wecken.
+    sleeping: '*zusammengerollt, ein Ohr zuckt* 💤 Kein Laser jetzt.'
+
   # /mai mood: wie es ihr gerade geht, öffentlich und kostenlos (kein Modell,
   # keine Datenbank). Eine Zeile dafür, was sie gerade tut, in derselben
   # Rangfolge wie ihr Status: Schlaf, Zoomies, Tierarzt, Jahreszeit (die eigenen

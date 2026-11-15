@@ -8,12 +8,15 @@
  * appeals process, for members whose warning DM never arrived. `pet` is a cat
  * being a cat: costs nothing, calls nothing, and can end in a bite. `mood` is
  * the same price and says how she is doing, minus anything she must not say.
+ * `laser` is a game anybody in the channel can play, carried entirely by its
+ * own button.
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
 import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../chat/limits.js';
 import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
 import { content, fill, pick } from '../content.js';
+import { laserId, moveDot, parseScore } from '../chat/laser.js';
 import { describeMood } from '../chat/mood.js';
 import { isSulking, pet } from '../chat/petting.js';
 import { territoryFor } from '../chat/territory.js';
@@ -174,6 +177,95 @@ function mood(interaction) {
 }
 
 /**
+ * The one button under a laser game, carrying the score so far.
+ *
+ * @param {{ caught: number, tries: number }} score
+ * @returns {object[]}
+ */
+const laserButton = (score) => [
+  {
+    type: ACTION_ROW,
+    components: [
+      {
+        type: BUTTON,
+        style: STYLE_SECONDARY,
+        label: content.commands.laser.button,
+        custom_id: laserId(score),
+      },
+    ],
+  },
+];
+
+/**
+ * `/mai laser`: puts the red dot down. Public, because a cat chasing a laser is
+ * a spectator sport, and synchronous like `/mai pet`.
+ *
+ * @param {object} interaction
+ */
+function laser(interaction) {
+  const user = actor(interaction);
+  const lines = content.commands.laser;
+
+  // Asleep, and a laser is not a reason to wake a cat: a nap with an exception
+  // in it is not something anybody can predict.
+  if (napping()) return messageResponse(lines.sleeping);
+  if (isSulking(user.id)) return messageResponse(pick(content.commands.pet.sulking));
+
+  logger.info({ userId: user.id, guildId: interaction.guild_id ?? null }, 'Mai spotted a laser dot');
+  return messageResponse(pick(lines.start), {
+    components: laserButton({ caught: 0, tries: 0 }),
+  });
+}
+
+/**
+ * The button under a laser game. Registered in interactions/registry.js.
+ *
+ * Anybody may move the dot: it is a game for the channel, not for whoever
+ * started it. The score in the custom_id is checked for shape and cap (see
+ * chat/laser.js) and trusted for nothing else.
+ */
+export const laserComponents = {
+  laser(interaction, args) {
+    const score = parseScore(args);
+    if (!score) return ephemeralResponse(content.commands.expired);
+
+    const user = actor(interaction);
+    const lines = content.commands.laser;
+    const tally = (value) => fill(lines.score, value);
+
+    // She fell asleep in the middle of it: the game ends for everybody, with
+    // the score it had.
+    if (napping()) {
+      return updateResponse(
+        [lines.sleeping, ...(score.tries > 0 ? [tally(score)] : [])].join('\n'),
+      );
+    }
+    // A member she is sulking with gets the sulk, privately, and the game
+    // stays exactly where it was for everybody else.
+    if (isSulking(user.id)) return ephemeralResponse(pick(content.commands.pet.sulking));
+
+    const next = moveDot(score);
+    const line = pick(next.hit ? lines.caught : lines.missed);
+
+    if (next.over) {
+      logger.info(
+        {
+          userId: user.id,
+          guildId: interaction.guild_id ?? null,
+          caught: next.caught,
+          tries: next.tries,
+        },
+        'Mai lost interest in the laser',
+      );
+      // No components: the button goes, and so does any way to edit this again.
+      return updateResponse(`${line}\n${fill(lines.done, next)}`);
+    }
+
+    return updateResponse(`${line}\n${tally(next)}`, { components: laserButton(next) });
+  },
+};
+
+/**
  * `/mai appeal`: the way in for a member whose warning DM never arrived.
  *
  * The normal route is the button under that DM. A member with DMs closed for
@@ -305,6 +397,11 @@ export const mai = {
         type: 1, // SUB_COMMAND
       },
       {
+        name: 'laser',
+        description: 'Lass Mai einen roten Punkt jagen',
+        type: 1, // SUB_COMMAND
+      },
+      {
         name: 'forget',
         description: 'Lösche, was Mai sich von dir gemerkt hat',
         type: 1, // SUB_COMMAND
@@ -317,8 +414,9 @@ export const mai = {
     ],
   },
 
-  // `ask` waits for the model; `pet`, `mood`, `forget` and `appeal` answer
-  // instantly, and `appeal` answers with a modal, which cannot be deferred at all.
+  // `ask` waits for the model; `pet`, `mood`, `laser`, `forget` and `appeal`
+  // answer instantly, and `appeal` answers with a modal, which cannot be
+  // deferred at all.
   deferred: (interaction) => resolveSubcommand(interaction).name === 'ask',
   ephemeral: false,
 
@@ -330,6 +428,7 @@ export const mai = {
     const { name } = resolveSubcommand(interaction);
     if (name === 'pet') return petMai(interaction);
     if (name === 'mood') return mood(interaction);
+    if (name === 'laser') return laser(interaction);
     if (name === 'forget') return forget(interaction);
     if (name === 'appeal') return appeal(interaction);
     return ask(interaction);

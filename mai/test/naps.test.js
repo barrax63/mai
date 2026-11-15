@@ -17,8 +17,8 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { ActivityType } from 'discord.js';
 import { config } from '../src/config.js';
-import { content } from '../src/content.js';
-import { mai as maiCommand } from '../src/commands/mai.js';
+import { content, fill } from '../src/content.js';
+import { laserComponents, mai as maiCommand } from '../src/commands/mai.js';
 import { depth, findRow } from '../src/db/queue.js';
 import { getDb } from '../src/db/index.js';
 import { onMessageCreate } from '../src/gateway/events/message-create.js';
@@ -177,6 +177,28 @@ test('/mai mood while she is asleep is a sleeping line and nothing else', () => 
   // Not the vet, although this process is fresh: asleep is what she is doing.
   assert.ok(content.commands.mood.sleeping.includes(response.data.content), response.data.content);
   assert.equal(calls.chat + calls.moderation, 0);
+});
+
+test('a laser is not a reason to wake a cat, and a game in progress ends with its score', () => {
+  const member = { user: { id: TEST_USER, username: 'tester' }, permissions: '0' };
+  const started = maiCommand.execute({
+    id: 'interaction-nap-laser',
+    guild_id: TEST_GUILD,
+    member,
+    data: { name: 'mai', options: [{ name: 'laser', type: 1 }] },
+  });
+  assert.equal(started.data.content, content.commands.laser.sleeping);
+  assert.equal(started.data.components, undefined, 'no game to play');
+
+  const clicked = laserComponents.laser(
+    { guild_id: TEST_GUILD, member, data: { custom_id: 'laser:2:5' } },
+    ['2', '5'],
+  );
+  assert.equal(
+    clicked.data.content,
+    `${content.commands.laser.sleeping}\n${fill(content.commands.laser.score, { caught: 2, tries: 5 })}`,
+  );
+  assert.deepEqual(clicked.data.components, [], 'and nobody can wake her with it');
 });
 
 test('the presence says she is asleep, which is the only tell there is', () => {

@@ -443,6 +443,14 @@ const RENAME_LOOK_MINUTES = 30;
 // hour, which would turn a feud into a reflex.
 const BOT_HISS_COOLDOWN_MINUTES = 60;
 
+// How many times the dot can be moved under one `/mai laser` message before she
+// loses interest. Every click edits that same message, so this is the cap that
+// keeps a fast clicker from turning one game into an edit storm, and it travels
+// with the message (the move count is in the button's custom_id) rather than
+// living in memory. The chance that she catches it is persona and lives in the
+// content config.
+const LASER_MAX_MOVES = 10;
+
 // How long she is back from the vet after a restart: the stretch at the start
 // of a process during which her status says so. Long enough that somebody
 // glancing at the member list after a deploy sees it, short enough that a
@@ -763,6 +771,9 @@ export const config = Object.freeze({
   },
   bots: {
     hissCooldownMs: BOT_HISS_COOLDOWN_MINUTES * 60_000,
+  },
+  laser: {
+    maxMoves: LASER_MAX_MOVES,
   },
   grudges: {
     memoryMs: GRUDGE_MEMORY_DAYS * 86_400_000,

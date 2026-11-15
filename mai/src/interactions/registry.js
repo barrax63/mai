@@ -9,7 +9,7 @@
  *
  * To add one: export a handler map from the feature module and list it below.
  */
-import { forgetComponents } from '../commands/mai.js';
+import { forgetComponents, laserComponents } from '../commands/mai.js';
 import { setupComponents } from '../commands/mod.js';
 import { reportComponents, reportModals } from '../commands/report.js';
 import {
@@ -23,6 +23,7 @@ import {
 export const componentHandlers = new Map(
   Object.entries({
     ...forgetComponents,
+    ...laserComponents,
     ...setupComponents,
     ...reportComponents,
     ...appealButtons,

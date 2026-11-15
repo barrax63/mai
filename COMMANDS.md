@@ -92,7 +92,26 @@ you" must not explain it either), whether you have an open violation, or
 anything from your record. The lines are `commands.mood` in the YAML, plus a
 `mood` list per season.
 
-### `/mai forget`
+### `/mai laser`
+
+Puts a red dot down for Mai to chase. Ephemeral: no, because a cat chasing a
+laser is a spectator sport. One button under it, *🔴 Laser bewegen*, and
+**anybody** in the channel may press it: every press moves the dot and she
+pounces, landing on it at `commands.laser.chance` (30% as shipped) and missing
+otherwise. The message keeps a running score.
+
+After ten moves she loses interest, posts the final score and the button is
+gone. That cap is the point of the number: every press edits the same message,
+and a game has to end before it becomes an edit storm. The score lives in the
+button itself, so there is nothing to store and nothing to clean up; an id no
+button of hers could have carried is refused, so a modified client cannot keep
+a game going past the cap.
+
+Asleep (`NAP_HOURS`) she does not play, and a game she falls asleep in ends
+there with its score. A member she is sulking with gets the sulk, privately,
+and the game stays as it was for everybody else. Free like `/mai pet`, and
+nothing about it reaches moderation.
+
 
 Wipes what Mai remembers about you, behind a *Ja, vergiss alles* / *Abbrechen*
 confirmation. Ephemeral.
@@ -363,6 +382,7 @@ handler checks the clicker's own id or permissions.
 |---|---|---|
 | *Erst mal nur beobachten* / *Standard* / *Streng* | Under Mai's introduction, once per server | Staff |
 | *Ja, vergiss alles* / *Abbrechen* | Under `/mai forget` | The member who ran it |
+| *🔴 Laser bewegen* | Under `/mai laser`, until the game is over | Anybody |
 | *Löschen* / *Verwerfen* | Under a report in the log channel | Staff |
 | *Einspruch einlegen* | Under a warning DM, when the server has a log channel | The warned member |
 | *Stattgeben* / *Ablehnen* | Under an appeal in the log channel | Staff |
