@@ -76,14 +76,16 @@ never a way to make her stop deleting anything. The numbers are values in
 
 ### `/mai mood`
 
-Asks Mai how she is. Ephemeral: no, like `/mai pet`, and free for the same
-reasons: no model call, no database, no Discord round trip, and it answers
-whether or not chat is switched on.
+Asks Mai how she is. Ephemeral: no, like `/mai pet`, and nearly as free: no
+model call and no Discord round trip (the one thing it reads is the server's
+own settings row, for the day she moved in), and it answers whether or not
+chat is switched on.
 
 One line for what she is doing, in the same order as her status: asleep, the
 zoomies, just back from the vet, the season's own lines, or an ordinary day.
-In a server where she has claimed a channel for the day, a second line says
-which one (or that you are standing in it). If she is sulking with you after a
+On the anniversary of the day she moved into the server (her gotcha day) a
+line says so. In a server where she has claimed a channel for the day, a line
+says which one (or that you are standing in it). If she is sulking with you after a
 bite, you get the sulk and nothing else.
 
 What it never says, on purpose: whether her classifier is failing in this

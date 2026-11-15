@@ -83,6 +83,21 @@ const prefixLines = (node, path) =>
     }),
   );
 
+/**
+ * A string that has to carry one placeholder, or it would say something
+ * without saying what (which channel, how many years).
+ *
+ * @param {object} node
+ * @param {string[]} path
+ * @param {string} placeholder
+ * @returns {string}
+ */
+const withPlaceholder = (node, path, placeholder) => {
+  const value = str(node, path);
+  if (!value.includes(placeholder)) fail(`${path.join('.')} must contain ${placeholder}`);
+  return value;
+};
+
 /** Discord refuses a button label longer than this. */
 const BUTTON_LABEL_MAX_CHARS = 80;
 
@@ -309,6 +324,9 @@ function loadContent() {
       sulkingEmoji: str(chat, ['chat', 'sulkingEmoji']),
       // The same, for the hours she spends asleep (NAP_HOURS).
       sleepingEmoji: str(chat, ['chat', 'sleepingEmoji']),
+      // The anniversary of the day she moved into a server (chat/gotcha.js),
+      // added to the tone in force like a season.
+      gotchaDay: withPlaceholder(chat, ['chat', 'gotchaDay'], '{years}'),
       // The channel she has claimed for the day (chat/territory.js): one
       // directive for talking in it, one for everywhere else in the server.
       territory: Object.freeze({
@@ -617,6 +635,8 @@ function loadContent() {
         zoomies: Object.freeze(strings(moodSection, ['commands', 'mood', 'zoomies'])),
         vet: Object.freeze(strings(moodSection, ['commands', 'mood', 'vet'])),
         sleeping: Object.freeze(strings(moodSection, ['commands', 'mood', 'sleeping'])),
+        // Said in a server on the anniversary of the day she moved in.
+        gotchaDay: withPlaceholder(moodSection, ['commands', 'mood', 'gotchaDay'], '{years}'),
         territoryHere: str(moodSection, ['commands', 'mood', 'territoryHere']),
         territoryElsewhere: (() => {
           const value = str(moodSection, ['commands', 'mood', 'territoryElsewhere']);

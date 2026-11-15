@@ -61,3 +61,4 @@ default.
 | `/mai mood` | [mai/src/chat/mood.js](mai/src/chat/mood.js), `commands.mood`. It never reads the hairball, open violations or the strike record, and a test holds it to that |
 | Laser pointer | `/mai laser`, [mai/src/chat/laser.js](mai/src/chat/laser.js), `commands.laser`. The score rides in the button's custom_id, and a game ends after ten moves so one message cannot become an edit storm |
 | Walking across the keyboard | `walkAcrossTheKeyboard` in [mai/src/chat/reply.js](mai/src/chat/reply.js), `chat.keyboard`. Chat only, in front of a reply and never instead of one, never next to the let-go line, and kept out of her memory so the model does not learn it |
+| Gotcha day | [mai/src/chat/gotcha.js](mai/src/chat/gotcha.js), `chat.gotchaDay`. Read off `onboarded_at`, so no migration, and a server she joined before introductions existed has no gotcha day |

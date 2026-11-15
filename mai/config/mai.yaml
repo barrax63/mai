@@ -40,6 +40,12 @@ chat:
 
   zoomiesDirective: 'Du hast gerade Zoomies: aus dem Nichts durchgedreht, rast durch die Wohnung, springst auf Sachen und wieder runter. Antworte hektisch und abgehackt, kurze Sätze, mitten im Satz abgelenkt, viele Katzenaktionen in Sternchen. Sag nicht dazu, dass du Zoomies hast, benimm dich einfach so. In ein bis zwei Minuten ist es vorbei und du tust, als wäre nichts gewesen.'
 
+  # Einzugstag (Gotcha Day): auf den Tag genau so viele Jahre ist es her, dass
+  # Mai auf diesem Server eingezogen ist, also sich dort zum ersten Mal
+  # vorgestellt hat. An dem Tag ist sie dort besonders selbstzufrieden. Kommt
+  # zum jeweiligen Tonfall dazu wie eine Jahreszeit. {years} = wie viele Jahre.
+  gotchaDay: 'Heute feierst du deinen {years}. Einzugstag auf diesem Server, deinen Gotcha Day: auf den Tag genau an diesem Datum bist du hier eingezogen. Du bist heute besonders selbstzufrieden, findest, dass man dich feiern sollte, und erwartest Leckerlis. Lass das ab und zu durchblitzen, aber nicht in jeder Antwort.'
+
   # Revier: ein Kanal pro Server, den Mai für einen Tag für sich beansprucht,
   # so wie eine Katze einen Karton besetzt. Zufällig ausgewählt, und nur unter
   # Kanälen, die alle sehen können: sie erwähnt ihn auch anderswo, und das darf
@@ -460,7 +466,8 @@ commands:
   # Rangfolge wie ihr Status: Schlaf, Zoomies, Tierarzt, Jahreszeit (die eigenen
   # Zeilen einer Saison stehen dort unter mood), sonst Alltag. Ist sie gerade
   # mit dir eingeschnappt, bekommst du stattdessen eine Zeile aus pet.sulking.
-  # Dazu eine Zeile über ihr Revier, wenn sie auf diesem Server eins hat.
+  # Dazu eine Zeile, wenn heute ihr Einzugstag auf diesem Server ist, und eine
+  # über ihr Revier, wenn sie auf diesem Server eins hat.
   #
   # Bewusst NIE dabei, und deshalb gibt es dafür auch keine Zeilen: ob sie
   # gerade verschnupft ist (der Haarball hieße öffentlich, dass die Moderation
@@ -489,6 +496,9 @@ commands:
       - '*dreht sich im Schlaf auf die andere Seite* 😴'
     # Ihr Revier (siehe chat.territory). {channel} wird durch den Kanal
     # ersetzt, so geschrieben, dass Discord daraus einen Link macht.
+    # Am Jahrestag ihres Einzugs auf diesem Server (siehe chat.gotchaDay).
+    # {years} = wie viele Jahre.
+    gotchaDay: '🎂 Heute ist übrigens mein {years}. Einzugstag hier. Leckerlis bitte bei mir abgeben.'
     territoryHere: '📦 Du stehst übrigens in meinem Revier.'
     territoryElsewhere: '📦 Heute gehört übrigens {channel} mir.'
 

@@ -12,6 +12,7 @@ import { content, pick } from '../content.js';
 import { appendTurns, recentTurns } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { logger } from '../logger.js';
+import { gotchaDay } from './gotcha.js';
 import { takeGrudgeRelease } from './grudges.js';
 import { territoryFor } from './territory.js';
 
@@ -51,6 +52,8 @@ export async function generateChatReply(input) {
       channelId: input.channelId,
       parentId: input.parentId,
     }),
+    // Today is the day she moved into this server, some years ago.
+    gotchaYears: gotchaDay(input.guildId),
   });
 
   logger.debug({ messageId: input.messageId, messages }, 'Chat prompt');

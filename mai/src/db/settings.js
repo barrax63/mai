@@ -658,6 +658,18 @@ export function wasOnboarded(guildId) {
 }
 
 /**
+ * When Mai introduced herself here, which is the day she moved in: read by the
+ * gotcha day (chat/gotcha.js). Null for a server she was already in before
+ * introductions existed, or that has never been allowlisted when she joined.
+ *
+ * @param {string | null | undefined} guildId
+ * @returns {string | null} ISO timestamp.
+ */
+export function onboardedAt(guildId) {
+  return (guildId ? rawSettings(guildId)?.onboarded_at : null) ?? null;
+}
+
+/**
  * @param {string} guildId
  * @param {Date} [now]
  */

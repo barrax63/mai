@@ -16,6 +16,7 @@ import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../cha
 import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
 import { content, fill, pick } from '../content.js';
+import { gotchaDay } from '../chat/gotcha.js';
 import { laserId, moveDot, parseScore } from '../chat/laser.js';
 import { describeMood } from '../chat/mood.js';
 import { isSulking, pet } from '../chat/petting.js';
@@ -103,6 +104,8 @@ async function ask(interaction) {
         channelId: interaction.channel_id ?? null,
         parentId: interaction.channel?.parent_id ?? null,
       }),
+      // And the same anniversary.
+      gotchaYears: gotchaDay(interaction.guild_id),
     });
 
     const reply = await generateReply(messages, {

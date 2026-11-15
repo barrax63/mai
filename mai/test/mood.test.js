@@ -142,6 +142,7 @@ test('nothing she could say about it is even in the file', () => {
     ...lines.zoomies,
     ...lines.vet,
     ...lines.sleeping,
+    lines.gotchaDay,
     lines.territoryHere,
     lines.territoryElsewhere,
     ...content.seasons.flatMap((entry) => entry.mood ?? []),

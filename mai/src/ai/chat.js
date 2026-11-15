@@ -132,7 +132,9 @@ function renderCurrentTurn(turn) {
  *   replyTo?: { username: string, content: string } | null,
  *   threadTitle?: string | null,
  *   images?: string[], guildId?: string | null,
- *   territory?: { channelId: string, here: boolean } | null }} input
+ *   territory?: { channelId: string, here: boolean } | null,
+ *   gotchaYears?: number }} input `gotchaYears` is how many years ago today she
+ *   moved into this server, 0 on every other day (chat/gotcha.js).
  * @returns {object[]} Chat-completions messages, system first.
  */
 export function buildMessages({
@@ -145,6 +147,7 @@ export function buildMessages({
   images = [],
   guildId = null,
   territory = null,
+  gotchaYears = 0,
 }) {
   const directive = violations.count > 0
     ? moderationDirective(violations)
@@ -158,6 +161,9 @@ export function buildMessages({
   // backdrop, so it comes before anything that is happening to her right now.
   const today = season();
   if (today) mood.push(today.directive);
+  // The anniversary of the day she moved into this server: a backdrop like
+  // the season, but this server's own.
+  if (gotchaYears > 0) mood.push(fill(content.chat.gotchaDay, { years: gotchaYears }));
   // The channel she has claimed in this server (chat/territory.js). A tone
   // and never a restriction: smug in it, and allowed to mention it elsewhere.
   // Elsewhere she gets the channel as a mention, digits only, which Discord
