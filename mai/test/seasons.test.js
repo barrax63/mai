@@ -18,6 +18,7 @@ import test from 'node:test';
 import { ActivityType } from 'discord.js';
 import { parse } from 'yaml';
 import { buildMessages } from '../src/ai/chat.js';
+import { describeMood } from '../src/chat/mood.js';
 import { compileSeasons, content } from '../src/content.js';
 import { depth, findRow } from '../src/db/queue.js';
 import { getDb } from '../src/db/index.js';
@@ -204,6 +205,17 @@ test('a burst beats the season in the status, and the season comes back after it
   assert.ok(TODAY_SEASON.statuses.includes(after), after);
 });
 
+test('/mai mood answers with the lines the season brings', () => {
+  const realUptime = process.uptime;
+  // An hour old, or a fresh test process is back from the vet first.
+  process.uptime = () => 3600;
+  try {
+    assert.ok(TODAY_SEASON.mood.includes(describeMood({ userId: TEST_USER })));
+  } finally {
+    process.uptime = realUptime;
+  }
+});
+
 test('the shipped calendar compiles', () => {
   const shipped = parse(readFileSync(new URL('../config/mai.yaml', import.meta.url), 'utf8'));
   const seasons = compileSeasons(shipped.seasons);
@@ -213,6 +225,8 @@ test('the shipped calendar compiles', () => {
   // put the Christmas tree into every single reply for three weeks.
   for (const entry of seasons) {
     assert.ok(entry.directive.includes('nicht in jeder Antwort'), entry.name);
+    // Optional in general, but the shipped ones all say how the season feels.
+    assert.ok(entry.mood?.length > 0, `${entry.name} has /mai mood lines`);
   }
 });
 
@@ -303,6 +317,12 @@ test('no seasons at all is a valid year; a malformed list is a typo', () => {
     /statuses/,
   );
   assert.equal(only('01-01', '01-02')[0].statuses, null);
+  // The same for its /mai mood lines: absent means the everyday ones.
+  assert.throws(
+    () => compileSeasons([{ name: 'leer', from: '01-01', to: '01-02', directive: 'x', mood: [] }]),
+    /mood/,
+  );
+  assert.equal(only('01-01', '01-02')[0].mood, null);
 });
 
 test('the edge timer flips at midnight, re-arms itself and keeps nobody alive', () => {

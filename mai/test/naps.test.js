@@ -156,6 +156,29 @@ test('/mai ask is answered in one line, not with a model call', async () => {
   assert.equal(calls.moderation, 0);
 });
 
+test('/mai mood while she is asleep is a sleeping line and nothing else', () => {
+  const moody = {
+    id: 'interaction-nap-mood',
+    application_id: 'app-1',
+    token: 'interaction-token',
+    guild_id: TEST_GUILD,
+    member: { user: { id: TEST_USER, username: 'tester' }, permissions: '0' },
+    data: { name: 'mai', options: [{ name: 'mood', type: 1 }] },
+  };
+  const { calls, restore } = stubApi();
+
+  let response;
+  try {
+    response = maiCommand.execute(moody);
+  } finally {
+    restore();
+  }
+
+  // Not the vet, although this process is fresh: asleep is what she is doing.
+  assert.ok(content.commands.mood.sleeping.includes(response.data.content), response.data.content);
+  assert.equal(calls.chat + calls.moderation, 0);
+});
+
 test('the presence says she is asleep, which is the only tell there is', () => {
   const presences = [];
   const realSetInterval = globalThis.setInterval;

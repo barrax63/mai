@@ -125,7 +125,7 @@ export function seasonCovers(season, day) {
  *
  * @param {unknown} raw
  * @returns {readonly { name: string, from: number, to: number, directive: string,
- *   statuses: readonly string[] | null }[]}
+ *   statuses: readonly string[] | null, mood: readonly string[] | null }[]}
  */
 export function compileSeasons(raw) {
   if (raw === undefined || raw === null) return Object.freeze([]);
@@ -151,6 +151,11 @@ export function compileSeasons(raw) {
       statuses: entry.statuses === undefined
         ? null
         : Object.freeze(strings(entry, [...path, 'statuses'])),
+      // Optional the same way: what `/mai mood` answers while it lasts. A
+      // season without its own lines answers with the everyday ones.
+      mood: entry.mood === undefined
+        ? null
+        : Object.freeze(strings(entry, [...path, 'mood'])),
     });
   });
 
@@ -204,6 +209,7 @@ function loadContent() {
   const ask = section(commands, 'ask');
   const appealCommand = section(commands, 'appeal');
   const petSection = section(commands, 'pet');
+  const moodSection = section(commands, 'mood');
   const forget = section(commands, 'forget');
   const status = section(commands, 'status');
   const setupSection = section(commands, 'setup');
@@ -528,6 +534,25 @@ function loadContent() {
         annoyed: Object.freeze(strings(petSection, ['commands', 'pet', 'annoyed'])),
         bite: Object.freeze(strings(petSection, ['commands', 'pet', 'bite'])),
         sulking: Object.freeze(strings(petSection, ['commands', 'pet', 'sulking'])),
+      }),
+      // `/mai mood`: one list per thing she can be doing, in the same order of
+      // precedence as her status, plus the line about her territory. There is
+      // deliberately no list for being under the weather: see chat/mood.js.
+      mood: Object.freeze({
+        everyday: Object.freeze(strings(moodSection, ['commands', 'mood', 'everyday'])),
+        zoomies: Object.freeze(strings(moodSection, ['commands', 'mood', 'zoomies'])),
+        vet: Object.freeze(strings(moodSection, ['commands', 'mood', 'vet'])),
+        sleeping: Object.freeze(strings(moodSection, ['commands', 'mood', 'sleeping'])),
+        territoryHere: str(moodSection, ['commands', 'mood', 'territoryHere']),
+        territoryElsewhere: (() => {
+          const value = str(moodSection, ['commands', 'mood', 'territoryElsewhere']);
+          // Same rule as chat.territory.elsewhere: a claim without the channel
+          // in it says she owns something and not what.
+          if (!value.includes('{channel}')) {
+            fail('commands.mood.territoryElsewhere must contain {channel}');
+          }
+          return value;
+        })(),
       }),
       appeal: Object.freeze({
         guildOnly: str(appealCommand, ['commands', 'appeal', 'guildOnly']),

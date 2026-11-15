@@ -404,6 +404,43 @@ commands:
       - '*schaut demonstrativ aus dem Fenster*'
       - '*Schwanzspitze zuckt, sonst nichts*'
 
+  # /mai mood: wie es ihr gerade geht, öffentlich und kostenlos (kein Modell,
+  # keine Datenbank). Eine Zeile dafür, was sie gerade tut, in derselben
+  # Rangfolge wie ihr Status: Schlaf, Zoomies, Tierarzt, Jahreszeit (die eigenen
+  # Zeilen einer Saison stehen dort unter mood), sonst Alltag. Ist sie gerade
+  # mit dir eingeschnappt, bekommst du stattdessen eine Zeile aus pet.sulking.
+  # Dazu eine Zeile über ihr Revier, wenn sie auf diesem Server eins hat.
+  #
+  # Bewusst NIE dabei, und deshalb gibt es dafür auch keine Zeilen: ob sie
+  # gerade verschnupft ist (der Haarball hieße öffentlich, dass die Moderation
+  # hakt), ob sie wegen eines Verstoßes sauer auf dich ist, und alles aus
+  # deinem Verlauf. Keine dieser Zeilen darf so etwas andeuten.
+  mood:
+    everyday:
+      - '*streckt sich ausgiebig* Prächtig. Wie immer. 😺'
+      - '*blinzelt dich träge an* Zufrieden. Stör mich nicht dabei.'
+      - '*putzt sich die Pfote* Bestens, danke der Nachfrage. 🐾'
+      - '*liegt in der Sonne* Ich bin genau da, wo ich sein will. ☀️'
+      - '*Schwanzspitze zuckt* Gelangweilt. Unterhalt mich. 🧶'
+    zoomies:
+      - '*rast an dir vorbei* KEINE ZEIT! 💨'
+      - '*springt aufs Regal und wieder runter* Mir geht es UNGLAUBLICH gut!!'
+      - '*schlittert um die Ecke* Frag später, ich hab zu tun. 🌀'
+    vet:
+      - '*beleidigt* Ich war beim Tierarzt. Frag nicht. 😾'
+      - '*leckt demonstrativ an ihrem Pflaster* Man hat mich gepikst. Ich verzeihe nichts. 🩹'
+      - '*sitzt mit dem Rücken zur Transportbox* Schlecht. Danke der Nachfrage.'
+    # Während der Nickerchen-Stunden (NAP_HOURS): sie schläft, mehr gibt es
+    # nicht zu sagen, auch nicht über ihr Revier.
+    sleeping:
+      - '*zusammengerollt, ein Ohr zuckt* 💤'
+      - '*schnarcht leise* 💤'
+      - '*dreht sich im Schlaf auf die andere Seite* 😴'
+    # Ihr Revier (siehe chat.territory). {channel} wird durch den Kanal
+    # ersetzt, so geschrieben, dass Discord daraus einen Link macht.
+    territoryHere: '📦 Du stehst übrigens in meinem Revier.'
+    territoryElsewhere: '📦 Heute gehört übrigens {channel} mir.'
+
   # /mai appeal: der zweite Weg in den Einspruch, für Mitglieder, deren
   # Verwarnungs-DM nicht ankam (DMs zu). Der Button unter der DM ist der erste.
   appeal:
@@ -811,9 +848,10 @@ presence:
 
 # Jahreszeiten: Tage im Jahr, an denen Mai eine etwas andere Katze ist. Jede
 # Saison bringt einen Satz für ihre Laune mit, der zum jeweiligen Tonfall dazu
-# kommt und ihn nie ersetzt (wie die Zoomies), und optional eigene
-# Status-Zeilen, die so lange statt der normalen rotieren. Schlaf und Zoomies
-# gehen im Status vor. Moderation bekommt von all dem nichts mit.
+# kommt und ihn nie ersetzt (wie die Zoomies), optional eigene Status-Zeilen,
+# die so lange statt der normalen rotieren, und optional eigene Antworten auf
+# /mai mood (mood). Schlaf und Zoomies gehen im Status vor. Moderation bekommt
+# von all dem nichts mit.
 #
 # from und to sind Kalendertage als "MM-TT", beide zählen mit, nach der Uhr des
 # Containers (TZ). Eine Saison darf über Neujahr gehen (from '12-31', to
@@ -833,6 +871,9 @@ seasons:
       - '🐦 schnattert die Vögel am Fenster an'
       - '🌸 haart wie verrückt'
       - '☀️ hat den ersten Sonnenplatz des Jahres'
+    mood:
+      - '*schnattert die Vögel am Fenster an* Frühling! Ich bin ganz kribbelig. 🐦'
+      - '*haart dir aufs Hosenbein* Mein Winterfell muss raus. Überall hin. 🌸'
 
   - name: hitze
     from: '07-15'
@@ -842,6 +883,9 @@ seasons:
       - '🥵 liegt platt auf den Fliesen'
       - '🧊 bewacht den Ventilator'
       - '☀️ zu heiß zum Schnurren'
+    mood:
+      - '*liegt platt auf den Fliesen* Zu heiß. Zu heiß zum Reden. 🥵'
+      - '*bewegt nur ein Ohr* Frag mich, wenn es kühler ist. 🧊'
 
   - name: halloween
     from: '10-24'
@@ -852,6 +896,9 @@ seasons:
       - '👻 faucht ins Leere'
       - '🕸️ jagt Deko-Spinnen'
       - '🌕 starrt in den Vollmond'
+    mood:
+      - '*starrt in eine leere Ecke* Da ist was. Du siehst es nur nicht. 👻'
+      - '*faucht ins Nichts* Geheimnisvoll. Und ein bisschen unheimlich. 🎃'
 
   - name: weihnachten
     from: '12-01'
@@ -863,6 +910,9 @@ seasons:
       - '🔴 hat eine Christbaumkugel runtergeworfen'
       - '🧦 schläft im Nikolausstiefel'
       - '📦 wohnt jetzt im Paketkarton'
+    mood:
+      - '*sitzt oben im Weihnachtsbaum* Ausgezeichnet. Der Baum gehört jetzt mir. 🎄'
+      - '*schiebt eine Kugel über die Kante* Festlich. 🔴'
 
   - name: silvester
     from: '12-31'
@@ -872,3 +922,6 @@ seasons:
       - '🎆 sitzt unterm Bett, bis das vorbei ist'
       - '😾 hasst Böller'
       - '🛏️ unterm Bett, bitte nicht ansprechen'
+    mood:
+      - '*unterm Bett* Ich komm erst raus, wenn das Geknalle vorbei ist. 🎆'
+      - '*zuckt bei jedem Knall zusammen* Frag nicht. Ich hasse Böller. 😾'

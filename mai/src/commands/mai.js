@@ -6,13 +6,15 @@
  * self-service side of the privacy policy: it wipes what Mai remembers about the
  * caller, behind a confirmation button. `appeal` is the second door into the
  * appeals process, for members whose warning DM never arrived. `pet` is a cat
- * being a cat: costs nothing, calls nothing, and can end in a bite.
+ * being a cat: costs nothing, calls nothing, and can end in a bite. `mood` is
+ * the same price and says how she is doing, minus anything she must not say.
  */
 import { buildMessages, generateReply } from '../ai/chat.js';
 import { acquireSlot, consumeRateLimit, releaseSlot, withinBudget } from '../chat/limits.js';
 import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
 import { content, fill, pick } from '../content.js';
+import { describeMood } from '../chat/mood.js';
 import { isSulking, pet } from '../chat/petting.js';
 import { territoryFor } from '../chat/territory.js';
 import { napping } from '../naps.js';
@@ -148,6 +150,30 @@ function petMai(interaction) {
 }
 
 /**
+ * `/mai mood`: how she is doing.
+ *
+ * Synchronous and free like `/mai pet`, and public for the same reason: it is
+ * a cat being asked how she is in front of everybody. What it may and may not
+ * say is decided in chat/mood.js.
+ *
+ * @param {object} interaction
+ */
+function mood(interaction) {
+  const user = actor(interaction);
+  const answer = describeMood({
+    userId: user.id,
+    guildId: interaction.guild_id ?? null,
+    channelId: interaction.channel_id ?? null,
+    parentId: interaction.channel?.parent_id ?? null,
+    client: getGatewayClient(),
+  });
+
+  logger.info({ userId: user.id, guildId: interaction.guild_id ?? null }, 'Asked Mai how she is');
+
+  return messageResponse(answer);
+}
+
+/**
  * `/mai appeal`: the way in for a member whose warning DM never arrived.
  *
  * The normal route is the button under that DM. A member with DMs closed for
@@ -274,6 +300,11 @@ export const mai = {
         type: 1, // SUB_COMMAND
       },
       {
+        name: 'mood',
+        description: 'Frag Mai, wie es ihr geht',
+        type: 1, // SUB_COMMAND
+      },
+      {
         name: 'forget',
         description: 'Lösche, was Mai sich von dir gemerkt hat',
         type: 1, // SUB_COMMAND
@@ -286,8 +317,8 @@ export const mai = {
     ],
   },
 
-  // `ask` waits for the model; `pet`, `forget` and `appeal` answer instantly,
-  // and `appeal` answers with a modal, which cannot be deferred at all.
+  // `ask` waits for the model; `pet`, `mood`, `forget` and `appeal` answer
+  // instantly, and `appeal` answers with a modal, which cannot be deferred at all.
   deferred: (interaction) => resolveSubcommand(interaction).name === 'ask',
   ephemeral: false,
 
@@ -298,6 +329,7 @@ export const mai = {
   execute(interaction) {
     const { name } = resolveSubcommand(interaction);
     if (name === 'pet') return petMai(interaction);
+    if (name === 'mood') return mood(interaction);
     if (name === 'forget') return forget(interaction);
     if (name === 'appeal') return appeal(interaction);
     return ask(interaction);

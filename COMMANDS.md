@@ -74,6 +74,24 @@ Persona only. A sulking Mai still moderates you exactly as before: the sulk is
 never a way to make her stop deleting anything. The numbers are values in
 `src/config.js`, not settings; the lines are `commands.pet` in the YAML.
 
+### `/mai mood`
+
+Asks Mai how she is. Ephemeral: no, like `/mai pet`, and free for the same
+reasons: no model call, no database, no Discord round trip, and it answers
+whether or not chat is switched on.
+
+One line for what she is doing, in the same order as her status: asleep, the
+zoomies, just back from the vet, the season's own lines, or an ordinary day.
+In a server where she has claimed a channel for the day, a second line says
+which one (or that you are standing in it). If she is sulking with you after a
+bite, you get the sulk and nothing else.
+
+What it never says, on purpose: whether her classifier is failing in this
+server (the snuffly mood in chat is never explained, and a public "how are
+you" must not explain it either), whether you have an open violation, or
+anything from your record. The lines are `commands.mood` in the YAML, plus a
+`mood` list per season.
+
 ### `/mai forget`
 
 Wipes what Mai remembers about you, behind a *Ja, vergiss alles* / *Abbrechen*

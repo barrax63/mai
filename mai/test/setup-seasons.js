@@ -31,10 +31,13 @@ export const TODAY_SEASON = Object.freeze({
   to: calendarDay(1),
   directive: 'TESTSAISON: heute ist ein besonderer Tag.',
   statuses: Object.freeze(['🧪 hat heute Saison', '🧫 feiert die Testsaison']),
+  mood: Object.freeze(['*schnuppert am Reagenzglas* Testsaison! Bestens.']),
 });
 
 const shipped = parse(readFileSync(new URL('../config/mai.yaml', import.meta.url), 'utf8'));
-shipped.seasons = [{ ...TODAY_SEASON, statuses: [...TODAY_SEASON.statuses] }];
+shipped.seasons = [
+  { ...TODAY_SEASON, statuses: [...TODAY_SEASON.statuses], mood: [...TODAY_SEASON.mood] },
+];
 
 const path = join(mkdtempSync(join(tmpdir(), 'mai-seasons-')), 'mai.yaml');
 writeFileSync(path, stringify(shipped));

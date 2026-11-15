@@ -43,6 +43,23 @@ const VET_STATUSES = content.presence.vet;
 const MAX_INTERVAL_MS = 2_147_483_647;
 
 /**
+ * How much longer she is back from the vet: the first stretch of the process,
+ * which is to say the first stretch after every restart. Measured from the
+ * process rather than from the gateway login, because a slow login is not her
+ * having been away. Zero or less once it is over.
+ *
+ * Exported for `/mai mood`, which asks at one moment and shows nothing for
+ * hours afterwards, so a plain comparison is right there. The rotation below
+ * does not compare on every turn, for the reason given where it is used.
+ *
+ * @param {number} [uptimeSeconds] `process.uptime()`, which the tests stub.
+ * @returns {number} Milliseconds.
+ */
+export function vetLeftMs(uptimeSeconds = process.uptime()) {
+  return config.presence.vetMs - uptimeSeconds * 1000;
+}
+
+/**
  * @param {import('discord.js').Client<true>} client Ready client.
  */
 export function startPresenceRotation(client) {
@@ -50,14 +67,12 @@ export function startPresenceRotation(client) {
   // changes when a burst starts, and an index would point into the other one.
   let current = '';
 
-  // Back from the vet: the first stretch after the process started, which is
-  // to say after every restart. Measured from the process rather than from this
-  // call, because a slow gateway login is not her having been away. A flag the
-  // timer clears rather than a clock compared on every rotation: a timer may
-  // fire a hair before the moment it was set for, and a comparison would then
-  // keep the vet status up until the next rotation, hours later.
-  const vetLeftMs = config.presence.vetMs - process.uptime() * 1000;
-  let backFromVet = vetLeftMs > 0;
+  // Back from the vet (see `vetLeftMs`). A flag the timer clears rather than a
+  // clock compared on every rotation: a timer may fire a hair before the moment
+  // it was set for, and a comparison would then keep the vet status up until
+  // the next rotation, hours later.
+  const vetLeft = vetLeftMs();
+  let backFromVet = vetLeft > 0;
 
   const statusesNow = () => {
     if (napping()) return NAP_STATUSES;
@@ -99,7 +114,7 @@ export function startPresenceRotation(client) {
       // Only when it shows: if she fell asleep in the meantime, the nap status
       // stays where it is rather than being swapped for another nap status.
       if (statusesNow() !== before) rotate();
-    }, vetLeftMs);
+    }, vetLeft);
     // Getting over the vet is never a reason to keep the process alive.
     timer.unref?.();
   }
