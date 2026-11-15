@@ -443,6 +443,14 @@ const RENAME_LOOK_MINUTES = 30;
 // hour, which would turn a feud into a reflex.
 const BOT_HISS_COOLDOWN_MINUTES = 60;
 
+// How long she is back from the vet after a restart: the stretch at the start
+// of a process during which her status says so. Long enough that somebody
+// glancing at the member list after a deploy sees it, short enough that a
+// process that restarted once this morning is not still sulking about it at
+// lunch. The tests reach it by stubbing `process.uptime`, which is the clock it
+// reads, so it needs no environment seam.
+const VET_MINUTES = 30;
+
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
 const retired = (name) =>
@@ -722,6 +730,8 @@ export const config = Object.freeze({
     // and never rotate. Validated like every other knob: a typo used to become
     // NaN and silently disable rotation instead of failing at startup.
     rotateHours: hours('PRESENCE_ROTATE_HOURS', '5'),
+    // Back from the vet: how long after the process started the status says so.
+    vetMs: VET_MINUTES * 60_000,
   },
   zoomies: {
     // The chance that a burst starts, rolled every ZOOMIES_ROLL_MINUTES. The

@@ -108,7 +108,11 @@ test('a listener that throws is that listener\u2019s problem, not the burst\u201
 test('the presence switches to the zoomies statuses and back', () => {
   const presences = [];
   const realSetInterval = globalThis.setInterval;
+  const realUptime = process.uptime;
   globalThis.setInterval = () => ({ unref() { return this; } });
+  // A process that has been up an hour: one started a moment ago is back from
+  // the vet, which presence.test.js covers.
+  process.uptime = () => 3600;
 
   let end;
   try {
@@ -119,6 +123,7 @@ test('the presence switches to the zoomies statuses and back', () => {
     end();
   } finally {
     globalThis.setInterval = realSetInterval;
+    process.uptime = realUptime;
   }
 
   const states = presences.map((presence) => presence.activities[0].state);

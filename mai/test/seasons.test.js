@@ -85,15 +85,22 @@ function stubApi({ flagged = false, categories = [] } = {}) {
   return { calls, restore };
 }
 
-/** Starts the rotation with its interval disarmed, and returns what it set. */
+/**
+ * Starts the rotation with its interval disarmed, in a process that has been up
+ * an hour (one started a moment ago is back from the vet, which outranks a
+ * season and is presence.test.js's business), and returns what it set.
+ */
 function startCapturedPresence() {
   const presences = [];
   const realSetInterval = globalThis.setInterval;
+  const realUptime = process.uptime;
   globalThis.setInterval = () => ({ unref() { return this; } });
+  process.uptime = () => 3600;
   try {
     startPresenceRotation({ user: { setPresence: (payload) => presences.push(payload) } });
   } finally {
     globalThis.setInterval = realSetInterval;
+    process.uptime = realUptime;
   }
   return presences;
 }

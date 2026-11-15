@@ -762,6 +762,17 @@ presence:
     - '🛏️ belegt das halbe Bett'
     - '😽 träumt von Fisch'
 
+  # Die erste halbe Stunde nach jedem Neustart: sie war gerade beim Tierarzt
+  # und ist entsprechend beleidigt. Schlaf und Zoomies gehen vor. Verrät
+  # nebenbei jedem, der hinschaut, dass der Bot neu gestartet wurde; mehr
+  # nicht.
+  vet:
+    - '🏥 gerade vom Tierarzt zurück'
+    - '🩹 hat ein Pflaster und ist beleidigt'
+    - '🧺 kommt gerade aus der Transportbox'
+    - '😾 hat dem Tierarzt nicht verziehen'
+    - '🩺 frisch durchgecheckt und schlecht gelaunt'
+
   # Während der Zoomies (siehe chat.zoomiesDirective). Eigene Liste, weil der
   # Status das Einzige ist, was auch außerhalb eines Kanals davon zu sehen ist.
   zoomies:

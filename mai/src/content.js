@@ -693,6 +693,9 @@ function loadContent() {
       // the status is the one place a nap is visible at all, and a nap nobody
       // can see is a bot that stopped answering.
       naps: Object.freeze(strings(presence, ['presence', 'naps'])),
+      // What she rotates through for the first half hour after a restart: back
+      // from the vet. Required like the others, since a status is all it is.
+      vet: Object.freeze(strings(presence, ['presence', 'vet'])),
     }),
   });
 }

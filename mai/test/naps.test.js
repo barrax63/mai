@@ -171,6 +171,10 @@ test('the presence says she is asleep, which is the only tell there is', () => {
   assert.equal(activity.type, ActivityType.Custom);
   assert.ok(content.presence.naps.includes(activity.state), activity.state);
   assert.equal(content.presence.statuses.includes(activity.state), false, 'not an awake one');
+  // This process started a moment ago, so she is also back from the vet. The
+  // nap wins: it is what she is doing, the vet is only what happened to her.
+  assert.ok(process.uptime() * 1000 < config.presence.vetMs, 'the vet window is open');
+  assert.equal(content.presence.vet.includes(activity.state), false, 'and asleep beats it');
 });
 
 test('no zoomies while she is asleep: the status cannot claim both', () => {
