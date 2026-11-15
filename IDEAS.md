@@ -43,6 +43,83 @@ of that budget or it uses an emote and no GIF. That is a decision about somebody
 else's quota, which is why it needs a number chosen on purpose rather than a
 default.
 
+### If it fits, she sits
+
+A message about a box gets a 📦. No code at all: one more entry in `reactions:`
+in the YAML, something like `\b(karton\w*|kiste|box(es)?)\b` with `flags: 'i'`
+at a modest chance.
+
+Constraints are about the list rather than the feature. Order is precedence
+(the loop stops at the first match and an aloof roll does not fall through), so
+it belongs below fish and "gute Katze" and above the generic cat words, or "die
+Katze sitzt im Karton" earns 🐱 and never 📦. It cannot go below the trigger
+without a pattern, which `content.js` requires to stay last. And `box` is a
+common word in gaming servers: the word boundaries keep "Xbox" out, but "loot
+box" will still match, which is a reason for a low chance rather than a
+longer pattern.
+
+### Voice mode
+
+Three different things go by that name, and each costs far more than the one
+before it. The first two are worth building, as one feature; the third is a
+maybe for purring and a no for listening.
+
+**Voice messages in, text out.** A member sends her a voice message; it is
+transcribed (`/audio/transcriptions`) and the transcript goes into the normal
+chat path as their turn. Constraints:
+
+- A voice message cannot carry a mention, so it only counts where no mention is
+  needed: a DM, or a reply to one of her messages. `isMaiChatTrigger` already
+  covers both.
+- An env var for the transcription model, unset means off, for the same reason
+  as `OPENAI_REASONING_EFFORT`: a provider behind `OPENAI_BASE_URL` may not
+  offer the `/audio` endpoints at all.
+- Length and size are checked before anything is downloaded (discord.js exposes
+  `attachment.duration`), and the nap and the sulk are checked before anything
+  is transcribed, so a refused turn costs nothing.
+- The transcript is the member's own words, so it may go into `chat_history`
+  (already encrypted) like any message. The audio is never stored, and the
+  transcript is content: never logged above `debug`.
+- Audio is billed per minute rather than per token, so `usage.js` needs a unit
+  for it, or `OPENAI_MONTHLY_TOKEN_BUDGET` stops covering what chat spends.
+- The real catch: voice messages in a server are unmoderated today, and
+  answering one means answering something moderation never saw. DMs first,
+  where moderation does not run anyway. In a server, the transcript could be
+  classified for her *tone* only. Enforcing on a transcript is a separate and
+  much larger feature: transcription errors would become strikes, and the
+  evidence for an appeal would be a third content store.
+
+**Voice message out.** She answers a voice message with one of her own, only
+ever in reply to one, never unprompted. `/audio/speech` returns Opus directly,
+and a model that takes an `instructions` field gives her a way of speaking;
+that wording is persona and goes in the YAML (`voice.instructions`), with her
+tones mapped onto it (zoomies fast, a hiss sharp, the hairball snuffly, and the
+same rule as in text: snuffly, never explained). Discord wants the voice-message
+flag (8192), a `duration_secs` and a `waveform`, and the message cannot carry
+text. The waveform is decoration, so draw a purr shape rather than decoding the
+audio and pulling in a native dependency; the duration can be read from the
+last Ogg page header in plain JavaScript. Check first that the API accepts a
+voice message from a bot, which is half an hour of work and settles whether
+this half exists.
+
+**A voice channel.** Needs `@discordjs/voice` with native dependencies for Opus
+and Discord's end-to-end voice encryption (DAVE), which on an Alpine image means
+checking for prebuilt binaries; the `GuildVoiceStates` intent (not privileged);
+and outgoing UDP from a container that currently only speaks HTTPS.
+
+- *Purring*, the version worth considering: a cat sits in empty boxes, so when
+  somebody has been alone in a voice channel for a while she joins, plays a
+  pre-encoded purr, and leaves when a second person arrives. She receives no
+  audio, so there is no privacy question; the cost is the native dependencies
+  and a sound file that is original and licence-free.
+- *Listening and talking back*: no. Receiving voice is not something Discord
+  supports officially, she would hear everybody in the channel rather than the
+  person talking to her and none of them agreed to that, a wake word means
+  transcribing everybody all the time, every answer would arrive seconds late,
+  and moderation cannot see any of it. The smallest honest version is a
+  `/mai listen` that subscribes to the caller alone for fifteen seconds, and
+  even that brings in everything above.
+
 ## Shipped, so do not propose these again
 
 | Idea | Where it went |
