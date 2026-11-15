@@ -335,10 +335,15 @@ test('an unreachable classifier lets the message through: moderation fails open'
   const restore = stubFetch(() => {
     throw new TypeError('fetch failed');
   });
+  // Above the pattern-less trigger's chance, which matches any message: without
+  // this the empty reaction list below fails one run in a hundred.
+  const realRandom = Math.random;
+  Math.random = () => 0.999;
 
   try {
     await onMessageCreate(message);
   } finally {
+    Math.random = realRandom;
     restore();
   }
 
