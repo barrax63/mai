@@ -14,6 +14,7 @@ import { gifEmbeds } from '../chat/reply.js';
 import { config } from '../config.js';
 import { content, fill, pick } from '../content.js';
 import { isSulking, pet } from '../chat/petting.js';
+import { territoryFor } from '../chat/territory.js';
 import { napping } from '../naps.js';
 import { deleteForUser } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
@@ -83,6 +84,7 @@ async function ask(interaction) {
   if (!acquireSlot()) return messageResponse(content.commands.ask.busy);
 
   try {
+    const client = getGatewayClient();
     const messages = buildMessages({
       history: [],
       username: user.username ?? '',
@@ -90,12 +92,18 @@ async function ask(interaction) {
       // Same grudge as in chat: an open violation makes her hiss here too.
       violations: openViolations(user.id),
       guildId: interaction.guild_id ?? null,
+      // Same claim as in chat. The parent arrives with the interaction's
+      // channel when this is asked inside a thread.
+      territory: territoryFor(client, interaction.guild_id, {
+        channelId: interaction.channel_id ?? null,
+        parentId: interaction.channel?.parent_id ?? null,
+      }),
     });
 
     const reply = await generateReply(messages, {
       userId: user.id,
       guildId: interaction.guild_id ?? null,
-      client: getGatewayClient(),
+      client,
     });
     logger.info(
       {

@@ -190,6 +190,7 @@ function loadContent() {
   const chat = section(parsed, 'chat');
   const flagged = section(chat, 'flagged');
   const prompt = section(chat, 'prompt');
+  const territory = section(chat, 'territory');
   const moderation = section(parsed, 'moderation');
   const errorCodes = section(moderation, 'errors');
   const warningDm = section(moderation, 'warningDm');
@@ -259,6 +260,18 @@ function loadContent() {
       sulkingEmoji: str(chat, ['chat', 'sulkingEmoji']),
       // The same, for the hours she spends asleep (NAP_HOURS).
       sleepingEmoji: str(chat, ['chat', 'sleepingEmoji']),
+      // The channel she has claimed for the day (chat/territory.js): one
+      // directive for talking in it, one for everywhere else in the server.
+      territory: Object.freeze({
+        here: str(territory, ['chat', 'territory', 'here']),
+        elsewhere: (() => {
+          const value = str(territory, ['chat', 'territory', 'elsewhere']);
+          // Without the placeholder she would be told she owns a channel and
+          // not which one.
+          if (!value.includes('{channel}')) fail('chat.territory.elsewhere must contain {channel}');
+          return value;
+        })(),
+      }),
       // Said once, ahead of her answer, when somebody's last strike in that
       // server has aged out (chat/grudges.js). Fixed lines rather than a
       // directive, so the model is never told and cannot say what it was.

@@ -459,6 +459,13 @@ const VET_MINUTES = 30;
 // second time, but only inside these two weeks.
 const GRUDGE_MEMORY_DAYS = 14;
 
+// The channel she has claimed in a server, the way a cat occupies a box: how
+// long one claim lasts, and how long she waits before looking again when a
+// server has no channel she could claim at all, so a server like that does not
+// cost a walk over every channel on every turn.
+const TERRITORY_HOURS = 24;
+const TERRITORY_RETRY_MINUTES = 60;
+
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
 const retired = (name) =>
@@ -759,6 +766,10 @@ export const config = Object.freeze({
   },
   grudges: {
     memoryMs: GRUDGE_MEMORY_DAYS * 86_400_000,
+  },
+  territory: {
+    claimMs: TERRITORY_HOURS * 3_600_000,
+    retryMs: TERRITORY_RETRY_MINUTES * 60_000,
   },
   // The hours she spends asleep, on the process clock (`TZ`). Empty = never,
   // which is the default. Process-wide rather than per guild: the one place a

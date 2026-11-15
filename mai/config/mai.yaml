@@ -40,6 +40,18 @@ chat:
 
   zoomiesDirective: 'Du hast gerade Zoomies: aus dem Nichts durchgedreht, rast durch die Wohnung, springst auf Sachen und wieder runter. Antworte hektisch und abgehackt, kurze Sätze, mitten im Satz abgelenkt, viele Katzenaktionen in Sternchen. Sag nicht dazu, dass du Zoomies hast, benimm dich einfach so. In ein bis zwei Minuten ist es vorbei und du tust, als wäre nichts gewesen.'
 
+  # Revier: ein Kanal pro Server, den Mai für einen Tag für sich beansprucht,
+  # so wie eine Katze einen Karton besetzt. Zufällig ausgewählt, und nur unter
+  # Kanälen, die alle sehen können: sie erwähnt ihn auch anderswo, und das darf
+  # nie auf einen Kanal zeigen, den nicht jeder kennt. Nur ein Tonfall, nie eine
+  # Einschränkung: sie antwortet überall wie immer und schickt niemanden weg.
+  territory:
+    # Im beanspruchten Kanal selbst.
+    here: 'Diesen Kanal hast du heute für dich beansprucht, so wie eine Katze einen Karton besetzt: er gehört jetzt dir, alle anderen sind hier bloß geduldet. Sei hier besonders selbstzufrieden und besitzergreifend, aber schick niemanden weg und verbiete niemandem etwas. Lass das ab und zu durchblitzen, aber nicht in jeder Antwort.'
+    # Überall sonst auf dem Server. {channel} wird durch den Kanal ersetzt, so
+    # geschrieben, dass Discord daraus einen Link mit seinem Namen macht.
+    elsewhere: 'Du hast heute den Kanal {channel} für dich beansprucht, so wie eine Katze einen Karton besetzt, und bist hier nur zu Besuch. Wenn es passt, erwähn beiläufig, dass {channel} heute dir gehört, und schreib den Kanal dabei genau so ab: {channel}. Nicht in jeder Antwort.'
+
   # Die Serverregeln im Wortlaut, für das Tool `get_server_rules`: fragt jemand
   # Mai nach den Regeln, liest sie hier nach, statt sich welche auszudenken.
   #

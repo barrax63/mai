@@ -131,7 +131,8 @@ function renderCurrentTurn(turn) {
  *   violations: { count: number, categories: string[] },
  *   replyTo?: { username: string, content: string } | null,
  *   threadTitle?: string | null,
- *   images?: string[] }} input
+ *   images?: string[], guildId?: string | null,
+ *   territory?: { channelId: string, here: boolean } | null }} input
  * @returns {object[]} Chat-completions messages, system first.
  */
 export function buildMessages({
@@ -143,6 +144,7 @@ export function buildMessages({
   threadTitle = null,
   images = [],
   guildId = null,
+  territory = null,
 }) {
   const directive = violations.count > 0
     ? moderationDirective(violations)
@@ -156,6 +158,18 @@ export function buildMessages({
   // backdrop, so it comes before anything that is happening to her right now.
   const today = season();
   if (today) mood.push(today.directive);
+  // The channel she has claimed in this server (chat/territory.js). A tone
+  // and never a restriction: smug in it, and allowed to mention it elsewhere.
+  // Elsewhere she gets the channel as a mention, digits only, which Discord
+  // renders as its name for everybody: a name pasted into the system message
+  // would be text somebody else chose, and she does not need to read it.
+  if (territory) {
+    mood.push(
+      territory.here
+        ? content.chat.territory.here
+        : fill(content.chat.territory.elsewhere, { channel: `<#${territory.channelId}>` }),
+    );
+  }
   if (inZoomies()) mood.push(content.chat.zoomiesDirective);
   // Her classifier is failing in this guild, so she is under the weather. This
   // is a mood and deliberately not a status report: the directive itself

@@ -13,11 +13,13 @@ import { appendTurns, recentTurns } from '../db/history.js';
 import { openViolations } from '../db/queue.js';
 import { logger } from '../logger.js';
 import { takeGrudgeRelease } from './grudges.js';
+import { territoryFor } from './territory.js';
 
 /**
- * @param {{ messageId: string, channelId: string, guildId: string | null, userId: string,
- *   username: string, content: string, replyTo?: object | null, threadTitle?: string | null,
- *   images?: string[], client?: object }} input
+ * @param {{ messageId: string, channelId: string, parentId?: string | null,
+ *   guildId: string | null, userId: string, username: string, content: string,
+ *   replyTo?: object | null, threadTitle?: string | null, images?: string[],
+ *   client?: object }} input
  * @returns {Promise<{ text: string, gifUrl: string | null } | null>} What to post,
  *   or null when generation failed.
  */
@@ -43,6 +45,11 @@ export async function generateChatReply(input) {
     // Only so the prompt knows whether her nose is working here: a DM has no
     // guild and is therefore never under the weather.
     guildId: input.guildId,
+    // The channel she has claimed in this server, and whether this is it.
+    territory: territoryFor(input.client, input.guildId, {
+      channelId: input.channelId,
+      parentId: input.parentId,
+    }),
   });
 
   logger.debug({ messageId: input.messageId, messages }, 'Chat prompt');

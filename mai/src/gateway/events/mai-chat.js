@@ -232,6 +232,9 @@ export async function handleMaiChat(message) {
     messageId: message.id,
     guildId: message.guildId,
     channelId: message.channelId,
+    // A thread's parent, so a thread inside the channel she has claimed still
+    // counts as being in it (chat/territory.js).
+    parentId: message.channel?.isThread?.() ? (message.channel.parentId ?? null) : null,
     userId: message.author.id,
     username: message.author.username,
     content: text,

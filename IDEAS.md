@@ -43,24 +43,6 @@ of that budget or it uses an emote and no GIF. That is a decision about somebody
 else's quota, which is why it needs a number chosen on purpose rather than a
 default.
 
-### Territorial claim on a channel
-
-She sits in one channel for a day, the way a cat occupies a box. While claimed,
-her replies there carry a smug directive, and she mentions it when talking
-elsewhere.
-
-Seam: a claimed channel id plus an expiry in memory, rotated by the tick, and
-one more directive in `buildMessages` (which now takes `guildId`, so it can
-reach a per-guild fact).
-
-Constraints: it must be a *tone*, not a restriction. She keeps answering
-everywhere, the claim never gates a reply, and the claimed channel is picked
-from channels she can already speak in, skipping exempt ones. Picking the most
-active channel means counting messages per channel, which is a per-channel
-activity record and exactly the kind of thing `/metrics` is forbidden from
-labelling by channel; a random eligible channel avoids that question entirely
-and is almost as funny.
-
 ## Shipped, so do not propose these again
 
 | Idea | Where it went |
@@ -74,4 +56,5 @@ and is almost as funny.
 | Seasons (the Christmas tree, the fireworks) | [mai/src/seasons.js](mai/src/seasons.js), `seasons:` in the YAML |
 | Hissing at other bots | `maybeHissAtBot` in [mai/src/gateway/events/reactions.js](mai/src/gateway/events/reactions.js), `bots:` in the YAML |
 | Back from the vet after a restart | [mai/src/gateway/presence.js](mai/src/gateway/presence.js), `presence.vet` |
+| Territorial claim on a channel | [mai/src/chat/territory.js](mai/src/chat/territory.js), `chat.territory`. Picked lazily on the next chat turn rather than by the tick, and only among channels everybody can see, because she names it elsewhere |
 | Grudge memory, and letting it go | [mai/src/chat/grudges.js](mai/src/chat/grudges.js), `chat.letGo`. The "no categories, no counts, no dates" constraint became fixed lines the model is never told about, scoped to the guild the strikes were in and to two weeks after the window |
