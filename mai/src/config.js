@@ -437,6 +437,12 @@ const PETTING_BITE_MINUTES = 10;
 // clearly moved on from gets no comment.
 const RENAME_LOOK_MINUTES = 30;
 
+// How long one bot is left alone after she hissed at it, per server. The chance
+// of a hiss is persona and lives in the content config; this is the cap that
+// keeps a bot posting a line per song from being hissed at several times an
+// hour, which would turn a feud into a reflex.
+const BOT_HISS_COOLDOWN_MINUTES = 60;
+
 // Reported at startup rather than ignored: the failure mode of silence is a
 // deployment whose carefully chosen number stopped being read and cannot see it.
 const retired = (name) =>
@@ -729,6 +735,9 @@ export const config = Object.freeze({
   },
   renames: {
     lookMs: RENAME_LOOK_MINUTES * 60_000,
+  },
+  bots: {
+    hissCooldownMs: BOT_HISS_COOLDOWN_MINUTES * 60_000,
   },
   // The hours she spends asleep, on the process clock (`TZ`). Empty = never,
   // which is the default. Process-wide rather than per guild: the one place a

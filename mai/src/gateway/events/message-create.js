@@ -6,7 +6,8 @@
  * messages addressed to Mai (mention / reply / direct message) to the chat
  * pipeline. Everything else may get an ambient cat reaction. Moderation always
  * runs for guild messages, including chat ones; direct messages skip it (a bot
- * cannot delete a DM).
+ * cannot delete a DM). Other bots are neither moderated nor answered, and now
+ * and then get hissed at.
  *
  * @param {import('discord.js').Message} message
  */
@@ -15,11 +16,23 @@ import { isGuildActive } from '../../db/settings.js';
 import { logger } from '../../logger.js';
 import { checkMessage } from '../../moderation/check.js';
 import { handleMaiChat, isDmAuthorInAllowedGuild, isMaiChatTrigger } from './mai-chat.js';
-import { maybeReactAsCat } from './reactions.js';
+import { maybeHissAtBot, maybeReactAsCat } from './reactions.js';
 
 export async function onMessageCreate(message) {
-  // Ignore bots (including ourselves) and system messages.
-  if (message.author?.bot || message.system) return;
+  // System messages (joins, boosts, pins) are nobody's words.
+  if (message.system) return;
+
+  // Another bot, or herself. Never moderated and never answered: a bot cannot
+  // be talked out of anything, and two bots answering each other is a loop.
+  // The one thing she does is the cat's, now and then a hiss, and only where
+  // she is allowed to behave at all: a paused server gets nothing, this
+  // included. Logged at debug at most, since a busy bot is not news.
+  if (message.author?.bot) {
+    if (message.guildId && isGuildAllowed(message.guildId) && isGuildActive(message.guildId)) {
+      await maybeHissAtBot(message);
+    }
+    return;
+  }
 
   // Allowlist gate. An un-whitelisted server gets NO behavior: no moderation,
   // no cat reactions, no chat. A DM has no guildId: it is allowed only when its

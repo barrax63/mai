@@ -91,3 +91,4 @@ turn and not announced into a channel nobody is reading.
 | A look at a new name | [mai/src/gateway/renames.js](mai/src/gateway/renames.js) |
 | Cat naps | [mai/src/naps.js](mai/src/naps.js), `NAP_HOURS`. The timezone question was settled process-wide: the presence is a nap's only tell, and that is one status for the whole bot |
 | Seasons (the Christmas tree, the fireworks) | [mai/src/seasons.js](mai/src/seasons.js), `seasons:` in the YAML |
+| Hissing at other bots | `maybeHissAtBot` in [mai/src/gateway/events/reactions.js](mai/src/gateway/events/reactions.js), `bots:` in the YAML |

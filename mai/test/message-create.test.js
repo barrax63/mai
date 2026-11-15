@@ -117,19 +117,26 @@ function stubApi({ flagged = false, categories = [], reply = 'miau' } = {}) {
   return { calls, restore };
 }
 
-test('a message from a bot is ignored entirely', async () => {
+test('a message from a bot is never moderated or answered, even one that mentions her', async () => {
   wipe();
-  const { message, record } = fakeMessage({ bot: true, text: 'du wicht' });
+  const { message, record } = fakeMessage({ bot: true, text: 'du wicht', mentionsBot: true });
   const { calls, restore } = stubApi({ flagged: true, categories: ['harassment'] });
+  // An aloof roll: whether she hisses at it is bots.test.js's business, this
+  // is about everything else staying off.
+  const realRandom = Math.random;
+  Math.random = () => 0.99;
 
   try {
     await onMessageCreate(message);
   } finally {
+    Math.random = realRandom;
     restore();
   }
 
   assert.equal(calls.moderation, 0);
+  assert.equal(calls.chat, 0);
   assert.deepEqual(record.reacted, []);
+  assert.deepEqual(record.replies, []);
   assert.equal(depth(), 0);
 });
 

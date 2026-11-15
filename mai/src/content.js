@@ -217,6 +217,7 @@ function loadContent() {
   const presence = section(parsed, 'presence');
 
   const renames = section(parsed, 'renames');
+  const bots = section(parsed, 'bots');
 
   const reactions = parsed.reactions;
   if (!Array.isArray(reactions)) fail('section "reactions" must be an array');
@@ -665,6 +666,13 @@ function loadContent() {
         return Object.freeze({ emoji, chance, pattern });
       }),
     ),
+    bots: Object.freeze({
+      // The chance per message from another bot that she hisses at it. The
+      // cooldown after a hiss is a timing and lives in config.js.
+      chance: num(bots, ['bots', 'chance'], { min: 0, max: 1 }),
+      // A reaction and never a line: two bots answering each other is a loop.
+      hisses: Object.freeze(strings(bots, ['bots', 'hisses'])),
+    }),
     // Days of the year she is different on: a directive added to her tone and,
     // optionally, statuses of their own. Never read by moderation.
     seasons: compileSeasons(parsed.seasons),

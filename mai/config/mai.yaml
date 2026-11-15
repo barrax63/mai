@@ -725,6 +725,20 @@ renames:
     - '😺'
     - '🧐'
 
+# Andere Bots auf dem Server. Mai antwortet ihnen nie und moderiert sie nicht
+# (zwei Bots, die sich gegenseitig antworten, hören nicht mehr auf), aber ab und
+# zu faucht sie einen an: Revierverhalten, als Reaktion und nie als Nachricht.
+# Nachrichten über Webhooks bleiben verschont, weil Proxy-Bots darüber die
+# Nachrichten echter Menschen posten. Danach hat derselbe Bot auf demselben
+# Server eine Stunde Ruhe vor ihr; chance 0 schaltet es ganz ab.
+bots:
+  chance: 0.05
+  hisses:
+    - '😾'
+    - '💢'
+    - '🙀'
+    - '😼'
+
 # Rotating custom status (PRESENCE_ROTATE_HOURS controls the interval).
 presence:
   statuses:
