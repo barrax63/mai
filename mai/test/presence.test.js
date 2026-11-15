@@ -15,6 +15,7 @@ import { ActivityType } from 'discord.js';
 import { config } from '../src/config.js';
 import { content } from '../src/content.js';
 import { startPresenceRotation } from '../src/gateway/presence.js';
+import { season } from '../src/seasons.js';
 
 const MAX_INTERVAL_MS = 2_147_483_647;
 
@@ -58,9 +59,13 @@ test('a status is set immediately, not only after the first interval', () => {
 test('the status text comes from the content config, as a custom activity', () => {
   const { presences } = startCaptured();
   const [activity] = presences[0].activities;
+  // The everyday list, unless today belongs to a season that brings its own:
+  // read off the calendar rather than assumed, or this test would start
+  // failing every December.
+  const ordinary = season()?.statuses ?? content.presence.statuses;
 
   assert.equal(activity.type, ActivityType.Custom);
-  assert.ok(content.presence.statuses.includes(activity.state), activity.state);
+  assert.ok(ordinary.includes(activity.state), activity.state);
   // Discord requires a name on a custom activity even though it shows `state`.
   assert.ok(activity.name);
 });

@@ -13,6 +13,7 @@ import { content, fill } from '../content.js';
 import { runTool, toolsFor } from '../chat/tools.js';
 import { logger } from '../logger.js';
 import { isDegraded } from '../moderation/health.js';
+import { season } from '../seasons.js';
 import { inZoomies } from '../zoomies.js';
 import { createChatCompletion } from './openai.js';
 
@@ -148,9 +149,13 @@ export function buildMessages({
     : content.chat.friendlyDirective;
 
   // Added to whichever tone is in force rather than replacing it: the tone
-  // says how she feels about the person she is answering, and these two say how
+  // says how she feels about the person she is answering, and these say how
   // she is doing. A hissing cat with the zoomies is still hissing.
   const mood = [directive];
+  // The time of year: the tree in December, the fireworks at new year. A
+  // backdrop, so it comes before anything that is happening to her right now.
+  const today = season();
+  if (today) mood.push(today.directive);
   if (inZoomies()) mood.push(content.chat.zoomiesDirective);
   // Her classifier is failing in this guild, so she is under the weather. This
   // is a mood and deliberately not a status report: the directive itself

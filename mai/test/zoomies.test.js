@@ -20,6 +20,7 @@ import { config } from '../src/config.js';
 import { content } from '../src/content.js';
 import { maybeReactAsCat } from '../src/gateway/events/reactions.js';
 import { startPresenceRotation } from '../src/gateway/presence.js';
+import { season } from '../src/seasons.js';
 import { inZoomies, onZoomiesChange, rollZoomies, startZoomies } from '../src/zoomies.js';
 
 const NO_VIOLATIONS = { count: 0, categories: [] };
@@ -121,10 +122,13 @@ test('the presence switches to the zoomies statuses and back', () => {
   }
 
   const states = presences.map((presence) => presence.activities[0].state);
+  // The everyday list, or the season's on a day that has one: read off the
+  // calendar, or this would fail every December.
+  const ordinary = season()?.statuses ?? content.presence.statuses;
   assert.equal(states.length, 3, 'startup, burst, calmed down');
-  assert.ok(content.presence.statuses.includes(states[0]), states[0]);
+  assert.ok(ordinary.includes(states[0]), states[0]);
   assert.ok(content.presence.zoomies.includes(states[1]), states[1]);
-  assert.ok(content.presence.statuses.includes(states[2]), states[2]);
+  assert.ok(ordinary.includes(states[2]), states[2]);
   assert.equal(presences[1].activities[0].type, ActivityType.Custom);
 });
 

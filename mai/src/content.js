@@ -55,6 +55,116 @@ const section = (root, name) => {
   return value;
 };
 
+/**
+ * Month lengths in a leap year, because 29 February is a real day to have a
+ * season on: in the other three years it simply does not come round.
+ */
+const DAYS_IN_MONTH = [31, 29, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+/** What a season is called in the log. */
+const SEASON_NAME = /^[a-z0-9][a-z0-9-]{0,31}$/;
+
+/** How a season's first and last day are written: "MM-DD". */
+const CALENDAR_DAY = /^(\d{2})-(\d{2})$/;
+
+const twoDigits = (value) => String(value).padStart(2, '0');
+
+/**
+ * A day of the year as "MM-DD", read into a sortable number: 1224 is 24
+ * December. No year, deliberately: a season with a year in it happens once.
+ *
+ * @param {object} node
+ * @param {string[]} path
+ * @returns {number}
+ */
+const calendarDay = (node, path) => {
+  const raw = str(node, path).trim();
+  const match = CALENDAR_DAY.exec(raw);
+  const month = match ? Number(match[1]) : 0;
+  const day = match ? Number(match[2]) : 0;
+  if (!match || month < 1 || month > 12 || day < 1 || day > DAYS_IN_MONTH[month - 1]) {
+    fail(`${path.join('.')} must be a calendar day written as "MM-DD", got: ${raw}`);
+  }
+  return month * 100 + day;
+};
+
+/**
+ * Whether a season covers a day of the year (a `calendarDay` number). Both
+ * ends count, the way "1. bis 26. Dezember" reads to whoever wrote it, and a
+ * season whose end comes before its start runs over new year: it covers the
+ * days at or after the start *or* at or before the end, not between them.
+ *
+ * Exported because there are two readers that must never disagree: the overlap
+ * check below and the lookup in `seasons.js`.
+ *
+ * @param {{ from: number, to: number }} season
+ * @param {number} day
+ * @returns {boolean}
+ */
+export function seasonCovers(season, day) {
+  return season.from <= season.to
+    ? day >= season.from && day <= season.to
+    : day >= season.from || day <= season.to;
+}
+
+/**
+ * The `seasons:` list, validated. Exported so the calendar arithmetic can be
+ * tested against lists the shipped file does not contain; the shipped file goes
+ * through it at startup like everything else here.
+ *
+ * Absent is a valid answer (no seasons, she is the same cat all year). Two
+ * seasons on the same day are refused rather than resolved by their order: the
+ * lookup takes the first match, so the second would silently never happen on
+ * the days they share, and nobody would think to look for that in a YAML file.
+ *
+ * @param {unknown} raw
+ * @returns {readonly { name: string, from: number, to: number, directive: string,
+ *   statuses: readonly string[] | null }[]}
+ */
+export function compileSeasons(raw) {
+  if (raw === undefined || raw === null) return Object.freeze([]);
+  if (!Array.isArray(raw)) fail('section "seasons" must be an array');
+
+  const names = new Set();
+  const seasons = raw.map((entry, index) => {
+    const path = ['seasons', String(index)];
+    const name = str(entry, [...path, 'name']).trim();
+    if (!SEASON_NAME.test(name)) {
+      fail(`${path.join('.')}.name must be a short lowercase slug (a-z, 0-9, -), got: ${name}`);
+    }
+    if (names.has(name)) fail(`seasons: "${name}" is defined twice`);
+    names.add(name);
+
+    return Object.freeze({
+      name,
+      from: calendarDay(entry, [...path, 'from']),
+      to: calendarDay(entry, [...path, 'to']),
+      // Added to the tone in force, never in place of it: see buildMessages.
+      directive: str(entry, [...path, 'directive']),
+      // Optional: a season without its own statuses leaves the presence alone.
+      statuses: entry.statuses === undefined
+        ? null
+        : Object.freeze(strings(entry, [...path, 'statuses'])),
+    });
+  });
+
+  // Every day of a leap year, which is every day a season can name.
+  for (const [monthIndex, length] of DAYS_IN_MONTH.entries()) {
+    for (let day = 1; day <= length; day++) {
+      const key = (monthIndex + 1) * 100 + day;
+      const here = seasons.filter((season) => seasonCovers(season, key));
+      if (here.length > 1) {
+        fail(
+          `seasons "${here[0].name}" and "${here[1].name}" overlap on ` +
+            `${twoDigits(monthIndex + 1)}-${twoDigits(day)}: a day can only belong to one`,
+        );
+      }
+    }
+  }
+
+  return Object.freeze(seasons);
+}
+
 function loadContent() {
   let raw;
   try {
@@ -555,6 +665,9 @@ function loadContent() {
         return Object.freeze({ emoji, chance, pattern });
       }),
     ),
+    // Days of the year she is different on: a directive added to her tone and,
+    // optionally, statuses of their own. Never read by moderation.
+    seasons: compileSeasons(parsed.seasons),
     renames: Object.freeze({
       // One of these lands on the next message from somebody who renamed
       // themselves. An emoji and nothing else, deliberately: a line about a

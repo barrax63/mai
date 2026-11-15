@@ -12,12 +12,18 @@
  * Asleep wins over the zoomies, and cannot be contradicted by one: `rollZoomies`
  * refuses to start a burst during a nap, so "asleep" and "tearing through the
  * flat" can never both be true.
+ *
+ * A season that brings statuses of its own replaces the everyday list for as
+ * long as it lasts, and flips at midnight for the same reason. It is the
+ * weakest of the three: a nap or a burst is what she is doing right now, the
+ * season is only what time of year it is.
  */
 import { ActivityType } from 'discord.js';
 import { config } from '../config.js';
 import { content } from '../content.js';
 import { logger } from '../logger.js';
 import { napping, onNapChange } from '../naps.js';
+import { onSeasonChange, season } from '../seasons.js';
 import { inZoomies, onZoomiesChange } from '../zoomies.js';
 
 const STATUSES = content.presence.statuses;
@@ -41,7 +47,8 @@ export function startPresenceRotation(client) {
 
   const statusesNow = () => {
     if (napping()) return NAP_STATUSES;
-    return inZoomies() ? ZOOMIES_STATUSES : STATUSES;
+    if (inZoomies()) return ZOOMIES_STATUSES;
+    return season()?.statuses ?? STATUSES;
   };
 
   const rotate = () => {
@@ -68,6 +75,7 @@ export function startPresenceRotation(client) {
   rotate();
   onZoomiesChange(rotate);
   onNapChange(rotate);
+  onSeasonChange(rotate);
 
   const { rotateHours } = config.presence;
   if (rotateHours > 0) {

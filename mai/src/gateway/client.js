@@ -26,6 +26,7 @@ import { onGuildMemberAdd } from './events/guild-member-add.js';
 import { onGuildMemberUpdate } from './events/guild-member-update.js';
 import { startPresenceRotation } from './presence.js';
 import { startNaps } from '../naps.js';
+import { startSeasons } from '../seasons.js';
 import { startZoomies } from '../zoomies.js';
 
 /** @type {import('discord.js').Client | null} */
@@ -91,10 +92,12 @@ export function createGatewayClient() {
     );
 
     startPresenceRotation(ready);
-    // After the presence, which registers itself as a listener first: a burst
-    // or a nap edge before that would flip a status nobody is watching for yet.
+    // After the presence, which registers itself as a listener first: a burst,
+    // a nap edge or a season starting before that would flip a status nobody is
+    // watching for yet.
     startZoomies();
     startNaps();
+    startSeasons();
 
     // Every permission Mai lacks is otherwise discovered at the worst possible
     // moment, by failing. Once per process, per guild, at `warn`.
