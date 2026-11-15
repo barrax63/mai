@@ -60,3 +60,4 @@ default.
 | Grudge memory, and letting it go | [mai/src/chat/grudges.js](mai/src/chat/grudges.js), `chat.letGo`. The "no categories, no counts, no dates" constraint became fixed lines the model is never told about, scoped to the guild the strikes were in and to two weeks after the window |
 | `/mai mood` | [mai/src/chat/mood.js](mai/src/chat/mood.js), `commands.mood`. It never reads the hairball, open violations or the strike record, and a test holds it to that |
 | Laser pointer | `/mai laser`, [mai/src/chat/laser.js](mai/src/chat/laser.js), `commands.laser`. The score rides in the button's custom_id, and a game ends after ten moves so one message cannot become an edit storm |
+| Walking across the keyboard | `walkAcrossTheKeyboard` in [mai/src/chat/reply.js](mai/src/chat/reply.js), `chat.keyboard`. Chat only, in front of a reply and never instead of one, never next to the let-go line, and kept out of her memory so the model does not learn it |

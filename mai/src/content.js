@@ -56,10 +56,32 @@ const section = (root, name) => {
 };
 
 /**
- * Room left for the let-go line in front of a reply that is already at
- * `MAX_REPLY_CHARS` (1800), plus the line break, under Discord's 2000.
+ * Room left for one line in front of a reply that is already at
+ * `MAX_REPLY_CHARS` (1800), plus the line break, under Discord's 2000. Shared
+ * by the let-go line and the walk across the keyboard, which is why the two
+ * never go in front of the same reply (see chat/reply.js).
  */
-const LET_GO_MAX_CHARS = 190;
+const PREFIX_MAX_CHARS = 190;
+
+/** What a walk across the keyboard may not contain: see `chat.keyboard`. */
+const SMASH_UNSAFE = /[*_~|`>#@<\\\r\n]/;
+
+/**
+ * A list of lines that go in front of a reply, each within `PREFIX_MAX_CHARS`.
+ *
+ * @param {object} node
+ * @param {string[]} path
+ * @returns {readonly string[]}
+ */
+const prefixLines = (node, path) =>
+  Object.freeze(
+    strings(node, path).map((line, index) => {
+      if (line.length > PREFIX_MAX_CHARS) {
+        fail(`${path.join('.')}[${index}] must be at most ${PREFIX_MAX_CHARS} characters`);
+      }
+      return line;
+    }),
+  );
 
 /** Discord refuses a button label longer than this. */
 const BUTTON_LABEL_MAX_CHARS = 80;
@@ -215,6 +237,7 @@ function loadContent() {
   const flagged = section(chat, 'flagged');
   const prompt = section(chat, 'prompt');
   const territory = section(chat, 'territory');
+  const keyboardSection = section(chat, 'keyboard');
   const moderation = section(parsed, 'moderation');
   const errorCodes = section(moderation, 'errors');
   const warningDm = section(moderation, 'warningDm');
@@ -301,16 +324,28 @@ function loadContent() {
       // Said once, ahead of her answer, when somebody's last strike in that
       // server has aged out (chat/grudges.js). Fixed lines rather than a
       // directive, so the model is never told and cannot say what it was.
-      letGo: Object.freeze(
-        strings(chat, ['chat', 'letGo']).map((line, index) => {
-          // It is put in front of a reply that may already be at the length
-          // cap, and the sum has to stay under Discord's 2000 characters.
-          if (line.length > LET_GO_MAX_CHARS) {
-            fail(`chat.letGo[${index}] must be at most ${LET_GO_MAX_CHARS} characters`);
-          }
-          return line;
-        }),
-      ),
+      // It is put in front of a reply that may already be at the length cap,
+      // and the sum has to stay under Discord's 2000 characters.
+      letGo: prefixLines(chat, ['chat', 'letGo']),
+      // Now and then a line of key smash in front of a chat reply: she walked
+      // across the keyboard on her way to answering. Same length budget.
+      keyboard: Object.freeze({
+        chance: num(keyboardSection, ['chat', 'keyboard', 'chance'], { min: 0, max: 1 }),
+        smashes: Object.freeze(
+          prefixLines(keyboardSection, ['chat', 'keyboard', 'smashes']).map((line, index) => {
+            // One line of plain letters. Anything Discord reads as formatting
+            // (or a line break) would spill into the reply underneath it, and
+            // `@` or `<` could start a mention or an emote code.
+            if (SMASH_UNSAFE.test(line)) {
+              fail(
+                `chat.keyboard.smashes[${index}] must be plain keys, without formatting ` +
+                  'characters (* _ ~ | ` > # @ < and backslash) or line breaks',
+              );
+            }
+            return line;
+          }),
+        ),
+      }),
       flagged: Object.freeze({
         header: str(flagged, ['chat', 'flagged', 'header']),
         footer: str(flagged, ['chat', 'flagged', 'footer']),

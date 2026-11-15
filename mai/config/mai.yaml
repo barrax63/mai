@@ -142,6 +142,27 @@ chat:
     - '*schnuppert kurz an dir und schnurrt* Na gut. Vergeben und vergessen.'
     - '*legt sich demonstrativ neben dich* Ich bin drüber weg. Erwähn es nie wieder.'
 
+  # Ab und zu läuft sie auf dem Weg zur Antwort über die Tastatur: eine Zeile
+  # Buchstabensalat, dann ihre ganz normale Antwort. Nur im Chat (nie bei
+  # /mai ask, nie in Ermahnungen, Verwarnungen oder im Log), nie statt einer
+  # Antwort und nie zusammen mit einem letGo-Satz. Landet nicht in ihrem
+  # Gedächtnis, sonst fängt das Modell an, das nachzumachen. chance pro Antwort,
+  # 0 schaltet es ab; höchstens 190 Zeichen pro Zeile. Keine Zeichen, die
+  # Discord als Formatierung liest (* _ ~ | ` > # @ <), sonst verrutscht die
+  # Antwort darunter.
+  keyboard:
+    chance: 0.02
+    smashes:
+      - 'asdfghjklöä'
+      - 'jjjjjjjjjjjjjjjjjjjjjjjjjjjj'
+      - 'ölkjhgfdsa'
+      - 'qwertzuiopü+'
+      - 'yxcvbnm,.-'
+      - 'ffffffffffffffffffffgggggggggggg'
+      - '5r6t7z8u9i0ßp'
+      - 'nmnmnmnmnmnmnmnmnmnmnm'
+      - 'awsedrftgzhujikolpö'
+
 moderation:
   # Reaction placed on a flagged message.
   warningEmoji: '😡'

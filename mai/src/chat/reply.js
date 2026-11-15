@@ -20,8 +20,9 @@ import { territoryFor } from './territory.js';
  *   guildId: string | null, userId: string, username: string, content: string,
  *   replyTo?: object | null, threadTitle?: string | null, images?: string[],
  *   client?: object }} input
- * @returns {Promise<{ text: string, gifUrl: string | null } | null>} What to post,
- *   or null when generation failed.
+ * @returns {Promise<{ text: string, gifUrl: string | null, memory?: string } | null>}
+ *   What to post, or null when generation failed. `memory`, when present, is
+ *   what to remember of it instead of `text`.
  */
 export async function generateChatReply(input) {
   const history = recentTurns(input.channelId, config.chat.historyTurns);
@@ -77,15 +78,52 @@ export async function generateChatReply(input) {
       },
       'Generated chat reply',
     );
-    if (!lettingGo) return reply;
-
     // Ahead of her answer, on a line of its own, and stored with it, so the
     // next turn knows she has already said it.
-    return { ...reply, text: [pick(content.chat.letGo), reply.text].filter(Boolean).join('\n') };
+    if (lettingGo) {
+      return { ...reply, text: [pick(content.chat.letGo), reply.text].filter(Boolean).join('\n') };
+    }
+
+    return walkAcrossTheKeyboard(input, reply);
   } catch (error) {
     logger.error({ messageId: input.messageId, err: error }, 'Chat generation failed');
     return null;
   }
+}
+
+/**
+ * Now and then she walks across the keyboard on her way to answering: a line
+ * of key smash, then the reply she was going to give anyway.
+ *
+ * Three limits, and each is what keeps it funny rather than broken:
+ *
+ * - **Never instead of the reply.** Only in front of a reply that has text, so
+ *   a GIF sent without words is not turned into a smash and a GIF.
+ * - **Chat only.** This is the one place it happens: not `/mai ask`, which
+ *   quotes a question back and has no room for a stray line, and never a
+ *   scold, a warning DM or a log entry, none of which go through here.
+ * - **Never on top of the let-go line**, which the caller has already decided
+ *   by the time this is asked: that is a moment, and a smash in front of it
+ *   would trample it. It also keeps the sum in budget, since both prefixes
+ *   are capped to fit in front of a reply at the length cap, but not together.
+ *
+ * Not remembered: her memory keeps the reply without the smash, or the model
+ * would read a history of assistant turns opening with "asdfghjkl" and start
+ * writing them itself.
+ *
+ * @param {{ messageId: string, guildId: string | null }} input
+ * @param {{ text: string, gifUrl: string | null }} reply
+ * @returns {{ text: string, gifUrl: string | null, memory?: string }}
+ */
+export function walkAcrossTheKeyboard(input, reply) {
+  const { chance, smashes } = content.chat.keyboard;
+  if (!reply.text || Math.random() >= chance) return reply;
+
+  logger.info(
+    { messageId: input.messageId, guildId: input.guildId },
+    'Mai walked across the keyboard',
+  );
+  return { ...reply, text: `${pick(smashes)}\n${reply.text}`, memory: reply.text };
 }
 
 /**
@@ -115,7 +153,9 @@ export function gifEmbeds(gifUrl) {
  *
  * @param {{ channelId: string, guildId: string | null, userId: string, username: string,
  *   content: string, images?: string[] }} input
- * @param {{ text: string, gifUrl?: string | null }} reply
+ * @param {{ text: string, gifUrl?: string | null, memory?: string }} reply `memory`
+ *   replaces `text` where what was posted is not what she should remember
+ *   saying (a walk across the keyboard).
  */
 export function rememberExchange(input, reply) {
   const userContent = String(input.content ?? '').trim()
@@ -136,7 +176,7 @@ export function rememberExchange(input, reply) {
   // A GIF is not stored either: the URL is a fact about a file somewhere, and
   // in a week it may be a 404. What she keeps is that she sent one, the same
   // way an image someone sent her is remembered as a placeholder.
-  const assistantContent = reply.text.trim()
+  const assistantContent = (reply.memory ?? reply.text).trim()
     || (reply.gifUrl ? content.chat.prompt.gifPlaceholder : '');
 
   if (assistantContent) {

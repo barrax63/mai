@@ -110,9 +110,14 @@ function stubApi({ flagged = false } = {}) {
 async function talk({ flagged = false, text } = {}) {
   const { message, record } = fakeMessage(text);
   const { calls, restore } = stubApi({ flagged });
+  // A roll she never walks across the keyboard on, so the reply asserted on is
+  // exactly the one she gave (keyboard.test.js is about the other rolls).
+  const realRandom = Math.random;
+  Math.random = () => 0.999;
   try {
     await onMessageCreate(message);
   } finally {
+    Math.random = realRandom;
     restore();
   }
   return { record, calls };
