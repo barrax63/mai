@@ -54,11 +54,11 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 512M
+          memory: 256M
           pids: 100
         reservations:
           cpus: '0.25'
-          memory: 256M
+          memory: 64M
     logging: *default-logging
 
   # ---- Cloudflare reverse proxy (connecting to http://mai:3000) ----
@@ -89,8 +89,8 @@ services:
       resources:
         limits:
           cpus: '0.5'
-          memory: 256M
+          memory: 96M
         reservations:
           cpus: '0.1'
-          memory: 96M
+          memory: 32M
     logging: *default-logging
